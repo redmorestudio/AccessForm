@@ -1,6 +1,6 @@
 namespace WordToPdfConverter.Models
 {
-    public class AccessibilityReport
+    public partial class AccessibilityReport
     {
         public string DocumentName { get; set; }
         public DateTime ConversionDate { get; set; }
@@ -16,6 +16,11 @@ namespace WordToPdfConverter.Models
         public List<string> StructuralElements { get; set; } = new List<string>();
         public List<string> Warnings { get; set; } = new List<string>();
         public List<string> Errors { get; set; } = new List<string>();
+        public string AiProvider { get; set; } = "None";
+        public int FieldsProcessed { get; set; }
+        public int MeasuresApplied { get; set; }
+        public int IssuesFound { get; set; }
+        public int IssuesFixed { get; set; }
         
         // Field processing tracking
         public int OriginalFieldCount { get; set; }

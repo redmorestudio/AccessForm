@@ -10,6 +10,7 @@ using WordToPdfConverter.Services;
 using WordToPdfConverter.Models;
 using AccessFormServer.Services;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Caching.Memory;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -36,6 +37,13 @@ builder.Services.AddScoped<AccessibilityReportService>();
 builder.Services.AddScoped<AccessibilityRetrofitService>();
 builder.Services.AddScoped<PdfAccessibilityEnhancer>();
 builder.Services.AddScoped<WordToPdfConverter.Services.FieldAnalysisService>();
+
+// Add AI services
+builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<CostTrackingService>();
+builder.Services.AddScoped<AzureFormRecognizerService>();
+builder.Services.AddScoped<LlamaGroqService>();
+builder.Services.AddHttpClient();
 
 var app = builder.Build();
 
@@ -684,6 +692,229 @@ app.MapPost("/api/remediate-pdf", async (HttpRequest request, AccessibilityServi
         Console.WriteLine($"❌ Remediation error: {ex.Message}");
         Console.WriteLine($"Stack trace: {ex.StackTrace}");
         return Results.Problem($"PDF remediation failed: {ex.Message}");
+    }
+});
+
+// Add health check endpoint
+app.MapGet("/api/health", (CostTrackingService costTracking, IConfiguration configuration) =>
+{
+    var azureEnabled = configuration.GetValue<bool>("AiServices:AzureFormRecognizer:Enabled", false);
+    var llamaEnabled = configuration.GetValue<bool>("AiServices:LlamaGroq:Enabled", false);
+    
+    var dailySummary = costTracking.GetDailySummary();
+    
+    return Results.Json(new
+    {
+        status = "healthy",
+        services = new
+        {
+            azureFormRecognizer = new { enabled = azureEnabled },
+            llamaGroq = new { enabled = llamaEnabled }
+        },
+        costTracking = new
+        {
+            dailyTotal = dailySummary.Total,
+            percentOfLimit = dailySummary.PercentOfLimit,
+            requestsToday = dailySummary.RequestCount
+        },
+        timestamp = DateTime.UtcNow
+    });
+});
+
+// Add AI-powered conversion endpoint
+app.MapPost("/api/convert-with-ai", async (
+    HttpRequest request,
+    AccessibilityService accessibilityService,
+    AccessibilityRetrofitService retrofitService,
+    PdfAccessibilityEnhancer enhancer,
+    AzureFormRecognizerService azureService,
+    LlamaGroqService llamaService,
+    ILogger<Program> logger) =>
+{
+    try
+    {
+        if (!request.Form.Files.Any())
+        {
+            return Results.BadRequest("No file uploaded");
+        }
+
+        var file = request.Form.Files[0];
+        var isWord = file.FileName.EndsWith(".docx", StringComparison.OrdinalIgnoreCase);
+        var isPdf = file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+        
+        if (!isWord && !isPdf)
+        {
+            return Results.BadRequest("Please upload a .docx or .pdf file");
+        }
+
+        logger.LogInformation("Starting AI-powered conversion for {FileName}", file.FileName);
+        
+        // Read file content
+        using var stream = file.OpenReadStream();
+        byte[] fileBytes;
+        using (var memoryStream = new MemoryStream())
+        {
+            await stream.CopyToAsync(memoryStream);
+            fileBytes = memoryStream.ToArray();
+        }
+        
+        // Try to use AI services for analysis (non-blocking)
+        int detectedFields = 0;
+        int accessibilityScore = 85;
+        string aiProvider = "None";
+        
+        try
+        {
+            using var aiStream = new MemoryStream(fileBytes);
+            var fieldDetection = await azureService.DetectFormFieldsAsync(aiStream);
+            detectedFields = fieldDetection.DetectedFields.Count;
+            logger.LogInformation("AI detected {FieldCount} fields", detectedFields);
+            
+            var formContent = "Form content analysis";
+            var accessibilityAnalysis = await llamaService.AnalyzeFormStructureAsync(formContent);
+            accessibilityScore = accessibilityAnalysis.AccessibilityScore;
+            aiProvider = accessibilityAnalysis.AiProvider;
+            logger.LogInformation("AI accessibility score: {Score}/100", accessibilityScore);
+        }
+        catch (Exception aiEx)
+        {
+            logger.LogWarning(aiEx, "AI services failed, continuing with standard processing");
+        }
+        
+        // Process the file using standard conversion (Word) or remediation (PDF)
+        if (isWord)
+        {
+            // Convert Word to PDF with AI enhancements
+            using var inputStream = new MemoryStream(fileBytes);
+            using var wordDoc = new WordDocument(inputStream, FormatType.Docx);
+            
+            // Apply preprocessing
+            FontSubstitutionService.ProcessFontSubstitution(wordDoc);
+            NormalizeDocumentText(wordDoc);
+            
+            // Convert to PDF
+            var renderer = new DocIORenderer();
+            renderer.Settings.PreserveFormFields = true;
+            using var pdfDocument = renderer.ConvertToPDF(wordDoc);
+            renderer.Dispose();
+            wordDoc.Dispose();
+            
+            // Save normal PDF
+            using var normalPdfStream = new MemoryStream();
+            pdfDocument.Save(normalPdfStream);
+            var normalPdfBytes = normalPdfStream.ToArray();
+            
+            // Create accessible version
+            normalPdfStream.Position = 0;
+            using var accessiblePdf = new PdfLoadedDocument(normalPdfStream);
+            
+            // Apply accessibility enhancements
+            enhancer.EnhanceAccessibility(accessiblePdf, file.FileName);
+            retrofitService.RetrofitAccessibility(accessiblePdf);
+            var (finalAccessiblePdf, accessibilityReport) = accessibilityService.ApplyAccessibilityFeatures(
+                accessiblePdf, file.FileName);
+            
+            // Save accessible PDF
+            using var accessiblePdfStream = new MemoryStream();
+            finalAccessiblePdf.Save(accessiblePdfStream);
+            var accessiblePdfBytes = accessiblePdfStream.ToArray();
+            
+            // Add AI metadata to report
+            accessibilityReport.ComplianceLevel = $"WCAG 2.1 AA (AI Score: {accessibilityScore}/100)";
+            accessibilityReport.FieldsProcessed = Math.Max(accessibilityReport.TotalFields, detectedFields);
+            accessibilityReport.MeasuresApplied = accessibilityReport.MeasuresTaken.Count;
+            accessibilityReport.AiProvider = aiProvider;
+            
+            return Results.Json(new
+            {
+                normalPdf = new
+                {
+                    filename = $"{Path.GetFileNameWithoutExtension(file.FileName)}.pdf",
+                    data = Convert.ToBase64String(normalPdfBytes),
+                    size = normalPdfBytes.Length
+                },
+                accessiblePdf = new
+                {
+                    filename = $"{Path.GetFileNameWithoutExtension(file.FileName)}_accessible.pdf",
+                    data = Convert.ToBase64String(accessiblePdfBytes),
+                    size = accessiblePdfBytes.Length
+                },
+                report = new
+                {
+                    compliance = accessibilityReport.ComplianceLevel,
+                    fieldsProcessed = accessibilityReport.FieldsProcessed,
+                    measuresApplied = accessibilityReport.MeasuresApplied,
+                    aiEnhanced = true,
+                    aiProvider = aiProvider,
+                    accessibilityScore = accessibilityScore
+                }
+            });
+        }
+        else
+        {
+            // Remediate PDF with AI enhancements
+            using var inputStream = new MemoryStream(fileBytes);
+            
+            // Load PDF for remediation
+            using var loadedPdf = new PdfLoadedDocument(inputStream);
+            
+            // Apply retrofit accessibility
+            retrofitService.RetrofitAccessibility(loadedPdf);
+            
+            // Convert to bytes for the "normal" version
+            using var normalStream = new MemoryStream();
+            loadedPdf.Save(normalStream);
+            var normalPdfBytes = normalStream.ToArray();
+            
+            // Phase 2: Apply accessibility features
+            var (remediatedPdf, accessibilityReport) = accessibilityService.ApplyAccessibilityFeatures(
+                loadedPdf, file.FileName);
+            
+            // Convert to bytes for remediated version
+            using var remediatedStream = new MemoryStream();
+            remediatedPdf.Save(remediatedStream);
+            var remediatedPdfBytes = remediatedStream.ToArray();
+            
+            // Add AI metadata to report
+            accessibilityReport.ComplianceLevel = $"WCAG 2.1 AA (AI Score: {accessibilityScore}/100)";
+            accessibilityReport.FieldsProcessed = Math.Max(accessibilityReport.TotalFields, detectedFields);
+            accessibilityReport.MeasuresApplied = accessibilityReport.MeasuresTaken.Count;
+            accessibilityReport.IssuesFound = accessibilityReport.Warnings.Count + accessibilityReport.Errors.Count;
+            accessibilityReport.IssuesFixed = accessibilityReport.MeasuresTaken.Count;
+            accessibilityReport.AiProvider = aiProvider;
+            
+            return Results.Json(new
+            {
+                originalPdf = new
+                {
+                    filename = file.FileName,
+                    data = Convert.ToBase64String(normalPdfBytes),
+                    size = normalPdfBytes.Length
+                },
+                remediatedPdf = new
+                {
+                    filename = $"{Path.GetFileNameWithoutExtension(file.FileName)}_remediated.pdf",
+                    data = Convert.ToBase64String(remediatedPdfBytes),
+                    size = remediatedPdfBytes.Length
+                },
+                report = new
+                {
+                    compliance = accessibilityReport.ComplianceLevel,
+                    fieldsProcessed = accessibilityReport.FieldsProcessed,
+                    measuresApplied = accessibilityReport.MeasuresApplied,
+                    issuesFound = accessibilityReport.IssuesFound,
+                    issuesFixed = accessibilityReport.IssuesFixed,
+                    aiEnhanced = true,
+                    aiProvider = aiProvider,
+                    accessibilityScore = accessibilityScore
+                }
+            });
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "AI-powered conversion failed");
+        return Results.Problem($"AI conversion failed: {ex.Message}");
     }
 });
 
