@@ -8,7 +8,31 @@
     <div class="row">
         <div class="col-md-10 offset-md-1">
             <h1 class="text-center mb-2">AccessForm Document Accessibility</h1>
-            <p class="text-center text-muted mb-5">Drop any Word or PDF document to make it accessible</p>
+            <p class="text-center text-muted mb-3">Drop any Word or PDF document to make it accessible</p>
+            
+            <!-- AI Mode Toggle -->
+            <div class="text-center mb-4">
+                <div class="form-check form-switch d-inline-block">
+                    <input class="form-check-input" type="checkbox" id="aiModeToggle" @bind="useAiMode" @bind:after="OnAiModeChanged">
+                    <label class="form-check-label" for="aiModeToggle">
+                        <strong>🤖 AI-Enhanced Mode</strong>
+                        @if (useAiMode)
+                        {
+                            <span class="badge bg-success ms-2">Active</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary ms-2">Off</span>
+                        }
+                    </label>
+                </div>
+                @if (aiStatus != null)
+                {
+                    <div class="alert alert-info mt-2">
+                        <small>@aiStatus</small>
+                    </div>
+                }
+            </div>
             
             <!-- Drag and Drop Zone -->
             <div id="dropZone" class="@GetDropZoneClass()">
@@ -144,10 +168,10 @@
             <!-- Info Cards -->
             <div class="row mt-5">
                 <div class="col-md-4 mb-3">
-                    <div class="info-card">
+                    <div class="info-card @(useAiMode ? "ai-mode" : "")">
                         <div class="info-icon">🤖</div>
-                        <h5>Smart Detection</h5>
-                        <p class="small text-muted">Automatically detects document type and applies appropriate accessibility enhancements</p>
+                        <h5>@(useAiMode ? "AI-Powered Detection" : "Smart Detection")</h5>
+                        <p class="small text-muted">@(useAiMode ? "Azure Form Recognizer and Llama AI for advanced field detection" : "Automatically detects document type and applies appropriate accessibility enhancements")</p>
                     </div>
                 </div>
                 <div class="col-md-4 mb-3">
@@ -158,10 +182,10 @@
                     </div>
                 </div>
                 <div class="col-md-4 mb-3">
-                    <div class="info-card">
+                    <div class="info-card @(useAiMode ? "ai-mode" : "")">
                         <div class="info-icon">⚡</div>
-                        <h5>Fast Processing</h5>
-                        <p class="small text-muted">Algorithmic retrofitting provides instant accessibility improvements</p>
+                        <h5>@(useAiMode ? "Intelligent Analysis" : "Fast Processing")</h5>
+                        <p class="small text-muted">@(useAiMode ? "AI analyzes form structure and suggests optimal accessibility improvements" : "Algorithmic retrofitting provides instant accessibility improvements")</p>
                     </div>
                 </div>
             </div>
@@ -177,6 +201,8 @@
     private ProcessingResult? processingResults;
     private DotNetObjectReference<Index>? dotNetHelper;
     private FileData? droppedFileData;
+    private bool useAiMode = false;
+    private string? aiStatus = null;
     
     private class ProcessingResult
     {
@@ -234,7 +260,42 @@
         {
             dotNetHelper = DotNetObjectReference.Create(this);
             await JSRuntime.InvokeVoidAsync("accessForm.initializeDragDrop", dotNetHelper, "dropZone");
+            await CheckAiStatus();
         }
+    }
+    
+    private async Task CheckAiStatus()
+    {
+        try
+        {
+            var response = await JSRuntime.InvokeAsync<string>("fetch", "/api/health");
+            // AI is available if the endpoint responds
+            aiStatus = null;
+        }
+        catch
+        {
+            aiStatus = "AI services are currently unavailable";
+        }
+    }
+    
+    private async Task OnAiModeChanged()
+    {
+        if (useAiMode)
+        {
+            aiStatus = "🚀 AI-enhanced processing enabled for smarter field detection and accessibility analysis";
+        }
+        else
+        {
+            aiStatus = "✅ Using fast algorithmic processing";
+        }
+        
+        // Clear status after 3 seconds
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(3000);
+            aiStatus = null;
+            await InvokeAsync(StateHasChanged);
+        });
     }
     
     public async ValueTask DisposeAsync()
@@ -335,11 +396,25 @@
         
         try
         {
-            // Determine file type and call appropriate endpoint
+            // Determine file type and endpoint based on AI mode
             bool isWord = IsWordFile(selectedFile.Name);
-            string endpoint = isWord ? "/api/convert" : "/api/remediate-pdf";
+            string endpoint;
             
-            processingMessage = isWord ? "Converting Word document to accessible PDF..." : "Remediating PDF for accessibility...";
+            if (useAiMode)
+            {
+                endpoint = "/api/convert-with-ai";
+                processingMessage = isWord ? 
+                    "🤖 Using AI to convert and enhance Word document..." : 
+                    "🤖 Using AI to analyze and remediate PDF...";
+            }
+            else
+            {
+                endpoint = isWord ? "/api/convert" : "/api/remediate-pdf";
+                processingMessage = isWord ? 
+                    "Converting Word document to accessible PDF..." : 
+                    "Remediating PDF for accessibility...";
+            }
+            
             StateHasChanged();
             
             await JSRuntime.InvokeVoidAsync("console.log", $"ProcessFile: File type is {(isWord ? "Word" : "PDF")}, endpoint: {endpoint}");
@@ -558,6 +633,26 @@
     .info-card:hover {
         transform: translateY(-5px);
         box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+    }
+    
+    .info-card.ai-mode {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+    
+    .info-card.ai-mode .text-muted {
+        color: rgba(255, 255, 255, 0.9) !important;
+    }
+    
+    .form-check-input:checked {
+        background-color: #667eea;
+        border-color: #667eea;
+    }
+    
+    .alert-info {
+        background: linear-gradient(135deg, #e3f2fd 0%, #f3f9ff 100%);
+        border: 1px solid #90caf9;
+        color: #1976d2;
     }
     
     .info-icon {
