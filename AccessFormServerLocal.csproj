@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reference local Syncfusion DLLs from your download folder -->
+    <Reference Include="Syncfusion.Licensing">
+      <HintPath>/Users/sethredmore/Downloads/syncfusion/Fileformats/ASP.NET Core/Samples/PDF/bin/Debug/net9.0/Syncfusion.Licensing.dll</HintPath>
+    </Reference>
+    <Reference Include="Syncfusion.DocIO.Portable">
+      <HintPath>/Users/sethredmore/Downloads/syncfusion/Fileformats/ASP.NET Core/Samples/PDF/bin/Debug/net9.0/Syncfusion.DocIO.Portable.dll</HintPath>
+    </Reference>
+    <Reference Include="Syncfusion.DocIORenderer.Portable">
+      <HintPath>/Users/sethredmore/Downloads/syncfusion/Fileformats/ASP.NET Core/Samples/PDF/bin/Debug/net9.0/Syncfusion.DocIORenderer.Portable.dll</HintPath>
+    </Reference>
+    <Reference Include="Syncfusion.Pdf.Portable">
+      <HintPath>/Users/sethredmore/Downloads/syncfusion/Fileformats/ASP.NET Core/Samples/PDF/bin/Debug/net9.0/Syncfusion.Pdf.Portable.dll</HintPath>
+    </Reference>
+    <Reference Include="Syncfusion.Compression.Portable">
+      <HintPath>/Users/sethredmore/Downloads/syncfusion/Fileformats/ASP.NET Core/Samples/PDF/bin/Debug/net9.0/Syncfusion.Compression.Portable.dll</HintPath>
+    </Reference>
+    <Reference Include="Syncfusion.OfficeChartToImageConverter.Portable">
+      <HintPath>/Users/sethredmore/Downloads/syncfusion/Fileformats/ASP.NET Core/Samples/PDF/bin/Debug/net9.0/Syncfusion.OfficeChartToImageConverter.Portable.dll</HintPath>
+    </Reference>
+    <Reference Include="SkiaSharp">
+      <HintPath>/Users/sethredmore/Downloads/syncfusion/Fileformats/ASP.NET Core/Samples/PDF/bin/Debug/net9.0/SkiaSharp.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>

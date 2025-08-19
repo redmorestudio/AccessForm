@@ -1,0 +1,641 @@
+@page "/"
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<PageTitle>AccessForm Document Accessibility</PageTitle>
+
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-md-10 offset-md-1">
+            <h1 class="text-center mb-2">AccessForm Document Accessibility</h1>
+            <p class="text-center text-muted mb-5">Drop any Word or PDF document to make it accessible</p>
+            
+            <!-- Drag and Drop Zone -->
+            <div id="dropZone" class="@GetDropZoneClass()">
+                
+                @if (isProcessing)
+                {
+                    <div class="text-center">
+                        <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;" role="status">
+                            <span class="visually-hidden">Processing...</span>
+                        </div>
+                        <h4>Processing Your Document</h4>
+                        <p class="text-muted">@processingMessage</p>
+                    </div>
+                }
+                else if (selectedFile == null)
+                {
+                    <div class="drop-zone-content">
+                        <div class="drop-icon mb-3">
+                            <svg width="64" height="64" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M4.406 1.342A5.53 5.53 0 0 1 8 0c2.69 0 4.923 2 5.166 4.579C14.758 4.804 16 6.137 16 7.773 16 9.569 14.502 11 12.687 11H10a.5.5 0 0 1 0-1h2.688C13.979 10 15 8.988 15 7.773c0-1.216-1.02-2.228-2.313-2.228h-.5v-.5C12.188 2.825 10.328 1 8 1a4.53 4.53 0 0 0-2.941 1.1c-.757.652-1.153 1.438-1.153 2.055v.448l-.445.049C2.064 4.805 1 5.952 1 7.318 1 8.785 2.23 10 3.781 10H6a.5.5 0 0 1 0 1H3.781C1.708 11 0 9.366 0 7.318c0-1.763 1.266-3.223 2.942-3.593.143-.863.698-1.723 1.464-2.383z"/>
+                                <path d="M7.646 4.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 5.707V14.5a.5.5 0 0 1-1 0V5.707L5.354 7.854a.5.5 0 1 1-.708-.708l3-3z"/>
+                            </svg>
+                        </div>
+                        <h4 class="mb-3">Drop Your Document Here</h4>
+                        <p class="text-muted mb-3">Supports Word (.docx) and PDF (.pdf) files</p>
+                        <p class="text-muted">or</p>
+                        <button class="btn btn-primary" @onclick="TriggerFileSelect">
+                            Browse Files
+                        </button>
+                        <InputFile id="fileInput" class="d-none" accept=".docx,.pdf" />
+                    </div>
+                }
+                else
+                {
+                    <div class="file-selected">
+                        <div class="file-icon mb-3">
+                            @if (IsWordFile(selectedFile.Name))
+                            {
+                                <svg width="48" height="48" fill="#2B579A" viewBox="0 0 16 16">
+                                    <path d="M14 4.5V14a2 2 0 0 1-2 2h-1v-1h1a1 1 0 0 0 1-1V4.5h-2A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v9H2V2a2 2 0 0 1 2-2h5.5L14 4.5ZM3.5 12.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1H4a.5.5 0 0 1-.5-.5Z"/>
+                                    <path d="m1 15 2-5 2 5m-4-3h3.5M10 3h3v10h-3z"/>
+                                </svg>
+                            }
+                            else
+                            {
+                                <svg width="48" height="48" fill="#DC382D" viewBox="0 0 16 16">
+                                    <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5h-2z"/>
+                                    <path d="M4.5 6a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zm0 2a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zm0 2a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5z"/>
+                                </svg>
+                            }
+                        </div>
+                        <h5>@selectedFile.Name</h5>
+                        <p class="text-muted">@GetFileSize(selectedFile.Size) • @GetFileType(selectedFile.Name)</p>
+                        <div class="mt-3">
+                            <button class="btn btn-success btn-lg me-2" @onclick="ProcessFile">
+                                <span class="me-2">🚀</span> Make Accessible
+                            </button>
+                            <button class="btn btn-outline-secondary" @onclick="ClearSelection">
+                                Choose Different File
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
+            
+            <!-- Results Section -->
+            @if (processingResults != null)
+            {
+                <div class="results-section mt-5 animate-in">
+                    <h3 class="mb-4">✅ Accessibility Processing Complete</h3>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <div class="card h-100 border-secondary">
+                                <div class="card-header bg-secondary text-white">
+                                    <h5 class="mb-0">
+                                        <span class="me-2">📄</span> 
+                                        @if (processingResults.IsWordSource) { <span>Standard PDF</span> } else { <span>Original PDF</span> }
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    <p class="mb-2"><strong>File:</strong> @processingResults.NormalFileName</p>
+                                    <p class="mb-3"><strong>Size:</strong> @GetFileSize(processingResults.NormalFileSize)</p>
+                                    <p class="text-muted small">@(processingResults.IsWordSource ? "Converted from Word without accessibility features" : "Your original PDF without modifications")</p>
+                                    <button class="btn btn-outline-secondary w-100 mt-3" @onclick="() => DownloadFile(processingResults.NormalFileData, processingResults.NormalFileName)">
+                                        <span class="me-2">⬇️</span> Download
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <div class="card h-100 border-success shadow">
+                                <div class="card-header bg-success text-white">
+                                    <h5 class="mb-0">
+                                        <span class="me-2">♿</span> Accessible PDF
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    <p class="mb-2"><strong>File:</strong> @processingResults.AccessibleFileName</p>
+                                    <p class="mb-2"><strong>Size:</strong> @GetFileSize(processingResults.AccessibleFileSize)</p>
+                                    <p class="mb-3"><strong>Status:</strong> <span class="badge bg-success">@processingResults.ComplianceLevel</span></p>
+                                    
+                                    <div class="improvements-list mb-3">
+                                        <small class="text-muted">Improvements Applied:</small>
+                                        <ul class="small mb-0 mt-1">
+                                            <li>✓ @processingResults.FieldsProcessed form fields enhanced</li>
+                                            <li>✓ @processingResults.MeasuresApplied accessibility measures</li>
+                                            <li>✓ Screen reader optimized</li>
+                                            <li>✓ Keyboard navigation enabled</li>
+                                        </ul>
+                                    </div>
+                                    
+                                    <button class="btn btn-success w-100" @onclick="() => DownloadFile(processingResults.AccessibleFileData, processingResults.AccessibleFileName)">
+                                        <span class="me-2">⬇️</span> Download Accessible PDF
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="text-center mt-4">
+                        <a href="/api/accessibility-report/latest" target="_blank" class="btn btn-primary me-2">
+                            <span class="me-2">📊</span> View Detailed Report
+                        </a>
+                        <button class="btn btn-outline-primary" @onclick="ProcessAnother">
+                            <span class="me-2">📁</span> Process Another Document
+                        </button>
+                    </div>
+                </div>
+            }
+            
+            <!-- Info Cards -->
+            <div class="row mt-5">
+                <div class="col-md-4 mb-3">
+                    <div class="info-card">
+                        <div class="info-icon">🤖</div>
+                        <h5>Smart Detection</h5>
+                        <p class="small text-muted">Automatically detects document type and applies appropriate accessibility enhancements</p>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="info-card">
+                        <div class="info-icon">♿</div>
+                        <h5>Full Compliance</h5>
+                        <p class="small text-muted">WCAG 2.1 AA and Section 508 compliant with detailed reporting</p>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="info-card">
+                        <div class="info-icon">⚡</div>
+                        <h5>Fast Processing</h5>
+                        <p class="small text-muted">Algorithmic retrofitting provides instant accessibility improvements</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private IBrowserFile? selectedFile;
+    private bool isProcessing = false;
+    private bool isDragging = false;
+    private string processingMessage = "";
+    private ProcessingResult? processingResults;
+    private DotNetObjectReference<Index>? dotNetHelper;
+    private FileData? droppedFileData;
+    
+    private class ProcessingResult
+    {
+        public bool IsWordSource { get; set; }
+        public string NormalFileName { get; set; } = "";
+        public string NormalFileData { get; set; } = "";
+        public int NormalFileSize { get; set; }
+        public string AccessibleFileName { get; set; } = "";
+        public string AccessibleFileData { get; set; } = "";
+        public int AccessibleFileSize { get; set; }
+        public string ComplianceLevel { get; set; } = "";
+        public int FieldsProcessed { get; set; }
+        public int MeasuresApplied { get; set; }
+    }
+    
+    // Classes for JavaScript interop
+    public class FileData
+    {
+        public string Name { get; set; } = "";
+        public long Size { get; set; }
+        public string Type { get; set; } = "";
+        public long LastModified { get; set; }
+        public string Data { get; set; } = "";
+    }
+    
+    // Virtual IBrowserFile implementation for dropped files
+    public class VirtualBrowserFile : IBrowserFile
+    {
+        private readonly string _base64Data;
+        
+        public VirtualBrowserFile(string name, long size, string contentType, string base64Data)
+        {
+            Name = name;
+            Size = size;
+            ContentType = contentType ?? "application/octet-stream";
+            _base64Data = base64Data;
+            LastModified = DateTimeOffset.Now;
+        }
+        
+        public string Name { get; }
+        public DateTimeOffset LastModified { get; }
+        public long Size { get; }
+        public string ContentType { get; }
+        
+        public Stream OpenReadStream(long maxAllowedSize = 512000, CancellationToken cancellationToken = default)
+        {
+            var bytes = Convert.FromBase64String(_base64Data);
+            return new MemoryStream(bytes);
+        }
+    }
+    
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            dotNetHelper = DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync("accessForm.initializeDragDrop", dotNetHelper, "dropZone");
+        }
+    }
+    
+    public async ValueTask DisposeAsync()
+    {
+        dotNetHelper?.Dispose();
+    }
+    
+    [JSInvokable]
+    public async Task OnDragEnter()
+    {
+        isDragging = true;
+        StateHasChanged();
+    }
+    
+    [JSInvokable]
+    public async Task OnDragLeave()
+    {
+        isDragging = false;
+        StateHasChanged();
+    }
+    
+    [JSInvokable]
+    public async Task OnFileProcessedDirectly(FileData fileData, string jsonResult)
+    {
+        await JSRuntime.InvokeVoidAsync("console.log", "OnFileProcessedDirectly called");
+        
+        try
+        {
+            // Process the JSON result directly
+            await ProcessApiResponse(jsonResult, IsWordFile(fileData.Name));
+            
+            // Clear the file selection
+            selectedFile = null;
+            droppedFileData = null;
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", $"OnFileProcessedDirectly error: {ex.Message}");
+            processingMessage = $"Error processing results: {ex.Message}";
+            await Task.Delay(2000);
+            processingMessage = "";
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+        
+        StateHasChanged();
+    }
+    
+    [JSInvokable]
+    public async Task OnFileDropped(FileData fileData)
+    {
+        isDragging = false;
+        // Debug logging
+        await JSRuntime.InvokeVoidAsync("console.log", "OnFileDropped called with file:", fileData.Name);
+        
+        // Validate file type
+        if (!IsValidFileType(fileData.Name))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Please drop a Word (.docx) or PDF (.pdf) file");
+            return;
+        }
+        
+        await JSRuntime.InvokeVoidAsync("console.log", "File validation passed, creating VirtualBrowserFile");
+        
+        // Create a virtual IBrowserFile from the dropped file data
+        droppedFileData = fileData;
+        await JSRuntime.InvokeVoidAsync("console.log", $"OnFileDropped: Set droppedFileData, name={fileData.Name}, dataLength={fileData.Data?.Length ?? 0}");
+        selectedFile = new VirtualBrowserFile(fileData.Name, fileData.Size, fileData.Type, fileData.Data);
+        processingResults = null;
+        
+        await JSRuntime.InvokeVoidAsync("console.log", "VirtualBrowserFile created, calling StateHasChanged");
+        StateHasChanged();
+        
+        await JSRuntime.InvokeVoidAsync("console.log", "OnFileDropped completed successfully");
+    }
+    
+    private string GetDropZoneClass()
+    {
+        var classes = "drop-zone";
+        if (isDragging) classes += " drop-zone-active";
+        if (isProcessing) classes += " processing";
+        if (selectedFile != null && !isProcessing) classes += " has-file";
+        return classes;
+    }
+    
+    // Drag and drop is handled entirely by JavaScript interop
+    
+    private async Task ProcessFile()
+    {
+        if (selectedFile == null) return;
+        
+        await JSRuntime.InvokeVoidAsync("console.log", "ProcessFile: Starting processing");
+        
+        isProcessing = true;
+        processingResults = null;
+        
+        try
+        {
+            // Determine file type and call appropriate endpoint
+            bool isWord = IsWordFile(selectedFile.Name);
+            string endpoint = isWord ? "/api/convert" : "/api/remediate-pdf";
+            
+            processingMessage = isWord ? "Converting Word document to accessible PDF..." : "Remediating PDF for accessibility...";
+            StateHasChanged();
+            
+            await JSRuntime.InvokeVoidAsync("console.log", $"ProcessFile: File type is {(isWord ? "Word" : "PDF")}, endpoint: {endpoint}");
+            
+            // Debug the droppedFileData state
+            await JSRuntime.InvokeVoidAsync("console.log", $"ProcessFile: droppedFileData is null: {droppedFileData == null}");
+            if (droppedFileData != null)
+            {
+                await JSRuntime.InvokeVoidAsync("console.log", $"ProcessFile: droppedFileData.Data is null or empty: {string.IsNullOrEmpty(droppedFileData.Data)}");
+                await JSRuntime.InvokeVoidAsync("console.log", $"ProcessFile: droppedFileData.Name: {droppedFileData.Name}");
+            }
+            
+            // Check if this is a dropped file (has base64 data) or regular file upload
+            if (droppedFileData != null && !string.IsNullOrEmpty(droppedFileData.Data))
+            {
+                // Use JavaScript fetch with base64 data to bypass Blazor file handling
+                await JSRuntime.InvokeVoidAsync("console.log", "ProcessFile: Using JavaScript fetch approach");
+                
+                var result = await JSRuntime.InvokeAsync<string>("accessForm.uploadFileDirectly", 
+                    endpoint, droppedFileData.Name, droppedFileData.Data, 
+                    IsWordFile(droppedFileData.Name) ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : "application/pdf");
+                
+                if (!string.IsNullOrEmpty(result))
+                {
+                    await JSRuntime.InvokeVoidAsync("console.log", "ProcessFile: Got result from JavaScript fetch");
+                    await ProcessApiResponse(result, IsWordFile(droppedFileData.Name));
+                }
+                else
+                {
+                    throw new Exception("JavaScript upload failed");
+                }
+            }
+            else
+            {
+                // If we get here, something went wrong - both drag-drop and browse should set droppedFileData
+                throw new Exception("No file data available. Please try selecting the file again.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", $"ProcessFile: Exception caught: {ex.Message}");
+            processingMessage = $"Error: {ex.Message}";
+            await Task.Delay(2000);
+        }
+        finally
+        {
+            isProcessing = false;
+            processingMessage = "";
+        }
+    }
+    
+    private async Task ProcessApiResponse(string json, bool isWordSource)
+    {
+        try
+        {
+            dynamic result = System.Text.Json.JsonSerializer.Deserialize<dynamic>(json);
+            
+            if (isWordSource)
+            {
+                // Word to PDF conversion result
+                processingResults = new ProcessingResult
+                {
+                    IsWordSource = true,
+                    NormalFileName = result.GetProperty("normalPdf").GetProperty("filename").GetString(),
+                    NormalFileData = result.GetProperty("normalPdf").GetProperty("data").GetString(),
+                    NormalFileSize = result.GetProperty("normalPdf").GetProperty("size").GetInt32(),
+                    AccessibleFileName = result.GetProperty("accessiblePdf").GetProperty("filename").GetString(),
+                    AccessibleFileData = result.GetProperty("accessiblePdf").GetProperty("data").GetString(),
+                    AccessibleFileSize = result.GetProperty("accessiblePdf").GetProperty("size").GetInt32(),
+                    ComplianceLevel = result.GetProperty("report").GetProperty("compliance").GetString(),
+                    FieldsProcessed = result.GetProperty("report").GetProperty("fieldsProcessed").GetInt32(),
+                    MeasuresApplied = result.GetProperty("report").GetProperty("measuresApplied").GetInt32()
+                };
+            }
+            else
+            {
+                // PDF remediation result
+                processingResults = new ProcessingResult
+                {
+                    IsWordSource = false,
+                    NormalFileName = result.GetProperty("originalPdf").GetProperty("filename").GetString(),
+                    NormalFileData = result.GetProperty("originalPdf").GetProperty("data").GetString(),
+                    NormalFileSize = result.GetProperty("originalPdf").GetProperty("size").GetInt32(),
+                    AccessibleFileName = result.GetProperty("remediatedPdf").GetProperty("filename").GetString(),
+                    AccessibleFileData = result.GetProperty("remediatedPdf").GetProperty("data").GetString(),
+                    AccessibleFileSize = result.GetProperty("remediatedPdf").GetProperty("size").GetInt32(),
+                    ComplianceLevel = result.GetProperty("report").GetProperty("compliance").GetString(),
+                    FieldsProcessed = result.GetProperty("report").GetProperty("fieldsProcessed").GetInt32(),
+                    MeasuresApplied = result.GetProperty("report").GetProperty("measuresApplied").GetInt32()
+                };
+            }
+            
+            await JSRuntime.InvokeVoidAsync("console.log", "ProcessApiResponse: Successfully parsed response, clearing file selection");
+            selectedFile = null; // Clear selection after successful processing
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", $"ProcessApiResponse: Error parsing response: {ex.Message}");
+            throw new Exception($"Failed to parse server response: {ex.Message}", ex);
+        }
+    }
+    
+    private void ProcessAnother()
+    {
+        selectedFile = null;
+        processingResults = null;
+        droppedFileData = null;
+    }
+    
+    private void ClearSelection()
+    {
+        selectedFile = null;
+        processingResults = null;
+        droppedFileData = null;
+    }
+    
+    private async Task TriggerFileSelect()
+    {
+        // Use JavaScript to trigger file selection and handle it the same way as drag-and-drop
+        await JSRuntime.InvokeVoidAsync("accessForm.triggerFileInputWithHandler", "fileInput");
+    }
+    
+    private async Task DownloadFile(string base64Data, string fileName)
+    {
+        await JSRuntime.InvokeVoidAsync("console.log", $"DownloadFile: Attempting to download {fileName}, data length: {base64Data?.Length ?? 0}");
+        await JSRuntime.InvokeVoidAsync("accessForm.downloadFile", base64Data, fileName);
+    }
+    
+    private bool IsValidFileType(string fileName)
+    {
+        var extension = Path.GetExtension(fileName).ToLower();
+        return extension == ".docx" || extension == ".pdf";
+    }
+    
+    private bool IsWordFile(string fileName)
+    {
+        return Path.GetExtension(fileName).ToLower() == ".docx";
+    }
+    
+    private string GetFileType(string fileName)
+    {
+        return IsWordFile(fileName) ? "Word Document" : "PDF Document";
+    }
+    
+    private string GetFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} bytes";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024:F1} KB";
+        return $"{bytes / (1024 * 1024):F1} MB";
+    }
+}
+
+<style>
+    .drop-zone {
+        border: 3px dashed #dee2e6;
+        border-radius: 20px;
+        padding: 60px 40px;
+        text-align: center;
+        transition: all 0.3s ease;
+        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+        min-height: 400px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .drop-zone-active {
+        border-color: #0066cc;
+        background: linear-gradient(135deg, #e3f2fd 0%, #f3f9ff 100%);
+        transform: scale(1.02);
+        box-shadow: 0 8px 25px rgba(0, 102, 204, 0.15);
+    }
+    
+    .drop-zone.processing {
+        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+        border-color: #0066cc;
+    }
+    
+    .drop-zone.has-file {
+        border-color: #28a745;
+        background: linear-gradient(135deg, #f1f8f4 0%, #ffffff 100%);
+    }
+    
+    .drop-zone-content {
+        max-width: 400px;
+        margin: 0 auto;
+    }
+    
+    .drop-icon {
+        color: #6c757d;
+        opacity: 0.5;
+    }
+    
+    .file-selected {
+        animation: fadeIn 0.3s ease;
+    }
+    
+    .file-icon svg {
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+    }
+    
+    .results-section {
+        animation: slideUp 0.5s ease;
+    }
+    
+    .info-card {
+        text-align: center;
+        padding: 30px 20px;
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        height: 100%;
+    }
+    
+    .info-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+    }
+    
+    .info-icon {
+        font-size: 48px;
+        margin-bottom: 15px;
+    }
+    
+    .improvements-list {
+        background: #f8f9fa;
+        padding: 10px;
+        border-radius: 8px;
+    }
+    
+    .improvements-list ul {
+        margin-bottom: 0;
+        padding-left: 20px;
+    }
+    
+    .btn {
+        border-radius: 8px;
+        padding: 10px 20px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+    
+    .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .card {
+        border-radius: 15px;
+        overflow: hidden;
+        transition: transform 0.3s ease;
+    }
+    
+    .card:hover {
+        transform: translateY(-3px);
+    }
+    
+    .card-header {
+        border-radius: 0 !important;
+    }
+    
+    .badge {
+        padding: 6px 12px;
+        border-radius: 6px;
+    }
+    
+    @@keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    
+    @@keyframes slideUp {
+        from { 
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to { 
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .animate-in {
+        animation: slideUp 0.5s ease;
+    }
+    
+    /* Responsive adjustments */
+    @@media (max-width: 768px) {
+        .drop-zone {
+            padding: 40px 20px;
+            min-height: 300px;
+        }
+        
+        .info-card {
+            margin-bottom: 20px;
+        }
+    }
+</style>
