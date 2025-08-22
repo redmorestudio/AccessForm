@@ -35,6 +35,7 @@ namespace AccessFormServer.Services
 
         public async Task<string> AnalyzeFormFieldsAsync(string documentContent)
         {
+            _logger.LogInformation($"Anthropic service check: Enabled={_enabled}, HasApiKey={!string.IsNullOrEmpty(_apiKey)}, KeyLength={_apiKey?.Length ?? 0}");
             if (!_enabled || string.IsNullOrEmpty(_apiKey))
             {
                 _logger.LogWarning("Anthropic service is not enabled or API key is missing");
