@@ -774,13 +774,13 @@ app.MapPost("/api/convert-with-ai", async (
         {
             using var aiStream = new MemoryStream(fileBytes);
             aiResult = await aiDebugProcessor.ProcessWithDebugAsync(aiStream, file.FileName);
-            var fieldDetection = aiResult.AzureResponse;
+            // Azure removed - using Anthropic only
             var accessibilityAnalysis = aiResult.AnthropicResponse;
             detectedFields = aiResult.DetectedFields;
             logger.LogInformation("AI detected {FieldCount} fields. Debug ID: {DebugId}", detectedFields, aiResult.DebugId);
             
             accessibilityScore = 85; // Default score since AnthropicResult might not have this
-            aiProvider = "AI Enabled";
+            aiProvider = "Anthropic Claude";
             logger.LogInformation("AI accessibility score: {Score}/100", accessibilityScore);
             logger.LogInformation("AI processing successful: DebugId={DebugId}, Fields={Fields}", 
                 aiResult?.DebugId ?? "null", detectedFields);
