@@ -1,5 +1,19 @@
 // Drag and drop file handling for AccessForm
 window.accessForm = {
+    // Track AI mode state
+    _aiModeEnabled: false,
+    
+    // Set AI mode state
+    setAiMode: function(enabled) {
+        console.log("Setting AI mode to:", enabled);
+        this._aiModeEnabled = enabled;
+    },
+    
+    // Check if AI mode is enabled
+    isAiModeEnabled: function() {
+        console.log("Checking AI mode:", this._aiModeEnabled);
+        return this._aiModeEnabled;
+    },
     // Initialize drag and drop
     initializeDragDrop: function (dotnetHelper, dropZoneId) {
         // Store the dotNetHelper globally so browse button can use it
@@ -114,7 +128,7 @@ window.accessForm = {
                     let endpoint;
                     if (window.accessForm && window.accessForm.isAiModeEnabled && window.accessForm.isAiModeEnabled()) {
                         // Use AI-enhanced endpoint when AI mode is active
-                        endpoint = '/api/convert-with-ai-debug';
+                        endpoint = '/api/convert-with-ai';
                     } else {
                         // Use standard endpoints
                         endpoint = isWord ? '/api/convert' : '/api/remediate-pdf';
@@ -196,7 +210,7 @@ window.accessForm = {
     },
 
     // Upload file from base64 data (for Blazor file input)
-    uploadFileDirectly: async function (endpoint, fileName, base64Data, contentType) {
+    uploadFileDirectly: async function (endpoint, fileName, base64Data, contentType, useAi) {
         try {
             console.log(`uploadFileDirectly: ${endpoint}, file: ${fileName}`);
             console.log(`uploadFileDirectly: contentType: ${contentType}`);
@@ -214,6 +228,8 @@ window.accessForm = {
             const formData = new FormData();
             formData.append('file', blob, fileName);
             
+            formData.append("useAi", useAi || false);
+            console.log(`uploadFileDirectly: useAi flag: ${useAi || false}`);
             console.log(`uploadFileDirectly: FormData created with blob size: ${blob.size}`);
             
             // Send request
@@ -410,7 +426,7 @@ window.accessForm = {
                         let endpoint;
                         if (window.accessForm && window.accessForm.isAiModeEnabled && window.accessForm.isAiModeEnabled()) {
                             // Use AI-enhanced endpoint when AI mode is active
-                            endpoint = '/api/convert-with-ai-debug';
+                            endpoint = '/api/convert-with-ai';
                         } else {
                             // Use standard endpoints
                             endpoint = isWord ? '/api/convert' : '/api/remediate-pdf';

@@ -451,6 +451,8 @@
         {
             dotNetHelper = DotNetObjectReference.Create(this);
             await JSRuntime.InvokeVoidAsync("initializeDragDrop", dotNetHelper, "dropZone");
+            // Initialize JavaScript AI mode state
+            await JSRuntime.InvokeVoidAsync("accessForm.setAiMode", useAiMode);
             await CheckAiStatus();
         }
     }
@@ -471,6 +473,8 @@
     
     private async Task OnAiModeChanged()
     {
+        // Update JavaScript AI mode state
+        await JSRuntime.InvokeVoidAsync("accessForm.setAiMode", useAiMode);
         if (useAiMode)
         {
             aiStatus = "🚀 AI-enhanced processing enabled for smarter field detection and accessibility analysis";
@@ -645,7 +649,8 @@
                 
                 var result = await JSRuntime.InvokeAsync<string>("accessForm.uploadFileDirectly", 
                     endpoint, droppedFileData.Name, droppedFileData.Data, 
-                    IsWordFile(droppedFileData.Name) ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : "application/pdf");
+                    IsWordFile(droppedFileData.Name) ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : "application/pdf",
+                    useAiMode);
                 
                 if (!string.IsNullOrEmpty(result))
                 {
