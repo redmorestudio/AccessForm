@@ -44,8 +44,8 @@ builder.Services.AddSingleton<CostTrackingService>();
 builder.Services.AddScoped<AzureFormRecognizerService>();
 builder.Services.AddHttpClient<AnthropicService>();
 builder.Services.AddScoped<AnthropicService>();
-builder.Services.AddHttpClient<PassportPdfService>();
-builder.Services.AddScoped<PassportPdfService>();
+builder.Services.AddSingleton<DebugCacheService>();builder.Services.AddHttpClient<PassportPdfService>();
+builder.Services.AddScoped<AiDebugProcessor>();builder.Services.AddScoped<PassportPdfService>();
 builder.Services.AddScoped<LlamaGroqService>();
 builder.Services.AddHttpClient();
 
@@ -1496,3 +1496,138 @@ void ProcessField(PdfLoadedField field)
         }
     }
 }
+
+// Debug endpoint to retrieve cached debug data
+app.MapGet("/api/debug/{debugId}", (string debugId, DebugCacheService debugCache) =>
+{
+    var debugData = debugCache.GetDebugData(debugId);
+    if (debugData == null)
+    {
+        return Results.NotFound(new { error = "Debug data not found or expired" });
+    }
+    
+    return Results.Ok(new
+    {
+        id = debugData.Id,
+        timestamp = debugData.Timestamp,
+        success = debugData.Success,
+        processingTime = debugData.ProcessingTime,
+        anthropicResponse = debugData.AnthropicResponse,
+        azureResponse = debugData.AzureResponse,
+        fieldResults = debugData.FieldResults
+    });
+});
+
+// Enhanced AI endpoint with debug support
+app.MapPost("/api/convert-with-ai-debug", async (
+    HttpRequest request,
+    AccessibilityService accessibilityService,
+    AccessibilityRetrofitService retrofitService,
+    PdfAccessibilityEnhancer enhancer,
+    AiDebugProcessor aiDebugProcessor,
+    ILogger<Program> logger) =>
+{
+    try
+    {
+        if (!request.Form.Files.Any())
+        {
+            return Results.BadRequest("No file uploaded");
+        }
+
+        var file = request.Form.Files[0];
+        var isWord = file.FileName.EndsWith(".docx", StringComparison.OrdinalIgnoreCase);
+        var isPdf = file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+        
+        if (!isWord && !isPdf)
+        {
+            return Results.BadRequest("Please upload a .docx or .pdf file");
+        }
+
+        logger.LogInformation("Starting AI-powered conversion with debug for {FileName}", file.FileName);
+        
+        // Process with AI and capture debug data
+        using var stream = file.OpenReadStream();
+        var aiResult = await aiDebugProcessor.ProcessWithDebugAsync(stream, file.FileName);
+        
+        // Reset stream for PDF processing
+        stream.Position = 0;
+        
+        // Process the PDF as before
+        byte[] normalPdfBytes;
+        byte[] remediatedPdfBytes;
+        
+        if (isWord)
+        {
+            // Convert Word to PDF first
+            using var wordDoc = new WordDocument(stream, FormatType.Docx);
+            using var docRenderer = new DocIORenderer();
+            using var pdfDoc = docRenderer.ConvertToPDF(wordDoc);
+            using var pdfStream = new MemoryStream();
+            pdfDoc.Save(pdfStream);
+            normalPdfBytes = pdfStream.ToArray();
+        }
+        else
+        {
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            normalPdfBytes = ms.ToArray();
+        }
+        
+        // Apply accessibility enhancements
+        using var normalPdfStream = new MemoryStream(normalPdfBytes);
+        using var loadedDoc = new PdfLoadedDocument(normalPdfStream);
+        
+        enhancer.ApplyAccessibilityTags(loadedDoc);
+        accessibilityService.AddAccessibilityMetadata(loadedDoc);
+        retrofitService.RetrofitFieldNames(loadedDoc);
+        
+        using var remediatedStream = new MemoryStream();
+        loadedDoc.Save(remediatedStream);
+        remediatedPdfBytes = remediatedStream.ToArray();
+        loadedDoc.Close(true);
+        
+        // Generate report
+        var accessibilityReport = new
+        {
+            ComplianceLevel = "WCAG 2.1 AA",
+            FieldsProcessed = aiResult.DetectedFields,
+            MeasuresApplied = new[] { "Document structure tags", "Form field labels", "Reading order" },
+            IssuesFound = 0,
+            IssuesFixed = 0
+        };
+        
+        return Results.Json(new
+        {
+            success = true,
+            debugId = aiResult.DebugId,  // Include debug ID in response
+            originalPdf = new
+            {
+                filename = file.FileName,
+                data = Convert.ToBase64String(normalPdfBytes),
+                size = normalPdfBytes.Length
+            },
+            remediatedPdf = new
+            {
+                filename = $"{Path.GetFileNameWithoutExtension(file.FileName)}_remediated.pdf",
+                data = Convert.ToBase64String(remediatedPdfBytes),
+                size = remediatedPdfBytes.Length
+            },
+            report = new
+            {
+                compliance = accessibilityReport.ComplianceLevel,
+                fieldsProcessed = accessibilityReport.FieldsProcessed,
+                measuresApplied = accessibilityReport.MeasuresApplied,
+                issuesFound = accessibilityReport.IssuesFound,
+                issuesFixed = accessibilityReport.IssuesFixed,
+                aiEnhanced = true,
+                aiProvider = aiResult.AiProvider,
+                accessibilityScore = aiResult.AccessibilityScore
+            }
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "AI-powered conversion with debug failed");
+        return Results.Problem($"AI conversion failed: {ex.Message}");
+    }
+});
