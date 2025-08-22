@@ -83,6 +83,7 @@ app.MapGet("/api/debug/{debugId}", (string debugId, DebugCacheService debugCache
         azureResponse = debugData.AzureResponse,
         fieldResults = debugData.FieldResults
     });
+
 app.MapBlazorHub(options =>
 {
     options.ApplicationMaxBufferSize = 50 * 1024 * 1024; // 50 MB
