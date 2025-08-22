@@ -41,7 +41,6 @@ builder.Services.AddScoped<WordToPdfConverter.Services.FieldAnalysisService>();
 // Add AI services
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<CostTrackingService>();
-builder.Services.AddScoped<AzureFormRecognizerService>();
 builder.Services.AddHttpClient<AnthropicService>();
 builder.Services.AddScoped<AnthropicService>();
 builder.Services.AddSingleton<DebugCacheService>();builder.Services.AddHttpClient<PassportPdfService>();
@@ -65,12 +64,32 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
 
+
 app.MapBlazorHub(options =>
 {
     options.ApplicationMaxBufferSize = 50 * 1024 * 1024; // 50 MB
     options.TransportMaxBufferSize = 50 * 1024 * 1024; // 50 MB
 });
-app.MapFallbackToPage("/_Host");
+
+app.MapRazorPages();
+app.MapGet("/api/debug/{debugId}", (string debugId, DebugCacheService debugCache) =>
+{
+    var debugData = debugCache.GetDebugData(debugId);
+    if (debugData == null)
+    {
+        return Results.NotFound(new { error = "Debug data not found or expired" });
+    }
+    
+    return Results.Ok(new
+    {
+        id = debugData.Id,
+        timestamp = debugData.Timestamp,
+        success = debugData.Success,
+        processingTime = debugData.ProcessingTime,
+        anthropicResponse = debugData.AnthropicResponse,
+        azureResponse = debugData.AzureResponse,
+        fieldResults = debugData.FieldResults
+    });
 
 // Add endpoint to get latest accessibility report
 app.MapGet("/api/accessibility-report/latest", () =>
@@ -731,15 +750,16 @@ app.MapPost("/api/convert-with-ai", async (
     AccessibilityService accessibilityService,
     AccessibilityRetrofitService retrofitService,
     PdfAccessibilityEnhancer enhancer,
-    AzureFormRecognizerService azureService,
     LlamaGroqService llamaService,
     AiDebugProcessor aiDebugProcessor,
     ILogger<Program> logger) =>
 {
     try
     {
+        logger.LogInformation("Received request with {FileCount} files", request.Form.Files.Count);
         if (!request.Form.Files.Any())
         {
+        logger.LogInformation("No files found in request.Form.Files");
             return Results.BadRequest("No file uploaded");
         }
 
@@ -769,18 +789,21 @@ app.MapPost("/api/convert-with-ai", async (
         string aiProvider = "None";
         AiProcessingResult aiResult = null;
         
+        logger.LogInformation("Starting AI processing for file: {FileName}", file.FileName);
         try
         {
             using var aiStream = new MemoryStream(fileBytes);
             aiResult = await aiDebugProcessor.ProcessWithDebugAsync(aiStream, file.FileName);
-            var fieldDetection = aiResult.AzureResponse;
+            // Azure removed - using Anthropic only
             var accessibilityAnalysis = aiResult.AnthropicResponse;
             detectedFields = aiResult.DetectedFields;
             logger.LogInformation("AI detected {FieldCount} fields. Debug ID: {DebugId}", detectedFields, aiResult.DebugId);
             
             accessibilityScore = 85; // Default score since AnthropicResult might not have this
-            aiProvider = "AI Enabled";
+            aiProvider = "Anthropic Claude";
             logger.LogInformation("AI accessibility score: {Score}/100", accessibilityScore);
+            logger.LogInformation("AI processing successful: DebugId={DebugId}, Fields={Fields}", 
+                aiResult?.DebugId ?? "null", detectedFields);
         }
         catch (Exception aiEx)
         {
@@ -833,6 +856,7 @@ app.MapPost("/api/convert-with-ai", async (
             
             return Results.Json(new
             {
+                debugId = aiResult?.DebugId ?? "",
                 normalPdf = new
                 {
                     filename = $"{Path.GetFileNameWithoutExtension(file.FileName)}.pdf",
@@ -889,6 +913,8 @@ app.MapPost("/api/convert-with-ai", async (
             accessibilityReport.IssuesFixed = accessibilityReport.MeasuresTaken.Count;
             accessibilityReport.AiProvider = aiProvider;
             
+            
+            logger.LogInformation($"Preparing response: aiResult={aiResult != null}, DebugId={aiResult?.DebugId}");
             return Results.Json(new
             {
                 debugId = aiResult?.DebugId ?? "",
@@ -925,7 +951,10 @@ app.MapPost("/api/convert-with-ai", async (
     }
 });
 
-app.Run();
+
+
+
+
 
 // Helper function to normalize smart quotes and other problematic characters
 void NormalizeDocumentText(WordDocument document)
@@ -1501,24 +1530,6 @@ void ProcessField(PdfLoadedField field)
 }
 
 // Debug endpoint to retrieve cached debug data
-app.MapGet("/api/debug/{debugId}", (string debugId, DebugCacheService debugCache) =>
-{
-    var debugData = debugCache.GetDebugData(debugId);
-    if (debugData == null)
-    {
-        return Results.NotFound(new { error = "Debug data not found or expired" });
-    }
-    
-    return Results.Ok(new
-    {
-        id = debugData.Id,
-        timestamp = debugData.Timestamp,
-        success = debugData.Success,
-        processingTime = debugData.ProcessingTime,
-        anthropicResponse = debugData.AnthropicResponse,
-        azureResponse = debugData.AzureResponse,
-        fieldResults = debugData.FieldResults
-    });
 });
 
 // Enhanced AI endpoint with debug support
@@ -1634,3 +1645,13 @@ app.MapPost("/api/convert-with-ai-debug", async (
         return Results.Problem($"AI conversion failed: {ex.Message}");
     }
 });
+
+
+
+
+
+
+app.MapFallbackToPage("/_Host");
+
+app.Run();
+
