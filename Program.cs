@@ -751,7 +751,6 @@ app.MapPost("/api/convert-with-ai", async (
     AccessibilityService accessibilityService,
     AccessibilityRetrofitService retrofitService,
     PdfAccessibilityEnhancer enhancer,
-    AzureFormRecognizerService azureService,
     LlamaGroqService llamaService,
     AiDebugProcessor aiDebugProcessor,
     ILogger<Program> logger) =>
