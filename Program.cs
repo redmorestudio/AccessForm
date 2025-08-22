@@ -1649,20 +1649,7 @@ app.MapPost("/api/convert-with-ai-debug", async (
 
 
 
-// Map fallback for non-API routes only
-app.MapFallback(context =>
-{
-    if (!context.Request.Path.StartsWithSegments("/api"))
-    {
-        context.Response.Redirect("/_Host");
-    }
-    else
-    {
-        context.Response.StatusCode = 404;
-        return context.Response.WriteAsync("API endpoint not found");
-    }
-    return Task.CompletedTask;
-});
+app.MapFallbackToPage("/_Host");
 
 app.Run();
 
