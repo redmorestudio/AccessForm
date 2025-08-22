@@ -58,13 +58,87 @@ window.accessForm = {
                 try {
                     console.log('Calling uploadOriginalFile with original file');
                     
+                    // Show processing indicator
+                    const overlay = document.createElement('div');
+                    overlay.id = 'processing-overlay';
+                    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+                    
+                    // Check if AI mode is enabled
+                    const isAiMode = window.accessForm && window.accessForm.isAiModeEnabled && window.accessForm.isAiModeEnabled();
+                    let seconds = 0;
+                    let timerInterval = null;
+                    
+                    if (isAiMode) {
+                        overlay.innerHTML = `
+                            <div style="background:white;padding:30px;border-radius:10px;text-align:center;min-width:400px">
+                                <div class="spinner-border text-primary" style="width:3rem;height:3rem" role="status">
+                                    <span class="visually-hidden">Processing...</span>
+                                </div>
+                                <h4 class="mt-3">Processing Your Document</h4>
+                                <div class="alert alert-info mt-3">
+                                    <p class="mb-2">🤖 <strong>Anthropic Claude AI Analysis</strong></p>
+                                    <p class="mb-1">Analyzing document structure and identifying form fields...</p>
+                                    <p class="text-muted small">This can take up to 2 minutes for complex documents</p>
+                                    <div class="fs-1 fw-bold text-primary mt-3" id="timer-display">
+                                        ⏱️ 0:00
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        
+                        // Start timer
+                        timerInterval = setInterval(() => {
+                            seconds++;
+                            const minutes = Math.floor(seconds / 60);
+                            const secs = seconds % 60;
+                            const display = document.getElementById('timer-display');
+                            if (display) {
+                                display.textContent = `⏱️ ${minutes}:${secs.toString().padStart(2, '0')}`;
+                            }
+                        }, 1000);
+                    } else {
+                        overlay.innerHTML = `
+                            <div style="background:white;padding:30px;border-radius:10px;text-align:center">
+                                <div class="spinner-border text-primary" style="width:3rem;height:3rem" role="status">
+                                    <span class="visually-hidden">Processing...</span>
+                                </div>
+                                <h4 class="mt-3">Processing Your Document</h4>
+                                <p class="text-muted">Please wait...</p>
+                            </div>
+                        `;
+                    }
+                    document.body.appendChild(overlay);
+                    
                     const isWord = fileName.endsWith('.docx');
-                    const endpoint = isWord ? '/api/convert' : '/api/remediate-pdf';
+                    // Determine endpoint based on AI mode and file type
+                    let endpoint;
+                    if (window.accessForm && window.accessForm.isAiModeEnabled && window.accessForm.isAiModeEnabled()) {
+                        // Use AI-enhanced endpoint when AI mode is active
+                        endpoint = '/api/convert-with-ai';
+                    } else {
+                        // Use standard endpoints
+                        endpoint = isWord ? '/api/convert' : '/api/remediate-pdf';
+                    }
                     
                     const result = await window.accessForm.uploadOriginalFile(endpoint, file);
                     
                     if (result) {
                         console.log('Upload successful, calling Blazor to show results');
+                        
+                        // Log the result to see if it contains debugId
+                        console.log('Result from server:', result);
+                        try {
+                            const parsedResult = JSON.parse(result);
+                            if (parsedResult.debugId) {
+                                console.log('🎯 Found debugId in response:', parsedResult.debugId);
+                                console.log('Debug URL:', `/debug-ai-simple.html?id=${parsedResult.debugId}`);
+                            } else {
+                                console.log('No debugId in parsed result');
+                            }
+                        } catch (e) {
+                            console.log('Could not parse result as JSON:', e);
+                        }
+                        
                         const fileData = {
                             name: file.name,
                             size: file.size,
@@ -175,6 +249,83 @@ window.accessForm = {
     },
 
     // Trigger file input with handler (for browse button to work like drag-and-drop)
+    triggerFileInputWithPassport: function (inputId) {
+        console.log('Triggering file input with PassportPDF processing');
+        const input = document.getElementById(inputId);
+        if (input) {
+            input.onchange = async function (event) {
+                const files = event.target.files;
+                if (files && files.length > 0) {
+                    // Process with PassportPDF endpoint
+                    try {
+                        console.log('Using PassportPDF for processing');
+                        
+                        // Show processing indicator
+                        const overlay = document.createElement('div');
+                        overlay.id = 'processing-overlay';
+                        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+                        overlay.innerHTML = `
+                            <div style="background:white;padding:30px;border-radius:10px;text-align:center;min-width:400px">
+                                <div class="spinner-border text-success" style="width:3rem;height:3rem" role="status">
+                                    <span class="visually-hidden">Processing...</span>
+                                </div>
+                                <h4 class="mt-3">Processing with PassportPDF</h4>
+                                <div class="alert alert-success mt-3">
+                                    <p class="mb-2">🎆 <strong>PassportPDF + Anthropic Claude</strong></p>
+                                    <p class="mb-1">Creating fully PDF/UA compliant document...</p>
+                                    <p class="text-muted small">This ensures maximum accessibility compliance</p>
+                                </div>
+                            </div>
+                        `;
+                        document.body.appendChild(overlay);
+                        
+                        const file = files[0];
+                        const endpoint = '/api/process-with-passportpdf-auto';
+                        
+                        const result = await window.accessForm.uploadOriginalFile(endpoint, file);
+                        
+                        // Remove processing overlay
+                        const overlayToRemove = document.getElementById('processing-overlay');
+                        if (overlayToRemove) {
+                            overlayToRemove.remove();
+                        }
+                        
+                        if (result) {
+                            console.log('PassportPDF processing successful');
+                            const fileData = {
+                                name: file.name,
+                                size: file.size,
+                                type: file.type,
+                                lastModified: file.lastModified,
+                                data: ''
+                            };
+                            
+                            if (window.accessForm.dotNetHelper) {
+                                await window.accessForm.dotNetHelper.invokeMethodAsync('OnFileProcessedDirectly', fileData, result);
+                            } else {
+                                console.error('Blazor helper not found');
+                                alert('Error: Unable to process file. Please refresh the page.');
+                            }
+                        } else {
+                            alert('PassportPDF processing failed. Please try again.');
+                        }
+                    } catch (error) {
+                        console.error('Error processing with PassportPDF:', error);
+                        
+                        // Remove processing overlay on error
+                        const overlayToRemove = document.getElementById('processing-overlay');
+                        if (overlayToRemove) {
+                            overlayToRemove.remove();
+                        }
+                        
+                        alert('Error processing file: ' + error.message);
+                    }
+                }
+            };
+            input.click();
+        }
+    },
+
     triggerFileInputWithHandler: function (inputId) {
         const input = document.getElementById(inputId);
         if (input) {
@@ -203,10 +354,78 @@ window.accessForm = {
                     try {
                         console.log('Calling uploadOriginalFile with original file (same as drag-drop)');
                         
+                        // Show processing indicator
+                        const overlay = document.createElement('div');
+                        overlay.id = 'processing-overlay';
+                        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+                        
+                        // Check if AI mode is enabled
+                        const isAiMode = window.accessForm && window.accessForm.isAiModeEnabled && window.accessForm.isAiModeEnabled();
+                        let seconds = 0;
+                        let timerInterval = null;
+                        
+                        if (isAiMode) {
+                            overlay.innerHTML = `
+                                <div style="background:white;padding:30px;border-radius:10px;text-align:center;min-width:400px">
+                                    <div class="spinner-border text-primary" style="width:3rem;height:3rem" role="status">
+                                        <span class="visually-hidden">Processing...</span>
+                                    </div>
+                                    <h4 class="mt-3">Processing Your Document</h4>
+                                    <div class="alert alert-info mt-3">
+                                        <p class="mb-2">🤖 <strong>Anthropic Claude AI Analysis</strong></p>
+                                        <p class="mb-1">Analyzing document structure and identifying form fields...</p>
+                                        <p class="text-muted small">This can take up to 2 minutes for complex documents</p>
+                                        <div class="fs-1 fw-bold text-primary mt-3" id="timer-display">
+                                            ⏱️ 0:00
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                            
+                            // Start timer
+                            timerInterval = setInterval(() => {
+                                seconds++;
+                                const minutes = Math.floor(seconds / 60);
+                                const secs = seconds % 60;
+                                const display = document.getElementById('timer-display');
+                                if (display) {
+                                    display.textContent = `⏱️ ${minutes}:${secs.toString().padStart(2, '0')}`;
+                                }
+                            }, 1000);
+                        } else {
+                            overlay.innerHTML = `
+                                <div style="background:white;padding:30px;border-radius:10px;text-align:center">
+                                    <div class="spinner-border text-primary" style="width:3rem;height:3rem" role="status">
+                                        <span class="visually-hidden">Processing...</span>
+                                    </div>
+                                    <h4 class="mt-3">Processing Your Document</h4>
+                                    <p class="text-muted">Please wait...</p>
+                                </div>
+                            `;
+                        }
+                        document.body.appendChild(overlay);
+                        
                         const isWord = fileName.endsWith('.docx');
-                        const endpoint = isWord ? '/api/convert' : '/api/remediate-pdf';
+                        // Determine endpoint based on AI mode and file type
+                        let endpoint;
+                        if (window.accessForm && window.accessForm.isAiModeEnabled && window.accessForm.isAiModeEnabled()) {
+                            // Use AI-enhanced endpoint when AI mode is active
+                            endpoint = '/api/convert-with-ai';
+                        } else {
+                            // Use standard endpoints
+                            endpoint = isWord ? '/api/convert' : '/api/remediate-pdf';
+                        }
                         
                         const result = await window.accessForm.uploadOriginalFile(endpoint, file);
+                        
+                        // Remove processing overlay
+                        if (timerInterval) {
+                            clearInterval(timerInterval);
+                        }
+                        const overlayToRemove = document.getElementById('processing-overlay');
+                        if (overlayToRemove) {
+                            overlayToRemove.remove();
+                        }
                         
                         if (result) {
                             console.log('Upload successful, calling Blazor to show results');
@@ -230,6 +449,13 @@ window.accessForm = {
                         }
                     } catch (error) {
                         console.error('Error processing browse button file:', error);
+                        
+                        // Remove processing overlay on error
+                        const overlayToRemove = document.getElementById('processing-overlay');
+                        if (overlayToRemove) {
+                            overlayToRemove.remove();
+                        }
+                        
                         alert('Error processing file: ' + error.message);
                     }
                 }
@@ -323,22 +549,3 @@ document.addEventListener('DOMContentLoaded', function () {
         console.warn('Browser does not fully support drag and drop file uploads');
     }
 });
-
-// Direct upload handler for Browse Files button
-window.uploadFileDirectly = async function(useAI = true) {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.doc,.docx,.pdf';
-    
-    input.onchange = async function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        
-        const formData = new FormData();
-        formData.append('file', file);
-        
-        try {
-            // Show loading state
-            const statusDiv = document.createElement('div');
-            statusDiv.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:20px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);z-index:9999';
-};
