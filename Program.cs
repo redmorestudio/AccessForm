@@ -71,7 +71,7 @@ app.MapBlazorHub(options =>
     options.TransportMaxBufferSize = 50 * 1024 * 1024; // 50 MB
 });
 
-app.MapFallbackToPage("/_Host");// Add endpoint to get latest accessibility report
+// Add endpoint to get latest accessibility report
 app.MapGet("/api/accessibility-report/latest", () =>
 {
     var reportDir = Path.Combine(Directory.GetCurrentDirectory(), "AccessibilityReports");
@@ -930,7 +930,23 @@ app.MapPost("/api/convert-with-ai", async (
     }
 });
 
+
+
 app.Run();
+// Map fallback for non-API routes
+app.MapFallback(async context =>
+{
+    // Don't apply fallback to API routes
+    if (!context.Request.Path.StartsWithSegments("/api"))
+    {
+        context.Response.Redirect("/_Host");
+    }
+    else
+    {
+        context.Response.StatusCode = 404;
+    }
+});
+
 
 // Helper function to normalize smart quotes and other problematic characters
 void NormalizeDocumentText(WordDocument document)
@@ -1642,4 +1658,20 @@ app.MapPost("/api/convert-with-ai-debug", async (
 
 
 
+
+
 app.Run();
+// Map fallback for non-API routes
+app.MapFallback(async context =>
+{
+    // Don't apply fallback to API routes
+    if (!context.Request.Path.StartsWithSegments("/api"))
+    {
+        context.Response.Redirect("/_Host");
+    }
+    else
+    {
+        context.Response.StatusCode = 404;
+    }
+});
+
