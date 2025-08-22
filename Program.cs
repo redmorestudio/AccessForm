@@ -65,6 +65,14 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
 
+
+app.MapBlazorHub(options =>
+{
+    options.ApplicationMaxBufferSize = 50 * 1024 * 1024; // 50 MB
+    options.TransportMaxBufferSize = 50 * 1024 * 1024; // 50 MB
+});
+
+app.MapRazorPages();
 app.MapGet("/api/debug/{debugId}", (string debugId, DebugCacheService debugCache) =>
 {
     var debugData = debugCache.GetDebugData(debugId);
@@ -83,14 +91,6 @@ app.MapGet("/api/debug/{debugId}", (string debugId, DebugCacheService debugCache
         azureResponse = debugData.AzureResponse,
         fieldResults = debugData.FieldResults
     });
-
-app.MapBlazorHub(options =>
-{
-    options.ApplicationMaxBufferSize = 50 * 1024 * 1024; // 50 MB
-    options.TransportMaxBufferSize = 50 * 1024 * 1024; // 50 MB
-});
-
-app.MapRazorPages();
 
 // Add endpoint to get latest accessibility report
 app.MapGet("/api/accessibility-report/latest", () =>
