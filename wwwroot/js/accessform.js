@@ -114,7 +114,7 @@ window.accessForm = {
                     let endpoint;
                     if (window.accessForm && window.accessForm.isAiModeEnabled && window.accessForm.isAiModeEnabled()) {
                         // Use AI-enhanced endpoint when AI mode is active
-                        endpoint = '/api/convert-with-ai';
+                        endpoint = '/api/convert-with-ai-debug';
                     } else {
                         // Use standard endpoints
                         endpoint = isWord ? '/api/convert' : '/api/remediate-pdf';
@@ -410,7 +410,7 @@ window.accessForm = {
                         let endpoint;
                         if (window.accessForm && window.accessForm.isAiModeEnabled && window.accessForm.isAiModeEnabled()) {
                             // Use AI-enhanced endpoint when AI mode is active
-                            endpoint = '/api/convert-with-ai';
+                            endpoint = '/api/convert-with-ai-debug';
                         } else {
                             // Use standard endpoints
                             endpoint = isWord ? '/api/convert' : '/api/remediate-pdf';

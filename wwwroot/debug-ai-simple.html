@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Debug Viewer - AccessForm</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+    <style>
+        body { background: #f5f7fa; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .debug-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; }
+        .debug-card { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 1.5rem; margin-bottom: 1.5rem; }
+        .json-viewer { background: #2d2d2d; color: #f8f8f2; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+        .status-badge { padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.875rem; font-weight: 500; }
+        .status-success { background: #d4edda; color: #155724; }
+        .status-error { background: #f8d7da; color: #721c24; }
+        .copy-btn { position: absolute; top: 10px; right: 10px; }
+        .field-item { background: #f8f9fa; padding: 0.5rem; margin: 0.25rem 0; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="debug-header">
+        <div class="container">
+            <h1>🐛 AI Debug Viewer</h1>
+            <p class="mb-0">View raw AI responses and processing details</p>
+        </div>
+    </div>
+
+    <div class="container mt-4">
+        <div class="debug-card">
+            <h3>Debug Information</h3>
+            <div id="debugInfo">
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading debug data...</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="debugContent"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+    <script>
+        // Get debug ID from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const debugId = urlParams.get('id');
+
+        async function loadDebugData() {
+            const debugInfo = document.getElementById('debugInfo');
+            const debugContent = document.getElementById('debugContent');
+
+            if (!debugId) {
+                debugInfo.innerHTML = `
+                    <div class="alert alert-warning">
+                        No debug ID provided. Please process a document with AI mode enabled first.
+                    </div>`;
+                return;
+            }
+
+            try {
+                // Fetch debug data from API
+                const response = await fetch(`/api/debug/${debugId}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                // Display debug info
+                debugInfo.innerHTML = `
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>Debug ID:</strong> <code>${debugId}</code></p>
+                            <p><strong>Timestamp:</strong> ${new Date(data.timestamp).toLocaleString()}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Processing Time:</strong> ${data.processingTime || 'N/A'} ms</p>
+                            <p><strong>Status:</strong> <span class="status-badge ${data.success ? 'status-success' : 'status-error'}">${data.success ? 'Success' : 'Error'}</span></p>
+                        </div>
+                    </div>`;
+
+                // Display Anthropic response
+                if (data.anthropicResponse) {
+                    debugContent.innerHTML += createDebugSection('Anthropic Claude Response', data.anthropicResponse, 'anthropic');
+                }
+
+                // Display Azure response
+                if (data.azureResponse) {
+                    debugContent.innerHTML += createDebugSection('Azure Form Recognizer Response', data.azureResponse, 'azure');
+                }
+
+                // Display field processing results
+                if (data.fieldResults) {
+                    debugContent.innerHTML += createDebugSection('Field Processing Results', data.fieldResults, 'fields');
+                }
+
+                // Highlight code
+                Prism.highlightAll();
+
+            } catch (error) {
+                debugInfo.innerHTML = `
+                    <div class="alert alert-danger">
+                        <h5>Error Loading Debug Data</h5>
+                        <p>${error.message}</p>
+                        <p><small>Debug ID: ${debugId}</small></p>
+                    </div>`;
+            }
+        }
+
+        function createDebugSection(title, data, type) {
+            const jsonString = JSON.stringify(data, null, 2);
+            const sectionId = `section-${type}`;
+            
+            return `
+                <div class="debug-card">
+                    <div class="position-relative">
+                        <h4>${title}</h4>
+                        <button class="btn btn-sm btn-outline-primary copy-btn" onclick="copyToClipboard('${sectionId}')">
+                            📋 Copy
+                        </button>
+                    </div>
+                    <pre class="json-viewer" id="${sectionId}"><code class="language-json">${escapeHtml(jsonString)}</code></pre>
+                </div>`;
+        }
+
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            const text = element.textContent || element.innerText;
+            
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = element.parentElement.querySelector('.copy-btn');
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '✅ Copied!';
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                }, 2000);
+            });
+        }
+
+        // Load debug data on page load
+        loadDebugData();
+    </script>
+</body>
+</html>
