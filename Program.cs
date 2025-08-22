@@ -769,6 +769,7 @@ app.MapPost("/api/convert-with-ai", async (
         string aiProvider = "None";
         AiProcessingResult aiResult = null;
         
+        logger.LogInformation("Starting AI processing for file: {FileName}", file.FileName);
         try
         {
             using var aiStream = new MemoryStream(fileBytes);
@@ -781,6 +782,8 @@ app.MapPost("/api/convert-with-ai", async (
             accessibilityScore = 85; // Default score since AnthropicResult might not have this
             aiProvider = "AI Enabled";
             logger.LogInformation("AI accessibility score: {Score}/100", accessibilityScore);
+            logger.LogInformation("AI processing successful: DebugId={DebugId}, Fields={Fields}", 
+                aiResult?.DebugId ?? "null", detectedFields);
         }
         catch (Exception aiEx)
         {

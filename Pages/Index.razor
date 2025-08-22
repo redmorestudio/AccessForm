@@ -342,7 +342,7 @@
     private ProcessingResult? processingResults;
     private DotNetObjectReference<Index>? dotNetHelper;
     private FileData? droppedFileData;
-    private bool useAiMode = false;
+    private bool useAiMode = true;
     private string? aiStatus = null;
     private dynamic? currentTagTreeData;
     private string? currentTagTreeFileName;
@@ -452,6 +452,7 @@
             dotNetHelper = DotNetObjectReference.Create(this);
             await JSRuntime.InvokeVoidAsync("initializeDragDrop", dotNetHelper, "dropZone");
             // Initialize JavaScript AI mode state
+            await JSRuntime.InvokeVoidAsync("console.log", $"Initializing AI mode in JS to: {useAiMode}");
             await JSRuntime.InvokeVoidAsync("accessForm.setAiMode", useAiMode);
             await CheckAiStatus();
         }
@@ -734,6 +735,17 @@
                     AiProvider = GetJsonString(result.GetProperty("report"), "aiProvider", "None"),
                     AccessibilityScore = GetJsonInt(result.GetProperty("report"), "accessibilityScore", 0)
                 };
+                
+                // Extract debug ID if present (for both Word and PDF sources)
+                if (result.TryGetProperty("debugId", out JsonElement debugIdProp))
+                {
+                    lastDebugId = debugIdProp.GetString();
+                    await JSRuntime.InvokeVoidAsync("console.log", $"ProcessApiResponse: Found debug ID: {lastDebugId}");
+                }
+                else
+                {
+                    await JSRuntime.InvokeVoidAsync("console.log", "ProcessApiResponse: No debugId in response");
+                }
                 
                 // Parse tag structure if present
                 await JSRuntime.InvokeVoidAsync("console.log", "Checking for tagStructure in response...");
