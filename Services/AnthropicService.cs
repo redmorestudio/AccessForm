@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -13,142 +14,166 @@ namespace AccessFormServer.Services
         private readonly HttpClient _httpClient;
         private readonly ILogger<AnthropicService> _logger;
         private readonly string _apiKey;
-        private readonly string _model;
-        private readonly bool _enabled;
 
         public AnthropicService(HttpClient httpClient, IConfiguration configuration, ILogger<AnthropicService> logger)
         {
             _httpClient = httpClient;
             _logger = logger;
+            _apiKey = configuration["ApiKeys:Anthropic"] ?? throw new ArgumentNullException("Anthropic API key not configured");
             
-            var anthropicConfig = configuration.GetSection("Anthropic");
-            _apiKey = anthropicConfig["ApiKey"] ?? "";
-            _model = anthropicConfig["Model"] ?? "claude-3-opus-20240229";
-            _enabled = anthropicConfig.GetValue<bool>("Enabled", false);
-
-            if (_enabled && !string.IsNullOrEmpty(_apiKey))
-            {
-                _httpClient.DefaultRequestHeaders.Add("x-api-key", _apiKey);
-                _httpClient.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
-            }
+            _httpClient.BaseAddress = new Uri("https://api.anthropic.com/");
+            _httpClient.DefaultRequestHeaders.Add("x-api-key", _apiKey);
+            _httpClient.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
         }
 
-        public async Task<string> AnalyzeFormFieldsAsync(string documentContent)
+        public async Task<string> AnalyzeFormFieldsAsync(string extractedText)
         {
-            _logger.LogInformation($"Anthropic service check: Enabled={_enabled}, HasApiKey={!string.IsNullOrEmpty(_apiKey)}, KeyLength={_apiKey?.Length ?? 0}");
-            if (!_enabled || string.IsNullOrEmpty(_apiKey))
-            {
-                _logger.LogWarning("Anthropic service is not enabled or API key is missing");
-                return null;
-            }
-
             try
             {
-                var prompt = $@"Analyze this form and identify all form fields. For each field, provide:
-1. Field ID (programmatic name)
-2. Field Type (text, date, email, phone, ssn, signature, checkbox, radio, dropdown)
-3. Human-Readable Label
-4. Helpful Tooltip for accessibility
-
-Format your response as a markdown table with these columns:
-| Field ID | Field Type | Human-Readable Label | Tooltip |
-
-Document content:
-{documentContent}";
-
+                _logger.LogInformation("Analyzing form fields with Anthropic");
+                
                 var request = new
                 {
-                    model = _model,
-                    max_tokens = 4096,
+                    model = "claude-3-opus-20240229",
+                    max_tokens = 4000,
                     messages = new[]
                     {
                         new
                         {
                             role = "user",
-                            content = prompt
+                            content = $@"Analyze this form content and identify all form fields. 
+                            For each field, provide:
+                            - Field name
+                            - Field type (text, checkbox, radio, dropdown, date, signature, etc.)
+                            - Whether it's required
+                            - Any validation rules
+                            - Accessibility label suggestions
+                            - Tab order recommendation
+                            
+                            Format your response as JSON with an array of field objects.
+                            
+                            Form content:
+                            {extractedText}"
                         }
                     }
                 };
-
+                
                 var json = JsonSerializer.Serialize(request);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-                var response = await _httpClient.PostAsync("https://api.anthropic.com/v1/messages", content);
+                
+                var response = await _httpClient.PostAsync("v1/messages", content);
                 
                 if (response.IsSuccessStatusCode)
                 {
-                    var responseBody = await response.Content.ReadAsStringAsync();
-                    var result = JsonSerializer.Deserialize<JsonElement>(responseBody);
+                    var responseContent = await response.Content.ReadAsStringAsync();
+                    var responseJson = JsonDocument.Parse(responseContent);
                     
-                    if (result.TryGetProperty("content", out var contentArray) && 
+                    if (responseJson.RootElement.TryGetProperty("content", out var contentArray) && 
                         contentArray.GetArrayLength() > 0)
                     {
                         var firstContent = contentArray[0];
-                        if (firstContent.TryGetProperty("text", out var text))
+                        if (firstContent.TryGetProperty("text", out var textElement))
                         {
-                            return text.GetString();
+                            return textElement.GetString() ?? "No analysis available";
                         }
                     }
+                    
+                    return responseContent;
                 }
                 else
                 {
-                    _logger.LogError($"Anthropic API error: {response.StatusCode} - {await response.Content.ReadAsStringAsync()}");
+                    var error = await response.Content.ReadAsStringAsync();
+                    _logger.LogError($"Anthropic API error: {response.StatusCode} - {error}");
+                    return $"Analysis failed: {response.StatusCode}";
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error calling Anthropic API");
+                _logger.LogError(ex, "Error analyzing form fields with Anthropic");
+                return $"Analysis error: {ex.Message}";
             }
-
-            return null;
         }
 
-        public class FieldAnalysisResult
-        {
-            public string FieldId { get; set; }
-            public string FieldType { get; set; }
-            public string Label { get; set; }
-            public string Tooltip { get; set; }
-            public bool IsRequired { get; set; }
-        }
-
-        public List<FieldAnalysisResult> ParseAnalysisResult(string anthropicResponse)
+        public List<FieldAnalysisResult> ParseAnalysisResult(string analysisText)
         {
             var results = new List<FieldAnalysisResult>();
             
-            if (string.IsNullOrEmpty(anthropicResponse))
-                return results;
-
-            var lines = anthropicResponse.Split('\n');
-            bool inTable = false;
-            
-            foreach (var line in lines)
+            try
             {
-                if (line.Contains("| Field ID") && line.Contains("| Field Type"))
+                // Try to parse as JSON first
+                var jsonDoc = JsonDocument.Parse(analysisText);
+                if (jsonDoc.RootElement.TryGetProperty("fields", out var fieldsArray))
                 {
-                    inTable = true;
-                    continue;
+                    foreach (var field in fieldsArray.EnumerateArray())
+                    {
+                        var result = new FieldAnalysisResult
+                        {
+                            Success = true,
+                            FieldName = field.GetProperty("name").GetString() ?? "Unknown",
+                            FieldType = field.GetProperty("type").GetString() ?? "text",
+                            IsRequired = field.TryGetProperty("required", out var req) && req.GetBoolean()
+                        };
+                        results.Add(result);
+                    }
                 }
-                
-                if (inTable && line.StartsWith("|") && !line.Contains("---"))
+            }
+            catch
+            {
+                // If not JSON, parse as text
+                var lines = analysisText.Split('\n');
+                foreach (var line in lines)
                 {
-                    var parts = line.Split('|').Where(p => !string.IsNullOrWhiteSpace(p)).ToArray();
-                    if (parts.Length >= 4)
+                    if (line.Contains("Field:") || line.Contains("field:"))
                     {
                         results.Add(new FieldAnalysisResult
                         {
-                            FieldId = parts[0].Trim(),
-                            FieldType = parts[1].Trim(),
-                            Label = parts[2].Trim(),
-                            Tooltip = parts[3].Trim(),
-                            IsRequired = parts[2].ToLower().Contains("required") || 
-                                       parts[3].ToLower().Contains("required")
+                            Success = true,
+                            FieldName = $"Field_{results.Count + 1}",
+                            FieldType = "text",
+                            IsRequired = false
                         });
                     }
                 }
             }
             
             return results;
+        }
+        
+        // Nested class for compatibility with AiDebugProcessor
+        public class FieldAnalysisResult
+        {
+            public bool Success { get; set; }
+            public string Analysis { get; set; }
+            public List<FormField> Fields { get; set; }
+            public string ErrorMessage { get; set; }
+            public string FieldName { get; set; }
+            public string FieldType { get; set; }
+            public bool IsRequired { get; set; }
+            
+            public FieldAnalysisResult()
+            {
+                Fields = new List<FormField>();
+                Analysis = string.Empty;
+                ErrorMessage = string.Empty;
+                FieldName = string.Empty;
+                FieldType = string.Empty;
+            }
+        }
+        
+        public class FormField
+        {
+            public string Name { get; set; }
+            public string Type { get; set; }
+            public bool Required { get; set; }
+            public string AccessibilityLabel { get; set; }
+            public int TabOrder { get; set; }
+            
+            public FormField()
+            {
+                Name = string.Empty;
+                Type = string.Empty;
+                AccessibilityLabel = string.Empty;
+            }
         }
     }
 }
