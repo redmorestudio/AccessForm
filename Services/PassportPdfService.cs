@@ -117,7 +117,6 @@ namespace AccessFormServer.Services
                     required = f.IsRequired,
                     tabIndex = f.TabIndex,
                     pageNumber = f.PageNumber,
-                    boundingBox = f.BoundingBox,
                     validationPattern = f.ValidationPattern,
                     formatScript = f.FormatScript,
                     options = f.Options,
@@ -161,25 +160,15 @@ namespace AccessFormServer.Services
             response.EnsureSuccessStatusCode();
             return await response.Content.ReadAsByteArrayAsync();
         }
-
-        public async Task<ValidationResult> ValidateAccessibility(byte[] pdfBytes)
-        {
-            var documentId = await UploadDocument(pdfBytes);
-            
-            var response = await _httpClient.GetAsync($"{_baseUrl}/pdf/accessibility/validate/{documentId}");
-            response.EnsureSuccessStatusCode();
-            
-            var json = await response.Content.ReadAsStringAsync();
-        public bool PreserveExisting { get; set; } = false;
-        public bool CreateTOC { get; set; } = true;
     }
 
-    public class TagNode
+    public class TagStructureDefinition
     {
-        public string Type { get; set; } // H1, H2, P, Figure, etc.
-        public string Content { get; set; }
-        public List<TagNode> Children { get; set; } = new();
-        public Dictionary<string, string> Attributes { get; set; } = new();
+        public string DocumentTitle { get; set; }
+        public string Language { get; set; } = "en-US";
+        public List<TagNode> Tags { get; set; } = new();
+        public bool PreserveExisting { get; set; } = false;
+        public bool CreateTOC { get; set; } = true;
     }
 
     public class FormFieldDefinition
@@ -191,7 +180,6 @@ namespace AccessFormServer.Services
         public bool IsRequired { get; set; }
         public int TabIndex { get; set; }
         public int PageNumber { get; set; }
-        public BoundingBox BoundingBox { get; set; }
         public string ValidationPattern { get; set; }
         public string FormatScript { get; set; }
         public List<string> Options { get; set; }
@@ -203,7 +191,6 @@ namespace AccessFormServer.Services
         Text, Date, Email, Phone, SSN, Signature, Checkbox, Radio, Dropdown
     }
 
-
     public class AccessibilityOptions
     {
         public string Language { get; set; } = "en-US";
@@ -212,6 +199,5 @@ namespace AccessFormServer.Services
         public bool CreateBookmarks { get; set; } = true;
         
         public static AccessibilityOptions Default() => new();
-        public int PageNumber { get; set; }
     }
 }
