@@ -65,6 +65,24 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
 
+app.MapGet("/api/debug/{debugId}", (string debugId, DebugCacheService debugCache) =>
+{
+    var debugData = debugCache.GetDebugData(debugId);
+    if (debugData == null)
+    {
+        return Results.NotFound(new { error = "Debug data not found or expired" });
+    }
+    
+    return Results.Ok(new
+    {
+        id = debugData.Id,
+        timestamp = debugData.Timestamp,
+        success = debugData.Success,
+        processingTime = debugData.ProcessingTime,
+        anthropicResponse = debugData.AnthropicResponse,
+        azureResponse = debugData.AzureResponse,
+        fieldResults = debugData.FieldResults
+    });
 app.MapBlazorHub(options =>
 {
     options.ApplicationMaxBufferSize = 50 * 1024 * 1024; // 50 MB
@@ -932,20 +950,8 @@ app.MapPost("/api/convert-with-ai", async (
 
 
 
+
 app.Run();
-// Map fallback for non-API routes
-app.MapFallback(async context =>
-{
-    // Don't apply fallback to API routes
-    if (!context.Request.Path.StartsWithSegments("/api"))
-    {
-        context.Response.Redirect("/_Host");
-    }
-    else
-    {
-        context.Response.StatusCode = 404;
-    }
-});
 
 
 // Helper function to normalize smart quotes and other problematic characters
@@ -1522,24 +1528,6 @@ void ProcessField(PdfLoadedField field)
 }
 
 // Debug endpoint to retrieve cached debug data
-app.MapGet("/api/debug/{debugId}", (string debugId, DebugCacheService debugCache) =>
-{
-    var debugData = debugCache.GetDebugData(debugId);
-    if (debugData == null)
-    {
-        return Results.NotFound(new { error = "Debug data not found or expired" });
-    }
-    
-    return Results.Ok(new
-    {
-        id = debugData.Id,
-        timestamp = debugData.Timestamp,
-        success = debugData.Success,
-        processingTime = debugData.ProcessingTime,
-        anthropicResponse = debugData.AnthropicResponse,
-        azureResponse = debugData.AzureResponse,
-        fieldResults = debugData.FieldResults
-    });
 });
 
 // Enhanced AI endpoint with debug support
@@ -1660,18 +1648,7 @@ app.MapPost("/api/convert-with-ai-debug", async (
 
 
 
-app.Run();
-// Map fallback for non-API routes
-app.MapFallback(async context =>
-{
-    // Don't apply fallback to API routes
-    if (!context.Request.Path.StartsWithSegments("/api"))
-    {
-        context.Response.Redirect("/_Host");
-    }
-    else
-    {
-        context.Response.StatusCode = 404;
-    }
-});
 
+app.Run();
+
+app.MapFallbackToPage("/_Host");
