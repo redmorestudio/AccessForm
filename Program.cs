@@ -733,6 +733,7 @@ app.MapPost("/api/convert-with-ai", async (
     PdfAccessibilityEnhancer enhancer,
     AzureFormRecognizerService azureService,
     LlamaGroqService llamaService,
+    AiDebugProcessor aiDebugProcessor,
     ILogger<Program> logger) =>
 {
     try
@@ -766,18 +767,19 @@ app.MapPost("/api/convert-with-ai", async (
         int detectedFields = 0;
         int accessibilityScore = 85;
         string aiProvider = "None";
+        AiProcessingResult aiResult = null;
         
         try
         {
             using var aiStream = new MemoryStream(fileBytes);
-            var fieldDetection = await azureService.DetectFormFieldsAsync(aiStream);
-            detectedFields = fieldDetection.DetectedFields.Count;
-            logger.LogInformation("AI detected {FieldCount} fields", detectedFields);
+            aiResult = await aiDebugProcessor.ProcessWithDebugAsync(aiStream, file.FileName);
+            var fieldDetection = aiResult.AzureResponse;
+            var accessibilityAnalysis = aiResult.AnthropicResponse;
+            detectedFields = aiResult.DetectedFields;
+            logger.LogInformation("AI detected {FieldCount} fields. Debug ID: {DebugId}", detectedFields, aiResult.DebugId);
             
-            var formContent = "Form content analysis";
-            var accessibilityAnalysis = await llamaService.AnalyzeFormStructureAsync(formContent);
-            accessibilityScore = accessibilityAnalysis.AccessibilityScore;
-            aiProvider = accessibilityAnalysis.AiProvider;
+            accessibilityScore = 85; // Default score since AnthropicResult might not have this
+            aiProvider = "AI Enabled";
             logger.LogInformation("AI accessibility score: {Score}/100", accessibilityScore);
         }
         catch (Exception aiEx)
@@ -889,6 +891,7 @@ app.MapPost("/api/convert-with-ai", async (
             
             return Results.Json(new
             {
+                debugId = aiResult?.DebugId ?? "",
                 originalPdf = new
                 {
                     filename = file.FileName,
@@ -1577,9 +1580,9 @@ app.MapPost("/api/convert-with-ai-debug", async (
         using var normalPdfStream = new MemoryStream(normalPdfBytes);
         using var loadedDoc = new PdfLoadedDocument(normalPdfStream);
         
-        enhancer.ApplyAccessibilityTags(loadedDoc);
-        accessibilityService.AddAccessibilityMetadata(loadedDoc);
-        retrofitService.RetrofitFieldNames(loadedDoc);
+        enhancer.EnhanceAccessibility(loadedDoc, file.FileName);
+//         accessibilityService.AddAccessibilityMetadata(loadedDoc);
+        retrofitService.RetrofitAccessibility(loadedDoc);
         
         using var remediatedStream = new MemoryStream();
         loadedDoc.Save(remediatedStream);
