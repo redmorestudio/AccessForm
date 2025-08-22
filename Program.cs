@@ -836,6 +836,7 @@ app.MapPost("/api/convert-with-ai", async (
             
             return Results.Json(new
             {
+                debugId = aiResult?.DebugId ?? "",
                 normalPdf = new
                 {
                     filename = $"{Path.GetFileNameWithoutExtension(file.FileName)}.pdf",
@@ -892,6 +893,8 @@ app.MapPost("/api/convert-with-ai", async (
             accessibilityReport.IssuesFixed = accessibilityReport.MeasuresTaken.Count;
             accessibilityReport.AiProvider = aiProvider;
             
+            
+            logger.LogInformation($"Preparing response: aiResult={aiResult != null}, DebugId={aiResult?.DebugId}");
             return Results.Json(new
             {
                 debugId = aiResult?.DebugId ?? "",
