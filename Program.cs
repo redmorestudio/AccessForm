@@ -70,7 +70,6 @@ app.MapBlazorHub(options =>
     options.ApplicationMaxBufferSize = 50 * 1024 * 1024; // 50 MB
     options.TransportMaxBufferSize = 50 * 1024 * 1024; // 50 MB
 });
-app.MapFallbackToPage("/_Host");
 
 // Add endpoint to get latest accessibility report
 app.MapGet("/api/accessibility-report/latest", () =>
@@ -1640,3 +1639,4 @@ app.MapPost("/api/convert-with-ai-debug", async (
         return Results.Problem($"AI conversion failed: {ex.Message}");
     }
 });
+app.MapFallbackToPage("/_Host");
