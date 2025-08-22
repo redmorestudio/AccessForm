@@ -450,7 +450,7 @@
         if (firstRender)
         {
             dotNetHelper = DotNetObjectReference.Create(this);
-            await JSRuntime.InvokeVoidAsync("accessForm.initializeDragDrop", dotNetHelper, "dropZone");
+            await JSRuntime.InvokeVoidAsync("initializeDragDrop", dotNetHelper, "dropZone");
             await CheckAiStatus();
         }
     }
@@ -846,13 +846,13 @@
     private async Task TriggerFileSelect()
     {
         // Use JavaScript to trigger file selection and handle it the same way as drag-and-drop
-        await JSRuntime.InvokeVoidAsync("accessForm.triggerFileInputWithHandler", "fileInput");
+        await JSRuntime.InvokeVoidAsync("triggerFileInputWithHandler", "fileInput");
     }
     
     private async Task TriggerFileSelectPassport()
     {
         // Use JavaScript to trigger file selection with PassportPDF processing
-        await JSRuntime.InvokeVoidAsync("accessForm.triggerFileInputWithPassport", "fileInput");
+        await JSRuntime.InvokeVoidAsync("triggerFileInputWithPassport", "fileInput");
     }
     
     private async Task DownloadFile(string base64Data, string fileName)

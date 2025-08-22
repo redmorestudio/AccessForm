@@ -323,3 +323,22 @@ document.addEventListener('DOMContentLoaded', function () {
         console.warn('Browser does not fully support drag and drop file uploads');
     }
 });
+
+// Direct upload handler for Browse Files button
+window.uploadFileDirectly = async function(useAI = true) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.doc,.docx,.pdf';
+    
+    input.onchange = async function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        try {
+            // Show loading state
+            const statusDiv = document.createElement('div');
+            statusDiv.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:20px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);z-index:9999';
+};
