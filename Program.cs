@@ -90,7 +90,8 @@ app.MapBlazorHub(options =>
 });
 
 app.MapRazorPages();
-app.MapFallbackToPage("/_Host");// Add endpoint to get latest accessibility report
+
+// Add endpoint to get latest accessibility report
 app.MapGet("/api/accessibility-report/latest", () =>
 {
     var reportDir = Path.Combine(Directory.GetCurrentDirectory(), "AccessibilityReports");
@@ -952,6 +953,8 @@ app.MapPost("/api/convert-with-ai", async (
 
 
 
+app.MapFallbackToPage("/_Host");
+
 app.Run();
 
 
@@ -1649,6 +1652,8 @@ app.MapPost("/api/convert-with-ai-debug", async (
 
 
 
+
+app.MapFallbackToPage("/_Host");
 
 app.Run();
 
