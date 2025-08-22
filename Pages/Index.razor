@@ -1,5 +1,7 @@
 @page "/"
+@using System.Text.Json
 @inject IJSRuntime JSRuntime
+@implements IDisposable
 @implements IAsyncDisposable
 
 <PageTitle>AccessForm Document Accessibility</PageTitle>
@@ -7,29 +9,29 @@
 <div class="container mt-5">
     <div class="row">
         <div class="col-md-10 offset-md-1">
-            <h1 class="text-center mb-2">AccessForm Document Accessibility</h1>
-            <p class="text-center text-muted mb-3">Drop any Word or PDF document to make it accessible</p>
+            <h1 class="text-center mb-2" style="color: white !important;">AccessForm Document Accessibility</h1>
+            <p class="text-center mb-3" style="color: rgba(255, 255, 255, 0.9) !important;">Drop any Word or PDF document to make it accessible</p>
             
             <!-- AI Mode Toggle -->
             <div class="text-center mb-4">
                 <div class="form-check form-switch d-inline-block">
                     <input class="form-check-input" type="checkbox" id="aiModeToggle" @bind="useAiMode" @bind:after="OnAiModeChanged">
-                    <label class="form-check-label" for="aiModeToggle">
-                        <strong>🤖 AI-Enhanced Mode</strong>
+                    <label class="form-check-label" for="aiModeToggle" style="color: white !important;">
+                        <strong style="color: white !important;">🤖 AI-Enhanced Mode</strong>
                         @if (useAiMode)
                         {
-                            <span class="badge bg-success ms-2">Active</span>
+                            <span class="badge ms-2" style="background-color: #4a90e2; color: white;">Active</span>
                         }
                         else
                         {
-                            <span class="badge bg-secondary ms-2">Off</span>
+                            <span class="badge ms-2" style="background-color: #6c757d; color: white;">Off</span>
                         }
                     </label>
                 </div>
                 @if (aiStatus != null)
                 {
-                    <div class="alert alert-info mt-2">
-                        <small>@aiStatus</small>
+                    <div class="alert mt-2" style="background-color: white; border: 1px solid #4a90e2; color: #212529;">
+                        <small style="color: #212529;">@aiStatus</small>
                     </div>
                 }
             </div>
@@ -44,7 +46,22 @@
                             <span class="visually-hidden">Processing...</span>
                         </div>
                         <h4>Processing Your Document</h4>
-                        <p class="text-muted">@processingMessage</p>
+                        <p class="text-muted small">AI Mode: @useAiMode</p>
+                        @if (useAiMode)
+                        {
+                            <div class="alert alert-info mt-3">
+                                <p class="mb-2">🤖 <strong>Anthropic Claude AI Analysis</strong></p>
+                                <p class="mb-1">Analyzing document structure and identifying form fields...</p>
+                                <p class="text-muted small">This can take up to 2 minutes for complex documents</p>
+                                <div class="fs-1 fw-bold text-primary mt-3">
+                                    ⏱️ @processingTime
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-muted">@processingMessage</p>
+                        }
                     </div>
                 }
                 else if (selectedFile == null)
@@ -62,6 +79,15 @@
                         <button class="btn btn-primary" @onclick="TriggerFileSelect">
                             Browse Files
                         </button>
+                        @if (useAiMode)
+                        {
+                            <div class="mt-3">
+                                <button class="btn btn-success" @onclick="TriggerFileSelectPassport">
+                                    🎆 Browse Files (PassportPDF)
+                                </button>
+                                <small class="d-block text-muted mt-1">Uses PassportPDF for full PDF/UA compliance</small>
+                            </div>
+                        }
                         <InputFile id="fileInput" class="d-none" accept=".docx,.pdf" />
                     </div>
                 }
@@ -102,12 +128,12 @@
             @if (processingResults != null)
             {
                 <div class="results-section mt-5 animate-in">
-                    <h3 class="mb-4">✅ Accessibility Processing Complete</h3>
+                    <h3 class="mb-4 text-white">✅ Accessibility Processing Complete</h3>
                     
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <div class="card h-100 border-secondary">
-                                <div class="card-header bg-secondary text-white">
+                                <div class="card-header" style="background-color: #4a90e2; color: white;">
                                     <h5 class="mb-0">
                                         <span class="me-2">📄</span> 
                                         @if (processingResults.IsWordSource) { <span>Standard PDF</span> } else { <span>Original PDF</span> }
@@ -117,8 +143,12 @@
                                     <p class="mb-2"><strong>File:</strong> @processingResults.NormalFileName</p>
                                     <p class="mb-3"><strong>Size:</strong> @GetFileSize(processingResults.NormalFileSize)</p>
                                     <p class="text-muted small">@(processingResults.IsWordSource ? "Converted from Word without accessibility features" : "Your original PDF without modifications")</p>
-                                    <button class="btn btn-outline-secondary w-100 mt-3" @onclick="() => DownloadFile(processingResults.NormalFileData, processingResults.NormalFileName)">
+                                    <button class="btn btn-secondary w-100 mt-3" @onclick="() => DownloadFile(processingResults.NormalFileData, processingResults.NormalFileName)">
                                         <span class="me-2">⬇️</span> Download
+                                    </button>
+                                    
+                                    <button class="btn btn-info w-100 mt-2" @onclick="() => ViewTagTree(processingResults.NormalFileData, processingResults.NormalFileName)">
+                                        <span class="me-2">🔍</span> View Tag Structure
                                     </button>
                                 </div>
                             </div>
@@ -126,7 +156,7 @@
                         
                         <div class="col-md-6 mb-3">
                             <div class="card h-100 border-success shadow">
-                                <div class="card-header bg-success text-white">
+                                <div class="card-header" style="background-color: #4a90e2; color: white;">
                                     <h5 class="mb-0">
                                         <span class="me-2">♿</span> Accessible PDF
                                     </h5>
@@ -141,6 +171,11 @@
                                         <ul class="small mb-0 mt-1">
                                             <li>✓ @processingResults.FieldsProcessed form fields enhanced</li>
                                             <li>✓ @processingResults.MeasuresApplied accessibility measures</li>
+                                            @if (processingResults.AiEnhanced)
+                                            {
+                                                <li>✨ <strong>AI-Enhanced Processing</strong> (@processingResults.AiProvider)</li>
+                                                <li>🎯 AI Score: @processingResults.AccessibilityScore/100</li>
+                                            }
                                             <li>✓ Screen reader optimized</li>
                                             <li>✓ Keyboard navigation enabled</li>
                                         </ul>
@@ -149,16 +184,99 @@
                                     <button class="btn btn-success w-100" @onclick="() => DownloadFile(processingResults.AccessibleFileData, processingResults.AccessibleFileName)">
                                         <span class="me-2">⬇️</span> Download Accessible PDF
                                     </button>
+                                    
+                                    <button class="btn btn-info w-100 mt-2" @onclick="() => ViewTagTree(processingResults.AccessibleFileData, processingResults.AccessibleFileName)">
+                                        <span class="me-2">🔍</span> View Tag Structure
+                                    </button>
+                                    
+                                    <button class="btn btn-warning w-100 mt-2" @onclick="() => ViewAiDebugResponses()">
+                                        <span class="me-2">🐛</span> Debug AI Responses
+                                    </button>
+                                    
+                                    @if (!string.IsNullOrEmpty(lastDebugId))
+                                    {
+                                        <div class="alert alert-info mt-2">
+                                            <small>
+                                                <strong>Debug ID:</strong> <code>@lastDebugId</code><br/>
+                                                <a href="/debug-ai-simple.html?id=@lastDebugId" target="_blank" class="text-decoration-none">
+                                                    🔗 Direct Debug Link
+                                                </a>
+                                            </small>
+                                        </div>
+                                    }
                                 </div>
                             </div>
                         </div>
                     </div>
                     
+                    <!-- Tag Structure Report (AI Mode Only) -->
+                    @if (processingResults.AiEnhanced && processingResults.TotalTagNodes > 0)
+                    {
+                        <div class="card mt-4 border-info">
+                            <div class="card-header" style="background-color: #4a90e2; color: white;">
+                                <h5 class="mb-0">
+                                    <span class="me-2">🏷️</span> AI-Detected Tag Structure
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <h6>Document Structure Statistics</h6>
+                                        <ul class="list-unstyled">
+                                            <li>📄 <strong>Total Tags:</strong> @processingResults.TotalTagNodes nodes</li>
+                                            <li>📑 <strong>Headings:</strong> @processingResults.TotalHeadings</li>
+                                            <li>📝 <strong>Paragraphs:</strong> @processingResults.TotalParagraphs</li>
+                                            <li>📋 <strong>Tables:</strong> @processingResults.TotalTables</li>
+                                        </ul>
+                                        
+                                        @if (processingResults.TagCounts.Any())
+                                        {
+                                            <h6 class="mt-3">Tag Distribution</h6>
+                                            <div class="small">
+                                                @foreach (var tag in processingResults.TagCounts.OrderBy(t => t.Key))
+                                                {
+                                                    <span class="badge bg-secondary me-1 mb-1">@tag.Key: @tag.Value</span>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                    
+                                    <div class="col-md-6">
+                                        @if (processingResults.TagRecommendations.Any())
+                                        {
+                                            <h6>Accessibility Recommendations</h6>
+                                            <ul class="small">
+                                                @foreach (var rec in processingResults.TagRecommendations)
+                                                {
+                                                    <li>@rec</li>
+                                                }
+                                            </ul>
+                                        }
+                                        else
+                                        {
+                                            <div class="alert alert-success">
+                                                <strong>✅ Excellent!</strong> Document structure meets all accessibility standards.
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                                
+                                @if (!string.IsNullOrEmpty(processingResults.TagTree))
+                                {
+                                    <details class="mt-3">
+                                        <summary class="btn btn-sm btn-outline-info">View Full Tag Tree</summary>
+                                        <pre class="mt-2 p-2 bg-light" style="max-height: 300px; overflow-y: auto; font-size: 0.85em;">@processingResults.TagTree</pre>
+                                    </details>
+                                }
+                            </div>
+                        </div>
+                    }
+                    
                     <div class="text-center mt-4">
                         <a href="/api/accessibility-report/latest" target="_blank" class="btn btn-primary me-2">
                             <span class="me-2">📊</span> View Detailed Report
                         </a>
-                        <button class="btn btn-outline-primary" @onclick="ProcessAnother">
+                        <button class="btn btn-primary" @onclick="ProcessAnother">
                             <span class="me-2">📁</span> Process Another Document
                         </button>
                     </div>
@@ -193,6 +311,29 @@
     </div>
 </div>
 
+<!-- Tag Tree Viewer Modal -->
+<div class="modal fade" id="tagTreeModal" tabindex="-1" aria-labelledby="tagTreeModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="tagTreeModalLabel">
+                    <i class="bi bi-diagram-3"></i> PDF Tag Structure Viewer
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="tagTreeModalBody">
+                <!-- Content will be loaded dynamically -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" @onclick="ExportTagTree">
+                    <i class="bi bi-download"></i> Export as JSON
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @code {
     private IBrowserFile? selectedFile;
     private bool isProcessing = false;
@@ -203,6 +344,42 @@
     private FileData? droppedFileData;
     private bool useAiMode = false;
     private string? aiStatus = null;
+    private dynamic? currentTagTreeData;
+    private string? currentTagTreeFileName;
+    
+    // Timer for AI processing
+    private System.Timers.Timer? processingTimer;
+    private DateTime processingStartTime;
+    private string processingTime = "0:00";
+    private int processingSeconds = 0;
+    
+    private int GetJsonInt(JsonElement element, string propertyName, int defaultValue)
+    {
+        if (element.TryGetProperty(propertyName, out var prop) && prop.ValueKind == JsonValueKind.Number)
+        {
+            return prop.GetInt32();
+        }
+        return defaultValue;
+    }
+    
+    private string GetJsonString(JsonElement element, string propertyName, string defaultValue)
+    {
+        if (element.TryGetProperty(propertyName, out var prop) && prop.ValueKind == JsonValueKind.String)
+        {
+            return prop.GetString() ?? defaultValue;
+        }
+        return defaultValue;
+    }
+    
+    private bool GetJsonBool(JsonElement element, string propertyName, bool defaultValue)
+    {
+        if (element.TryGetProperty(propertyName, out var prop))
+        {
+            if (prop.ValueKind == JsonValueKind.True) return true;
+            if (prop.ValueKind == JsonValueKind.False) return false;
+        }
+        return defaultValue;
+    }
     
     private class ProcessingResult
     {
@@ -216,6 +393,20 @@
         public string ComplianceLevel { get; set; } = "";
         public int FieldsProcessed { get; set; }
         public int MeasuresApplied { get; set; }
+        public bool AiEnhanced { get; set; }
+        public string AiProvider { get; set; } = "";
+        public int AiFieldsDetected { get; set; }
+        public int AiFieldsApplied { get; set; }
+        public int AccessibilityScore { get; set; }
+        
+        // Tag Structure Report fields
+        public string TagTree { get; set; } = "";
+        public int TotalTagNodes { get; set; }
+        public Dictionary<string, int> TagCounts { get; set; } = new();
+        public List<string> TagRecommendations { get; set; } = new();
+        public int TotalHeadings { get; set; }
+        public int TotalParagraphs { get; set; }
+        public int TotalTables { get; set; }
     }
     
     // Classes for JavaScript interop
@@ -341,6 +532,7 @@
         finally
         {
             isProcessing = false;
+            StopProcessingTimer();
         }
         
         StateHasChanged();
@@ -391,8 +583,28 @@
         
         await JSRuntime.InvokeVoidAsync("console.log", "ProcessFile: Starting processing");
         
+        // Force UI update
         isProcessing = true;
-        processingResults = null;
+        processingMessage = "Starting document processing...";
+        StateHasChanged();
+        await Task.Delay(100); // Give UI time to update
+        
+        await JSRuntime.InvokeVoidAsync("console.log", $"isProcessing set to: {isProcessing}");
+        
+        // Start timer if AI mode
+        if (useAiMode)
+        {
+            await JSRuntime.InvokeVoidAsync("console.log", "Starting AI timer - useAiMode is true");
+            processingMessage = "Initializing AI analysis...";
+            StartProcessingTimer();
+            StateHasChanged();
+        }
+        else
+        {
+            await JSRuntime.InvokeVoidAsync("console.log", "Not starting timer - useAiMode is false");
+            processingMessage = "Processing document...";
+            StateHasChanged();
+        }
         
         try
         {
@@ -403,9 +615,7 @@
             if (useAiMode)
             {
                 endpoint = "/api/convert-with-ai";
-                processingMessage = isWord ? 
-                    "🤖 Using AI to convert and enhance Word document..." : 
-                    "🤖 Using AI to analyze and remediate PDF...";
+                // Don't set processingMessage for AI mode - the UI handles it
             }
             else
             {
@@ -439,6 +649,33 @@
                 
                 if (!string.IsNullOrEmpty(result))
                 {
+                    // Parse result to check for debug ID
+                    try
+                    {
+                        await JSRuntime.InvokeVoidAsync("console.log", "Raw result:", result);
+                        dynamic resultObj = JsonSerializer.Deserialize<JsonElement>(result);
+                        await JSRuntime.InvokeVoidAsync("console.log", "Parsed result object");
+                        
+                        if (resultObj.TryGetProperty("debugId", out JsonElement debugIdElement))
+                        {
+                            lastDebugId = debugIdElement.GetString();
+                            await JSRuntime.InvokeVoidAsync("console.log", $"Found and stored debug ID: {lastDebugId}");
+                        }
+                        else
+                        {
+                            await JSRuntime.InvokeVoidAsync("console.log", "No debugId property found in response");
+                            // Try to find it in nested structure
+                            foreach (var prop in resultObj.EnumerateObject())
+                            {
+                                await JSRuntime.InvokeVoidAsync("console.log", $"Property: {prop.Name}");
+                            }
+                        }
+                    }
+                    catch (Exception parseEx) 
+                    { 
+                        await JSRuntime.InvokeVoidAsync("console.error", $"Error parsing for debugId: {parseEx.Message}");
+                    }
+                    
                     await JSRuntime.InvokeVoidAsync("console.log", "ProcessFile: Got result from JavaScript fetch");
                     await ProcessApiResponse(result, IsWordFile(droppedFileData.Name));
                 }
@@ -463,6 +700,7 @@
         {
             isProcessing = false;
             processingMessage = "";
+            StopProcessingTimer();
         }
     }
     
@@ -486,8 +724,45 @@
                     AccessibleFileSize = result.GetProperty("accessiblePdf").GetProperty("size").GetInt32(),
                     ComplianceLevel = result.GetProperty("report").GetProperty("compliance").GetString(),
                     FieldsProcessed = result.GetProperty("report").GetProperty("fieldsProcessed").GetInt32(),
-                    MeasuresApplied = result.GetProperty("report").GetProperty("measuresApplied").GetInt32()
+                    MeasuresApplied = result.GetProperty("report").GetProperty("measuresApplied").GetInt32(),
+                    AiEnhanced = GetJsonBool(result.GetProperty("report"), "aiEnhanced", false),
+                    AiProvider = GetJsonString(result.GetProperty("report"), "aiProvider", "None"),
+                    AccessibilityScore = GetJsonInt(result.GetProperty("report"), "accessibilityScore", 0)
                 };
+                
+                // Parse tag structure if present
+                await JSRuntime.InvokeVoidAsync("console.log", "Checking for tagStructure in response...");
+                if (result.TryGetProperty("tagStructure", out JsonElement tagStructure))
+                {
+                    await JSRuntime.InvokeVoidAsync("console.log", "Found tagStructure:", tagStructure.GetRawText());
+                    processingResults.TagTree = GetJsonString(tagStructure, "tagTree", "");
+                    processingResults.TotalTagNodes = GetJsonInt(tagStructure, "totalNodes", 0);
+                    
+                    if (tagStructure.TryGetProperty("statistics", out JsonElement stats))
+                    {
+                        processingResults.TotalHeadings = GetJsonInt(stats, "totalHeadings", 0);
+                        processingResults.TotalParagraphs = GetJsonInt(stats, "totalParagraphs", 0);
+                        processingResults.TotalTables = GetJsonInt(stats, "totalTables", 0);
+                        
+                        if (stats.TryGetProperty("tagCounts", out JsonElement tagCounts))
+                        {
+                            foreach (var prop in tagCounts.EnumerateObject())
+                            {
+                                processingResults.TagCounts[prop.Name] = prop.Value.GetInt32();
+                            }
+                        }
+                    }
+                    
+                    if (tagStructure.TryGetProperty("recommendations", out JsonElement recs))
+                    {
+                        foreach (var rec in recs.EnumerateArray())
+                        {
+                            processingResults.TagRecommendations.Add(rec.GetString());
+                        }
+                    }
+                }
+                
+                await JSRuntime.InvokeVoidAsync("console.log", $"Word - Tag nodes: {processingResults.TotalTagNodes}, AI: {processingResults.AiEnhanced}");
             }
             else
             {
@@ -503,8 +778,45 @@
                     AccessibleFileSize = result.GetProperty("remediatedPdf").GetProperty("size").GetInt32(),
                     ComplianceLevel = result.GetProperty("report").GetProperty("compliance").GetString(),
                     FieldsProcessed = result.GetProperty("report").GetProperty("fieldsProcessed").GetInt32(),
-                    MeasuresApplied = result.GetProperty("report").GetProperty("measuresApplied").GetInt32()
+                    MeasuresApplied = result.GetProperty("report").GetProperty("measuresApplied").GetInt32(),
+                    AiEnhanced = GetJsonBool(result.GetProperty("report"), "aiEnhanced", false),
+                    AiProvider = GetJsonString(result.GetProperty("report"), "aiProvider", "None"),
+                    AccessibilityScore = GetJsonInt(result.GetProperty("report"), "accessibilityScore", 0)
                 };
+                
+                // Parse tag structure if present (for PDF remediation)
+                await JSRuntime.InvokeVoidAsync("console.log", "PDF: Checking for tagStructure in response...");
+                if (result.TryGetProperty("tagStructure", out JsonElement tagStructurePdf))
+                {
+                    await JSRuntime.InvokeVoidAsync("console.log", "PDF: Found tagStructure:", tagStructurePdf.GetRawText());
+                    processingResults.TagTree = GetJsonString(tagStructurePdf, "tagTree", "");
+                    processingResults.TotalTagNodes = GetJsonInt(tagStructurePdf, "totalNodes", 0);
+                    
+                    if (tagStructurePdf.TryGetProperty("statistics", out JsonElement statsPdf))
+                    {
+                        processingResults.TotalHeadings = GetJsonInt(statsPdf, "totalHeadings", 0);
+                        processingResults.TotalParagraphs = GetJsonInt(statsPdf, "totalParagraphs", 0);
+                        processingResults.TotalTables = GetJsonInt(statsPdf, "totalTables", 0);
+                        
+                        if (statsPdf.TryGetProperty("tagCounts", out JsonElement tagCountsPdf))
+                        {
+                            foreach (var prop in tagCountsPdf.EnumerateObject())
+                            {
+                                processingResults.TagCounts[prop.Name] = prop.Value.GetInt32();
+                            }
+                        }
+                    }
+                    
+                    if (tagStructurePdf.TryGetProperty("recommendations", out JsonElement recsPdf))
+                    {
+                        foreach (var rec in recsPdf.EnumerateArray())
+                        {
+                            processingResults.TagRecommendations.Add(rec.GetString());
+                        }
+                    }
+                }
+                
+                await JSRuntime.InvokeVoidAsync("console.log", $"PDF - Tag nodes: {processingResults.TotalTagNodes}, AI: {processingResults.AiEnhanced}");
             }
             
             await JSRuntime.InvokeVoidAsync("console.log", "ProcessApiResponse: Successfully parsed response, clearing file selection");
@@ -537,10 +849,258 @@
         await JSRuntime.InvokeVoidAsync("accessForm.triggerFileInputWithHandler", "fileInput");
     }
     
+    private async Task TriggerFileSelectPassport()
+    {
+        // Use JavaScript to trigger file selection with PassportPDF processing
+        await JSRuntime.InvokeVoidAsync("accessForm.triggerFileInputWithPassport", "fileInput");
+    }
+    
     private async Task DownloadFile(string base64Data, string fileName)
     {
         await JSRuntime.InvokeVoidAsync("console.log", $"DownloadFile: Attempting to download {fileName}, data length: {base64Data?.Length ?? 0}");
         await JSRuntime.InvokeVoidAsync("accessForm.downloadFile", base64Data, fileName);
+    }
+    
+    private async Task ViewTagTree(string base64Data, string fileName)
+    {
+        try
+        {
+            // Show loading state in modal using Bootstrap 5
+            await JSRuntime.InvokeVoidAsync("eval", @"
+                // Use Bootstrap 5 Modal API
+                const modalElement = document.getElementById('tagTreeModal');
+                const modal = new bootstrap.Modal(modalElement);
+                modal.show();
+                document.getElementById('tagTreeModalBody').innerHTML = `
+                    <div class='text-center p-5'>
+                        <div class='spinner-border text-primary' role='status'>
+                            <span class='visually-hidden'>Loading tag structure...</span>
+                        </div>
+                        <p class='mt-3'>Analyzing PDF structure...</p>
+                    </div>
+                `;
+            ");
+            
+            // Call the API to extract tag structure
+            using var http = new HttpClient();
+            http.BaseAddress = new Uri("http://localhost:5008");
+            
+            var requestContent = new StringContent(
+                JsonSerializer.Serialize(new { pdfData = base64Data }),
+                System.Text.Encoding.UTF8,
+                "application/json"
+            );
+            
+            var response = await http.PostAsync("/api/extract-tag-structure", requestContent);
+            var jsonResponse = await response.Content.ReadAsStringAsync();
+            var tagData = JsonSerializer.Deserialize<JsonElement>(jsonResponse);
+            
+            currentTagTreeData = tagData;
+            currentTagTreeFileName = fileName;
+            
+            // Render the tag tree in the modal
+            if (tagData.GetProperty("success").GetBoolean())
+            {
+                await RenderTagTree(tagData);
+            }
+            else
+            {
+                var error = tagData.TryGetProperty("error", out var errorProp) 
+                    ? errorProp.GetString() 
+                    : "Failed to extract tag structure";
+                    
+                await JSRuntime.InvokeVoidAsync("eval", $@"
+                    document.getElementById('tagTreeModalBody').innerHTML = `
+                        <div class='alert alert-warning'>
+                            <h6>Unable to Extract Tag Structure</h6>
+                            <p>{error}</p>
+                            <p class='mb-0'><small>This usually means the PDF doesn't have accessibility tags. Try processing it through the accessibility converter first.</small></p>
+                        </div>
+                    `;
+                ");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", "Error viewing tag tree:", ex.Message);
+            await JSRuntime.InvokeVoidAsync("eval", $@"
+                document.getElementById('tagTreeModalBody').innerHTML = `
+                    <div class='alert alert-danger'>
+                        <h6>Error Loading Tag Structure</h6>
+                        <p>{ex.Message}</p>
+                    </div>
+                `;
+            ");
+        }
+    }
+    
+    private async Task RenderTagTree(JsonElement tagData)
+    {
+        var rootNode = tagData.GetProperty("rootNode");
+        var statistics = tagData.GetProperty("statistics");
+        var issues = tagData.GetProperty("issues");
+        
+        var html = "<div class='row'>";
+        
+        // Left panel - Tag tree
+        html += "<div class='col-md-8'>";
+        html += "<div class='card'>";
+        html += "<div class='card-header bg-light'>";
+        html += "<h6 class='mb-0'>Tag Hierarchy</h6>";
+        html += "<small class='text-muted'>Document structure and accessibility tags</small>";
+        html += "</div>";
+        html += "<div class='card-body' style='max-height: 600px; overflow-y: auto;'>";
+        
+        if (!rootNode.Equals(default(JsonElement)))
+        {
+            html += "<div class='tag-tree-container' style='font-family: monospace; font-size: 14px;'>";
+            html += RenderTagNode(rootNode, 0);
+            html += "</div>";
+        }
+        else
+        {
+            html += "<p class='text-muted'>No tag structure found in this PDF</p>";
+        }
+        
+        html += "</div></div></div>";
+        
+        // Right panel - Statistics and issues
+        html += "<div class='col-md-4'>";
+        
+        // Statistics card
+        html += "<div class='card mb-3'>";
+        html += "<div class='card-header bg-light'><h6 class='mb-0'>Statistics</h6></div>";
+        html += "<div class='card-body'>";
+        html += "<dl class='row mb-0'>";
+        
+        if (statistics.TryGetProperty("totalTags", out var totalTags))
+            html += $"<dt class='col-sm-7'>Total Tags:</dt><dd class='col-sm-5'>{totalTags.GetInt32()}</dd>";
+        if (statistics.TryGetProperty("formFieldCount", out var formFields))
+            html += $"<dt class='col-sm-7'>Form Fields:</dt><dd class='col-sm-5'>{formFields.GetInt32()}</dd>";
+        if (statistics.TryGetProperty("headingCount", out var headings))
+            html += $"<dt class='col-sm-7'>Headings:</dt><dd class='col-sm-5'>{headings.GetInt32()}</dd>";
+        if (statistics.TryGetProperty("paragraphCount", out var paragraphs))
+            html += $"<dt class='col-sm-7'>Paragraphs:</dt><dd class='col-sm-5'>{paragraphs.GetInt32()}</dd>";
+        if (statistics.TryGetProperty("tableCount", out var tables))
+            html += $"<dt class='col-sm-7'>Tables:</dt><dd class='col-sm-5'>{tables.GetInt32()}</dd>";
+        if (statistics.TryGetProperty("imageCount", out var images))
+            html += $"<dt class='col-sm-7'>Images:</dt><dd class='col-sm-5'>{images.GetInt32()}</dd>";
+        if (statistics.TryGetProperty("maxDepth", out var maxDepth))
+            html += $"<dt class='col-sm-7'>Max Depth:</dt><dd class='col-sm-5'>{maxDepth.GetInt32()}</dd>";
+        
+        html += "</dl></div></div>";
+        
+        // Issues card
+        if (issues.ValueKind == JsonValueKind.Array && issues.GetArrayLength() > 0)
+        {
+            html += "<div class='card'>";
+            html += "<div class='card-header bg-warning bg-opacity-25'><h6 class='mb-0'>Issues Found</h6></div>";
+            html += "<div class='card-body' style='max-height: 300px; overflow-y: auto;'>";
+            
+            foreach (var issue in issues.EnumerateArray())
+            {
+                var severity = issue.TryGetProperty("severity", out var sev) ? sev.GetString() : "Warning";
+                var alertClass = severity == "Error" ? "alert-danger" : "alert-warning";
+                
+                html += $"<div class='alert {alertClass} py-2 px-3 mb-2'>";
+                html += "<small>";
+                
+                if (issue.TryGetProperty("type", out var type))
+                    html += $"<strong>{type.GetString()}:</strong> ";
+                    
+                if (issue.TryGetProperty("description", out var desc))
+                    html += desc.GetString();
+                    
+                if (issue.TryGetProperty("location", out var loc) && !string.IsNullOrEmpty(loc.GetString()))
+                    html += $"<br><span class='text-muted'>Location: {loc.GetString()}</span>";
+                    
+                if (issue.TryGetProperty("recommendation", out var rec) && !string.IsNullOrEmpty(rec.GetString()))
+                    html += $"<br><span class='text-info'>Recommendation: {rec.GetString()}</span>";
+                    
+                html += "</small></div>";
+            }
+            
+            html += "</div></div>";
+        }
+        
+        html += "</div></div>";
+        
+        await JSRuntime.InvokeVoidAsync("eval", $@"
+            document.getElementById('tagTreeModalBody').innerHTML = `{html}`;
+        ");
+    }
+    
+    private string RenderTagNode(JsonElement node, int level)
+    {
+        var html = $"<div style='margin-left: {level * 20}px; margin-bottom: 4px;'>";
+        
+        // Node header
+        html += "<div class='d-flex align-items-start'>";
+        
+        // Type badge
+        if (node.TryGetProperty("type", out var type))
+        {
+            html += $"<span class='badge bg-info text-dark me-2' style='font-size: 11px;'>{type.GetString()}</span>";
+        }
+        
+        // Name
+        if (node.TryGetProperty("name", out var name))
+        {
+            html += $"<span class='fw-bold'>{name.GetString()}</span>";
+        }
+        
+        // Content preview
+        if (node.TryGetProperty("content", out var content) && !string.IsNullOrEmpty(content.GetString()))
+        {
+            var contentStr = content.GetString();
+            if (contentStr.Length > 50)
+                contentStr = contentStr.Substring(0, 50) + "...";
+            html += $"<span class='text-muted ms-2' style='font-style: italic;'>\"{contentStr}\"</span>";
+        }
+        
+        // Attributes
+        if (node.TryGetProperty("attributes", out var attrs) && attrs.ValueKind == JsonValueKind.Object)
+        {
+            var attrCount = attrs.EnumerateObject().Count();
+            if (attrCount > 0)
+            {
+                html += $"<span class='badge bg-secondary ms-2' style='font-size: 10px;'>{attrCount} attrs</span>";
+            }
+        }
+        
+        html += "</div>";
+        
+        // Children
+        if (node.TryGetProperty("children", out var children) && children.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var child in children.EnumerateArray())
+            {
+                html += RenderTagNode(child, level + 1);
+            }
+        }
+        
+        html += "</div>";
+        return html;
+    }
+    
+    private async Task ExportTagTree()
+    {
+        if (currentTagTreeData != null && currentTagTreeFileName != null)
+        {
+            var json = JsonSerializer.Serialize(currentTagTreeData, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+            
+            // Convert to base64
+            var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+            var base64 = Convert.ToBase64String(bytes);
+            var dataUrl = $"data:application/json;base64,{base64}";
+            
+            // Download the file
+            var fileName = Path.GetFileNameWithoutExtension(currentTagTreeFileName) + "_tag_structure.json";
+            await JSRuntime.InvokeVoidAsync("accessForm.downloadFile", dataUrl, fileName);
+        }
     }
     
     private bool IsValidFileType(string fileName)
@@ -565,6 +1125,58 @@
         if (bytes < 1024 * 1024) return $"{bytes / 1024:F1} KB";
         return $"{bytes / (1024 * 1024):F1} MB";
     }
+    
+    private string lastDebugId = null;  // Store the debug ID from AI processing
+    private async Task ViewAiDebugResponses()
+    {
+        try
+        {
+            // Open debug interface with the stored debug ID
+            var debugUrl = string.IsNullOrEmpty(lastDebugId) 
+                ? "/debug-ai-simple.html" 
+                : $"/debug-ai-simple.html?id={lastDebugId}";
+                
+            await JSRuntime.InvokeVoidAsync("open", debugUrl, "_blank");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", "Error opening AI debug interface:", ex.Message);
+            await JSRuntime.InvokeVoidAsync("alert", "Unable to open AI debug interface. Please try again.");
+        }
+    }
+    
+    private void StartProcessingTimer()
+    {
+        processingSeconds = 0;
+        processingTime = "0:00";
+        processingStartTime = DateTime.Now;
+        
+        processingTimer?.Dispose();
+        processingTimer = new System.Timers.Timer(1000); // Update every second
+        processingTimer.Elapsed += async (sender, e) =>
+        {
+            processingSeconds++;
+            var minutes = processingSeconds / 60;
+            var seconds = processingSeconds % 60;
+            processingTime = $"{minutes}:{seconds:D2}";
+            
+            await InvokeAsync(StateHasChanged);
+        };
+        processingTimer.Start();
+    }
+    
+    private void StopProcessingTimer()
+    {
+        processingTimer?.Stop();
+        processingTimer?.Dispose();
+        processingTimer = null;
+    }
+    
+    public void Dispose()
+    {
+        dotNetHelper?.Dispose();
+        processingTimer?.Dispose();
+    }
 }
 
 <style>
@@ -574,28 +1186,29 @@
         padding: 60px 40px;
         text-align: center;
         transition: all 0.3s ease;
-        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+        background: white !important;
         min-height: 400px;
         display: flex;
         align-items: center;
         justify-content: center;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
     }
     
     .drop-zone-active {
-        border-color: #0066cc;
-        background: linear-gradient(135deg, #e3f2fd 0%, #f3f9ff 100%);
+        border-color: #4a90e2;
+        background: white !important;
         transform: scale(1.02);
-        box-shadow: 0 8px 25px rgba(0, 102, 204, 0.15);
+        box-shadow: 0 8px 25px rgba(74, 144, 226, 0.15);
     }
     
     .drop-zone.processing {
-        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
-        border-color: #0066cc;
+        background: white !important;
+        border-color: #4a90e2;
     }
     
     .drop-zone.has-file {
         border-color: #28a745;
-        background: linear-gradient(135deg, #f1f8f4 0%, #ffffff 100%);
+        background: white !important;
     }
     
     .drop-zone-content {
@@ -623,30 +1236,76 @@
     .info-card {
         text-align: center;
         padding: 30px 20px;
-        background: white;
+        background: white !important;
         border-radius: 15px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         transition: transform 0.3s ease, box-shadow 0.3s ease;
         height: 100%;
+        color: #212529 !important;
+    }
+    
+    .info-card h5 {
+        color: #212529 !important;
+    }
+    
+    .info-card p {
+        color: #6c757d !important;
     }
     
     .info-card:hover {
         transform: translateY(-5px);
-        box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.3);
     }
     
+    /* Remove AI mode gradient - all cards are white */
     .info-card.ai-mode {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
+        background: white !important;
+        color: #212529 !important;
     }
     
     .info-card.ai-mode .text-muted {
-        color: rgba(255, 255, 255, 0.9) !important;
+        color: #6c757d !important;
+    }
+    
+    .info-card.ai-mode h5 {
+        color: #212529 !important;
+    }
+    
+    .info-card.ai-mode p {
+        color: #6c757d !important;
+    }
+    
+    /* Ensure white text on colored backgrounds */
+    .bg-secondary, .bg-success, .bg-info, .bg-primary {
+        color: white !important;
+    }
+    
+    .bg-secondary *, .bg-success *, .bg-info *, .bg-primary * {
+        color: white !important;
+    }
+    
+    /* All buttons use light royal blue */
+    .btn-secondary, .btn-info, .btn-primary, .btn-success, .btn-outline-secondary, .btn-outline-info {
+        background-color: #4a90e2 !important;
+        border-color: #4a90e2 !important;
+        color: white !important;
+    }
+    
+    .btn-secondary:hover, .btn-info:hover, .btn-primary:hover, .btn-success:hover,
+    .btn-outline-secondary:hover, .btn-outline-info:hover {
+        background-color: #357abd !important;
+        border-color: #357abd !important;
+        color: white !important;
     }
     
     .form-check-input:checked {
-        background-color: #667eea;
-        border-color: #667eea;
+        background-color: #4a90e2;
+        border-color: #4a90e2;
+    }
+    
+    .form-check-input:focus {
+        border-color: #4a90e2;
+        box-shadow: 0 0 0 0.25rem rgba(74, 144, 226, 0.25);
     }
     
     .alert-info {
@@ -664,6 +1323,24 @@
         background: #f8f9fa;
         padding: 10px;
         border-radius: 8px;
+    }
+    
+    /* Ensure proper text contrast */
+    .card-body p, .card-body strong {
+        color: #212529;
+    }
+    
+    .text-muted {
+        color: #6c757d !important;
+    }
+    
+    /* Override text-muted on dark backgrounds */
+    .bg-secondary .text-muted, 
+    .bg-success .text-muted, 
+    .bg-info .text-muted, 
+    .bg-primary .text-muted,
+    .bg-warning .text-muted {
+        color: rgba(255, 255, 255, 0.85) !important;
     }
     
     .improvements-list ul {
@@ -686,11 +1363,14 @@
     .card {
         border-radius: 15px;
         overflow: hidden;
-        transition: transform 0.3s ease;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        background: white;
     }
     
     .card:hover {
         transform: translateY(-3px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.3);
     }
     
     .card-header {
@@ -700,6 +1380,27 @@
     .badge {
         padding: 6px 12px;
         border-radius: 6px;
+    }
+    
+    /* Ensure badge text contrast */
+    .badge.bg-success {
+        background-color: #198754 !important;
+        color: white !important;
+    }
+    
+    .badge.bg-secondary {
+        background-color: #6c757d !important;
+        color: white !important;
+    }
+    
+    .badge.bg-info {
+        background-color: #0dcaf0 !important;
+        color: #000 !important;
+    }
+    
+    .badge.bg-warning {
+        background-color: #ffc107 !important;
+        color: #000 !important;
     }
     
     @@keyframes fadeIn {
