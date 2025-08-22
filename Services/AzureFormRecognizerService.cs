@@ -460,7 +460,7 @@ namespace AccessFormServer.Services
                     Type = type,
                     Label = name,
                     IsRequired = required,
-                    Confidence = 0.85 + random.NextDouble() * 0.15,
+                    Confidence = (float)(0.85 + random.NextDouble() * 0.15),
                     BoundingBox = new BoundingBox 
                     { 
                         X = 100 + random.Next(400),

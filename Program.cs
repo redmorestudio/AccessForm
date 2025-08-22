@@ -42,6 +42,10 @@ builder.Services.AddScoped<WordToPdfConverter.Services.FieldAnalysisService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<CostTrackingService>();
 builder.Services.AddScoped<AzureFormRecognizerService>();
+builder.Services.AddHttpClient<AnthropicService>();
+builder.Services.AddScoped<AnthropicService>();
+builder.Services.AddHttpClient<PassportPdfService>();
+builder.Services.AddScoped<PassportPdfService>();
 builder.Services.AddScoped<LlamaGroqService>();
 builder.Services.AddHttpClient();
 
