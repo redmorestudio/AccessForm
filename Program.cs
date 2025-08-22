@@ -953,9 +953,6 @@ app.MapPost("/api/convert-with-ai", async (
 
 
 
-app.MapFallbackToPage("/_Host");
-
-app.Run();
 
 
 // Helper function to normalize smart quotes and other problematic characters
