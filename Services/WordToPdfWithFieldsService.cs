@@ -80,10 +80,31 @@ namespace WordToPdfConverter.Services
                     // Convert to PDF document (not loaded document)
                     using (var pdfDocument = renderer.ConvertToPDF(wordDoc))
                     {
-                        // Step 4: Add AI-detected fields to the PDF
-                        if (detectedFields != null && detectedFields.Count > 0)
+                        // Check if Word document already had form fields that were preserved
+                        bool hasExistingFields = false;
+                        try
                         {
+                            hasExistingFields = pdfDocument.Form?.Fields?.Count > 0;
+                            if (hasExistingFields)
+                            {
+                                _logger.LogInformation($"Word document already contained {pdfDocument.Form.Fields.Count} form fields that were preserved");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning($"Could not check existing fields: {ex.Message}");
+                        }
+
+                        // Step 4: Only add AI-detected fields if there are NO existing fields
+                        // (to avoid the structure tree error with too many fields)
+                        if (!hasExistingFields && detectedFields != null && detectedFields.Count > 0)
+                        {
+                            _logger.LogInformation($"No existing fields found, adding {detectedFields.Count} AI-detected fields");
                             AddDetectedFieldsToPdf(pdfDocument, detectedFields);
+                        }
+                        else if (hasExistingFields)
+                        {
+                            _logger.LogInformation("Using preserved Word form fields, skipping AI field creation to avoid conflicts");
                         }
 
                         // Step 5: Apply document-level accessibility settings
@@ -179,24 +200,34 @@ namespace WordToPdfConverter.Services
                 // Enable auto-tagging for accessibility (already set in renderer)
                 pdfDocument.AutoTag = true;
                 
-                // Set form fields tab order
+                // Set form fields tab order (but be careful not to break structure with too many fields)
                 if (pdfDocument.Form != null && pdfDocument.Form.Fields.Count > 0)
                 {
-                    int tabIndex = 1;
-                    foreach (PdfField field in pdfDocument.Form.Fields)
+                    try
                     {
-                        if (field.TabIndex == 0)
+                        int tabIndex = 1;
+                        int validationCount = 0;
+                        foreach (PdfField field in pdfDocument.Form.Fields)
                         {
-                            field.TabIndex = tabIndex++;
+                            if (field.TabIndex == 0)
+                            {
+                                field.TabIndex = tabIndex++;
+                            }
+                            
+                            // Only add validation to a limited number of fields to avoid structure issues
+                            // Skip validation if we have too many fields (>100)
+                            if (pdfDocument.Form.Fields.Count <= 100 && field is PdfTextBoxField textField)
+                            {
+                                AddFieldValidation(textField);
+                                validationCount++;
+                            }
                         }
-                        
-                        // Add validation for common field types based on name
-                        if (field is PdfTextBoxField textField)
-                        {
-                            AddFieldValidation(textField);
-                        }
+                        _logger.LogInformation($"Set tab order for {pdfDocument.Form.Fields.Count} form fields, added validation to {validationCount} fields");
                     }
-                    _logger.LogInformation($"Set tab order for {pdfDocument.Form.Fields.Count} form fields");
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning($"Could not set all field properties: {ex.Message}");
+                    }
                 }
             }
             catch (Exception ex)
