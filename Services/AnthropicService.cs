@@ -24,6 +24,7 @@ namespace AccessFormServer.Services
             _httpClient.BaseAddress = new Uri("https://api.anthropic.com/");
             _httpClient.DefaultRequestHeaders.Add("x-api-key", _apiKey);
             _httpClient.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+            _httpClient.Timeout = TimeSpan.FromSeconds(300); // 5 minutes timeout for Claude API
         }
 
         public async Task<string> AnalyzeFormFieldsAsync(string extractedText)
@@ -66,6 +67,13 @@ namespace AccessFormServer.Services
                 if (response.IsSuccessStatusCode)
                 {
                     var responseContent = await response.Content.ReadAsStringAsync();
+                    _logger.LogInformation($"=== CLAUDE RAW RESPONSE ===");
+                    _logger.LogInformation($"Response length: {responseContent.Length} characters");
+                    
+                    // Log first 1000 chars of response
+                    var preview = responseContent.Length > 1000 ? responseContent.Substring(0, 1000) + "..." : responseContent;
+                    _logger.LogInformation($"Response preview: {preview}");
+                    
                     var responseJson = JsonDocument.Parse(responseContent);
                     
                     if (responseJson.RootElement.TryGetProperty("content", out var contentArray) && 
@@ -74,10 +82,21 @@ namespace AccessFormServer.Services
                         var firstContent = contentArray[0];
                         if (firstContent.TryGetProperty("text", out var textElement))
                         {
-                            return textElement.GetString() ?? "No analysis available";
+                            var claudeText = textElement.GetString() ?? "No analysis available";
+                            _logger.LogInformation($"Extracted Claude text: {claudeText.Length} characters");
+                            if (claudeText.Length > 500)
+                            {
+                                _logger.LogInformation($"Claude text preview: {claudeText.Substring(0, 500)}...");
+                            }
+                            else
+                            {
+                                _logger.LogInformation($"Claude text: {claudeText}");
+                            }
+                            return claudeText;
                         }
                     }
                     
+                    _logger.LogWarning("Could not extract text from Claude response, returning raw JSON");
                     return responseContent;
                 }
                 else
@@ -97,6 +116,34 @@ namespace AccessFormServer.Services
         public List<FieldAnalysisResult> ParseAnalysisResult(string analysisText)
         {
             var results = new List<FieldAnalysisResult>();
+
+            // First try to extract JSON array from markdown if present
+            if (analysisText.Contains("```json") && analysisText.Contains("["))
+            {
+                try
+                {
+                    var startIdx = analysisText.IndexOf("[");
+                    var endIdx = analysisText.LastIndexOf("]");
+                    if (startIdx >= 0 && endIdx > startIdx)
+                    {
+                        var jsonArray = analysisText.Substring(startIdx, endIdx - startIdx + 1);
+                        var doc = JsonDocument.Parse(jsonArray);
+                        foreach (var field in doc.RootElement.EnumerateArray())
+                        {
+                            results.Add(new FieldAnalysisResult
+                            {
+                                Success = true,
+                                FieldName = field.TryGetProperty("name", out var n) ? n.GetString() ?? "Field" : "Field",
+                                FieldType = field.TryGetProperty("type", out var t) ? t.GetString() ?? "text" : "text",
+                                IsRequired = field.TryGetProperty("required", out var r) && r.GetBoolean()
+                            });
+                        }
+                        if (results.Count > 0) return results;
+                    }
+                }
+                catch { /* Continue to existing parsing */ }
+            }
+
             
             try
             {

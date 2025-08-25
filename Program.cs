@@ -1483,7 +1483,7 @@ app.MapGet("/api/debug/{debugId}", (string debugId, DebugCacheService debugCache
         success = debugData.Success,
         processingTime = debugData.ProcessingTime,
         anthropicResponse = debugData.AnthropicResponse,
-        azureResponse = debugData.AzureResponse,
+        // azureResponse = debugData.AzureResponse, // Commented out - AzureResponse not available
         fieldResults = debugData.FieldResults
     });
 });
