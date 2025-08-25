@@ -1046,7 +1046,7 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
         
         logger.LogInformation($"Tag structure extracted successfully: {structure.Count} items");
         
-        return Results.Json(new
+        var response = new
         {
             success = true,
             structure = structure,
@@ -1056,7 +1056,12 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                 hasForm = doc.Form?.Fields?.Count > 0,
                 fieldCount = doc.Form?.Fields?.Count ?? 0
             }
-        });
+        };
+        
+        // Log the response
+        logger.LogInformation($"Sending tag structure response: success={response.success}, items={structure.Count}, fieldCount={response.metadata.fieldCount}");
+        
+        return Results.Json(response);
     }
     catch (Exception ex)
     {
