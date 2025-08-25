@@ -902,11 +902,12 @@ app.MapPost("/api/convert-with-ai", async (
         using var remediationStream = new MemoryStream(normalPdfBytes);
         using var remediatedDoc = new PdfLoadedDocument(remediationStream);
         
-        // First apply Claude's detected fields to create/enhance form fields
+        // First apply Claude's detected fields to enhance existing form fields
+        // Note: PdfLoadedDocument can only enhance existing fields, not create new ones
         if (fieldResults != null && fieldResults.Count > 0)
         {
-            logger.LogInformation($"Creating/enhancing {fieldResults.Count} form fields from AI detection");
-            fieldCreationService.CreateFormFieldsFromAIDetection(remediatedDoc, fieldResults, true);
+            logger.LogInformation($"Enhancing {fieldResults.Count} form fields from AI detection");
+            fieldCreationService.EnhanceExistingFormFields(remediatedDoc, fieldResults);
         }
         
         // Then apply accessibility enhancements

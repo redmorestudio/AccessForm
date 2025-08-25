@@ -25,93 +25,35 @@ namespace WordToPdfConverter.Services
         }
 
         /// <summary>
-        /// Creates form fields in a PDF based on Claude's field detection
+        /// Enhances existing form fields in a loaded PDF based on Claude's field detection
+        /// Note: PdfLoadedDocument can only modify existing fields, not create new ones
         /// </summary>
-        public void CreateFormFieldsFromAIDetection(
+        public void EnhanceExistingFormFields(
             PdfLoadedDocument document, 
-            List<AnthropicService.FieldAnalysisResult> detectedFields,
-            bool preserveExistingFields = true)
+            List<AnthropicService.FieldAnalysisResult> detectedFields)
         {
-            _logger.LogInformation($"Creating form fields from {detectedFields.Count} AI-detected fields");
+            _logger.LogInformation($"Enhancing existing form fields with {detectedFields.Count} AI-detected fields");
 
-            // Get or create the form
             if (document.Form == null)
             {
-                _logger.LogInformation("No existing form found, creating new form");
-                // Note: Syncfusion doesn't allow creating a new form on loaded documents
-                // We need to work with existing form or create fields on pages
+                _logger.LogWarning("No form found in document - cannot enhance fields");
+                // For documents without forms, we need a different approach
+                // We'd need to save and reload as PdfDocument to add new fields
+                return;
             }
 
-            // Group fields by type for better organization
-            var fieldGroups = detectedFields.GroupBy(f => f.FieldType ?? "text").ToList();
-            
-            // Process each page
-            foreach (PdfLoadedPage page in document.Pages)
-            {
-                ProcessPageFields(page, document, detectedFields);
-            }
-
-            // Apply document-level settings for accessibility
-            ApplyDocumentAccessibilitySettings(document);
-        }
-
-        private void ProcessPageFields(
-            PdfLoadedPage page, 
-            PdfLoadedDocument document,
-            List<AnthropicService.FieldAnalysisResult> fields)
-        {
-            _logger.LogInformation($"Processing fields for page");
-
-            // Check if there are existing fields on this page
-            var existingFields = GetExistingFieldsOnPage(document, page);
-            _logger.LogInformation($"Found {existingFields.Count} existing fields on page");
-
-            // If we have existing fields, enhance them with Claude's data
-            if (existingFields.Count > 0)
-            {
-                EnhanceExistingFields(existingFields, fields);
-            }
-            else
-            {
-                // Create new fields based on Claude's detection
-                CreateNewFieldsOnPage(page, document, fields);
-            }
-        }
-
-        private List<PdfLoadedField> GetExistingFieldsOnPage(PdfLoadedDocument document, PdfLoadedPage page)
-        {
-            var fieldsOnPage = new List<PdfLoadedField>();
-            
-            if (document.Form?.Fields == null) return fieldsOnPage;
-
+            var existingFields = new List<PdfLoadedField>();
             foreach (PdfLoadedField field in document.Form.Fields)
             {
-                // Check if field is on this page by checking bounds
-                // Note: This is simplified - in production you'd need more sophisticated page detection
-                if (field is PdfLoadedTextBoxField textField)
-                {
-                    // For now, we'll process all fields as we can't easily determine page
-                    fieldsOnPage.Add(field);
-                }
-                else
-                {
-                    fieldsOnPage.Add(field);
-                }
+                existingFields.Add(field);
             }
 
-            return fieldsOnPage;
-        }
+            _logger.LogInformation($"Found {existingFields.Count} existing fields to enhance");
 
-        private void EnhanceExistingFields(
-            List<PdfLoadedField> existingFields, 
-            List<AnthropicService.FieldAnalysisResult> claudeFields)
-        {
-            _logger.LogInformation($"Enhancing {existingFields.Count} existing fields with AI data");
-
+            // Enhance existing fields with Claude's data
             foreach (var existingField in existingFields)
             {
-                // Try to match with Claude's detected field
-                var matchedField = FindBestMatch(existingField, claudeFields);
+                var matchedField = FindBestMatch(existingField, detectedFields);
                 
                 if (matchedField != null)
                 {
@@ -125,6 +67,184 @@ namespace WordToPdfConverter.Services
                     _logger.LogInformation($"Applied default enhancements to field '{existingField.Name}'");
                 }
             }
+
+            // Log fields that couldn't be matched
+            var unmatchedDetectedFields = detectedFields.Where(df => 
+                !existingFields.Any(ef => IsFieldMatch(ef, df))).ToList();
+            
+            if (unmatchedDetectedFields.Count > 0)
+            {
+                _logger.LogWarning($"Could not match {unmatchedDetectedFields.Count} detected fields to existing PDF fields:");
+                foreach (var field in unmatchedDetectedFields)
+                {
+                    _logger.LogWarning($"  - {field.FieldName} ({field.FieldType})");
+                }
+                _logger.LogWarning("To add these fields, the PDF would need to be recreated with form fields");
+            }
+
+            // Apply document-level settings
+            ApplyDocumentAccessibilitySettings(document);
+        }
+
+        /// <summary>
+        /// Creates form fields in a new PDF document during creation
+        /// This method works with PdfDocument (not PdfLoadedDocument)
+        /// </summary>
+        public void CreateFormFieldsInNewDocument(
+            PdfDocument document,
+            List<AnthropicService.FieldAnalysisResult> detectedFields)
+        {
+            _logger.LogInformation($"Creating {detectedFields.Count} form fields in new document");
+
+            // Ensure document has at least one page
+            if (document.Pages.Count == 0)
+            {
+                document.Pages.Add();
+            }
+
+            var page = document.Pages[0] as PdfPage;
+            float currentY = page.Size.Height - _margin - 50;
+            int tabIndex = 1;
+
+            foreach (var fieldData in detectedFields)
+            {
+                try
+                {
+                    CreateFieldInNewDocument(page, fieldData, ref currentY, tabIndex++, document, detectedFields);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, $"Failed to create field '{fieldData.FieldName}'");
+                }
+            }
+        }
+
+        private void CreateFieldInNewDocument(
+            PdfPage page,
+            AnthropicService.FieldAnalysisResult fieldData,
+            ref float currentY,
+            int tabIndex,
+            PdfDocument document,
+            List<AnthropicService.FieldAnalysisResult> detectedFields)
+        {
+            var fieldType = fieldData.FieldType?.ToLower() ?? "text";
+            var bounds = new RectangleF(_margin, currentY, _defaultFieldWidth, _defaultFieldHeight);
+            var fieldName = fieldData.FieldName ?? $"Field{tabIndex}";
+
+            _logger.LogInformation($"Creating field '{fieldName}' of type '{fieldType}' at Y={currentY}");
+
+            if (fieldType.Contains("checkbox") || fieldType.Contains("check"))
+            {
+                var checkBox = new PdfCheckBoxField(page, fieldName);
+                checkBox.Bounds = new RectangleF(bounds.X, bounds.Y, 15, 15);
+                checkBox.ToolTip = GenerateAccessibleTooltip(fieldData);
+                checkBox.Required = fieldData.IsRequired;
+                checkBox.TabIndex = tabIndex;
+                checkBox.BorderColor = new PdfColor(0, 0, 0);
+                checkBox.BackColor = new PdfColor(255, 255, 255);
+                document.Form.Fields.Add(checkBox);
+            }
+            else if (fieldType.Contains("radio"))
+            {
+                var radio = new PdfRadioButtonListField(page, fieldName);
+                radio.ToolTip = GenerateAccessibleTooltip(fieldData);
+                radio.Required = fieldData.IsRequired;
+                radio.TabIndex = tabIndex;
+                
+                for (int i = 0; i < 3; i++)
+                {
+                    var item = new PdfRadioButtonListItem($"Option{i + 1}");
+                    item.Bounds = new RectangleF(bounds.X + (i * 60), bounds.Y, 15, 15);
+                    radio.Items.Add(item);
+                }
+                document.Form.Fields.Add(radio);
+            }
+            else if (fieldType.Contains("dropdown") || fieldType.Contains("select") || fieldType.Contains("combo"))
+            {
+                var combo = new PdfComboBoxField(page, fieldName);
+                combo.Bounds = bounds;
+                combo.ToolTip = GenerateAccessibleTooltip(fieldData);
+                combo.Required = fieldData.IsRequired;
+                combo.TabIndex = tabIndex;
+                combo.Editable = false;
+                combo.BorderColor = new PdfColor(0, 0, 0);
+                combo.BackColor = new PdfColor(255, 255, 255);
+                
+                combo.Items.Add(new PdfListFieldItem("Select an option", ""));
+                combo.Items.Add(new PdfListFieldItem("Option 1", "opt1"));
+                combo.Items.Add(new PdfListFieldItem("Option 2", "opt2"));
+                document.Form.Fields.Add(combo);
+            }
+            else if (fieldType.Contains("signature"))
+            {
+                var signature = new PdfSignatureField(page, fieldName);
+                signature.Bounds = new RectangleF(bounds.X, bounds.Y, bounds.Width, 50);
+                signature.ToolTip = GenerateAccessibleTooltip(fieldData);
+                signature.Required = fieldData.IsRequired;
+                signature.TabIndex = tabIndex;
+                document.Form.Fields.Add(signature);
+                currentY -= 30; // Extra space for signature
+            }
+            else // Default to text field
+            {
+                var textField = new PdfTextBoxField(page, fieldName);
+                textField.Bounds = bounds;
+                textField.ToolTip = GenerateAccessibleTooltip(fieldData);
+                textField.Required = fieldData.IsRequired;
+                textField.TabIndex = tabIndex;
+                textField.BorderColor = new PdfColor(0, 0, 0);
+                textField.BackColor = new PdfColor(255, 255, 255);
+                
+                // Apply text field specific settings
+                if (fieldType.Contains("multiline") || fieldType.Contains("textarea") || 
+                    fieldType.Contains("comments") || fieldType.Contains("description"))
+                {
+                    textField.Multiline = true;
+                    textField.Bounds = new RectangleF(bounds.X, bounds.Y, bounds.Width, 60);
+                    currentY -= 40; // Extra space for multiline
+                }
+                
+                if (fieldType.Contains("password") || fieldType.Contains("ssn"))
+                {
+                    textField.Password = true;
+                }
+                
+                if (fieldType.Contains("date"))
+                {
+                    textField.MaxLength = 10;
+                    textField.ToolTip += " (Format: MM/DD/YYYY)";
+                }
+                
+                document.Form.Fields.Add(textField);
+            }
+
+            // Move to next position
+            currentY -= _fieldSpacing;
+            
+            // Check if we need to move to next page
+            if (currentY < _margin && detectedFields.IndexOf(fieldData) < detectedFields.Count - 1)
+            {
+                _logger.LogWarning("Running out of space on current page, would need to add new page");
+                // In production, you'd add a new page here and reset currentY
+            }
+        }
+
+        private bool IsFieldMatch(PdfLoadedField existingField, AnthropicService.FieldAnalysisResult detectedField)
+        {
+            var existingName = existingField.Name?.ToLower() ?? "";
+            var detectedName = detectedField.FieldName?.ToLower() ?? "";
+            
+            // Exact match
+            if (existingName == detectedName) return true;
+            
+            // Partial match
+            if (!string.IsNullOrEmpty(existingName) && !string.IsNullOrEmpty(detectedName))
+            {
+                if (existingName.Contains(detectedName) || detectedName.Contains(existingName))
+                    return true;
+            }
+            
+            return false;
         }
 
         private AnthropicService.FieldAnalysisResult FindBestMatch(
@@ -184,8 +304,6 @@ namespace WordToPdfConverter.Services
             // Set tab order if available
             if (field.TabIndex == 0)
             {
-                // Claude doesn't provide tab order in current implementation
-                // We'll use document order
                 field.TabIndex = GetNextTabIndex();
             }
         }
@@ -298,158 +416,6 @@ namespace WordToPdfConverter.Services
             }
         }
 
-        private void CreateNewFieldsOnPage(
-            PdfLoadedPage page, 
-            PdfLoadedDocument document,
-            List<AnthropicService.FieldAnalysisResult> fields)
-        {
-            _logger.LogInformation($"Creating {fields.Count} new fields on page");
-
-            float currentY = page.Size.Height - _margin - 50; // Start from top with margin
-            int tabIndex = 1;
-
-            foreach (var fieldData in fields)
-            {
-                try
-                {
-                    // Create appropriate field type
-                    PdfField newField = CreateFieldByType(page, fieldData, currentY, tabIndex++);
-                    
-                    if (newField != null)
-                    {
-                        // Add field to the form
-                        if (document.Form != null)
-                        {
-                            document.Form.Fields.Add(newField);
-                            _logger.LogInformation($"Created new field '{fieldData.FieldName}' of type '{fieldData.FieldType}'");
-                        }
-                        
-                        // Move to next position
-                        currentY -= _fieldSpacing;
-                        
-                        // Check if we need to move to next page
-                        if (currentY < _margin)
-                        {
-                            _logger.LogWarning("Ran out of space on page, some fields may not be created");
-                            break;
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, $"Failed to create field '{fieldData.FieldName}'");
-                }
-            }
-        }
-
-        private PdfField CreateFieldByType(
-            PdfLoadedPage page, 
-            AnthropicService.FieldAnalysisResult fieldData,
-            float yPosition,
-            int tabIndex)
-        {
-            var fieldType = fieldData.FieldType?.ToLower() ?? "text";
-            var bounds = new RectangleF(_margin, yPosition, _defaultFieldWidth, _defaultFieldHeight);
-
-            try
-            {
-                PdfField field = null;
-
-                if (fieldType.Contains("checkbox") || fieldType.Contains("check"))
-                {
-                    var checkBox = new PdfCheckBoxField(page, fieldData.FieldName ?? $"CheckBox{tabIndex}");
-                    checkBox.Bounds = new RectangleF(bounds.X, bounds.Y, 15, 15); // Checkboxes are smaller
-                    checkBox.ToolTip = GenerateAccessibleTooltip(fieldData);
-                    checkBox.Required = fieldData.IsRequired;
-                    checkBox.TabIndex = tabIndex;
-                    field = checkBox;
-                }
-                else if (fieldType.Contains("radio"))
-                {
-                    var radio = new PdfRadioButtonListField(page, fieldData.FieldName ?? $"Radio{tabIndex}");
-                    radio.ToolTip = GenerateAccessibleTooltip(fieldData);
-                    radio.Required = fieldData.IsRequired;
-                    radio.TabIndex = tabIndex;
-                    
-                    // Add a few radio button items
-                    for (int i = 0; i < 3; i++)
-                    {
-                        var item = new PdfRadioButtonListItem($"Option{i + 1}");
-                        item.Bounds = new RectangleF(bounds.X + (i * 60), bounds.Y, 15, 15);
-                        radio.Items.Add(item);
-                    }
-                    field = radio;
-                }
-                else if (fieldType.Contains("dropdown") || fieldType.Contains("select") || fieldType.Contains("combo"))
-                {
-                    var combo = new PdfComboBoxField(page, fieldData.FieldName ?? $"Dropdown{tabIndex}");
-                    combo.Bounds = bounds;
-                    combo.ToolTip = GenerateAccessibleTooltip(fieldData);
-                    combo.Required = fieldData.IsRequired;
-                    combo.TabIndex = tabIndex;
-                    combo.Editable = false;
-                    
-                    // Add placeholder items
-                    combo.Items.Add(new PdfListFieldItem("Select an option", ""));
-                    combo.Items.Add(new PdfListFieldItem("Option 1", "opt1"));
-                    combo.Items.Add(new PdfListFieldItem("Option 2", "opt2"));
-                    field = combo;
-                }
-                else if (fieldType.Contains("signature"))
-                {
-                    var signature = new PdfSignatureField(page, fieldData.FieldName ?? $"Signature{tabIndex}");
-                    signature.Bounds = new RectangleF(bounds.X, bounds.Y, bounds.Width, 50); // Signatures need more height
-                    signature.ToolTip = GenerateAccessibleTooltip(fieldData);
-                    signature.Required = fieldData.IsRequired;
-                    signature.TabIndex = tabIndex;
-                    field = signature;
-                }
-                else // Default to text field
-                {
-                    var textField = new PdfTextBoxField(page, fieldData.FieldName ?? $"TextField{tabIndex}");
-                    textField.Bounds = bounds;
-                    textField.ToolTip = GenerateAccessibleTooltip(fieldData);
-                    textField.Required = fieldData.IsRequired;
-                    textField.TabIndex = tabIndex;
-                    
-                    // Apply text field specific settings
-                    if (fieldType.Contains("multiline") || fieldType.Contains("textarea") || 
-                        fieldType.Contains("comments") || fieldType.Contains("description"))
-                    {
-                        textField.Multiline = true;
-                        textField.Bounds = new RectangleF(bounds.X, bounds.Y, bounds.Width, 60); // More height for multiline
-                    }
-                    
-                    if (fieldType.Contains("password") || fieldType.Contains("ssn"))
-                    {
-                        textField.Password = true;
-                    }
-                    
-                    if (fieldType.Contains("date"))
-                    {
-                        textField.MaxLength = 10;
-                        textField.ToolTip += " (Format: MM/DD/YYYY)";
-                    }
-                    
-                    field = textField;
-                }
-
-                // Set common properties
-                if (field != null)
-                {
-                    // Note: Border and background colors need to be set on specific field types
-                    // Not all field types support these properties in Syncfusion
-                }
-
-                return field;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Failed to create field of type '{fieldType}'");
-                return null;
-            }
-        }
-
         private void ApplyDefaultEnhancements(PdfLoadedField field)
         {
             // Ensure field has a tooltip
@@ -531,7 +497,6 @@ namespace WordToPdfConverter.Services
             docInfo.CustomMetadata["ProcessedDate"] = DateTime.Now.ToString("yyyy-MM-dd");
             docInfo.CustomMetadata["ProcessedBy"] = "AccessForm AI Field Creator";
 
-            // Enable auto-tagging if available
             // AutoTag is set during PDF creation, not on loaded documents
 
             _logger.LogInformation("Document accessibility settings applied");
