@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Concurrent;
-using System.Threading.Tasks;
+using System.Linq;using System.Threading.Tasks;
 
 namespace AccessFormServer.Services
 {
@@ -9,27 +9,27 @@ namespace AccessFormServer.Services
         private readonly ConcurrentDictionary<string, DebugData> _cache = new();
         private readonly TimeSpan _cacheExpiration = TimeSpan.FromMinutes(30);
 
-        public string StoreDebugData(object anthropicResponse, object azureResponse, object fieldResults)
+        // Simplified method - only Anthropic, no Azure
+        public string StoreDebugData(object debugInfo)
         {
             var debugId = GenerateDebugId();
             var debugData = new DebugData
             {
                 Id = debugId,
                 Timestamp = DateTime.UtcNow,
-                AnthropicResponse = anthropicResponse,
-                AzureResponse = azureResponse,
-                FieldResults = fieldResults,
-                Success = true
+                Success = true,
+                AnthropicResponse = debugInfo,
+                FieldResults = new {},
+                ProcessingTime = 0
             };
 
             _cache[debugId] = debugData;
             
-            // Clean up old entries
-            Task.Run(() => CleanupOldEntries());
+            // Clean up expired entries
+            _ = Task.Run(CleanupOldEntries);
             
             return debugId;
         }
-
         public DebugData GetDebugData(string debugId)
         {
             if (_cache.TryGetValue(debugId, out var data))
@@ -67,12 +67,11 @@ namespace AccessFormServer.Services
 
     public class DebugData
     {
-        public string Id { get; set; }
+        public string Id { get; set; } = "";
         public DateTime Timestamp { get; set; }
         public bool Success { get; set; }
-        public object AnthropicResponse { get; set; }
-        public object AzureResponse { get; set; }
-        public object FieldResults { get; set; }
+        public object AnthropicResponse { get; set; } = "";
+        public object FieldResults { get; set; } = "";
         public long ProcessingTime { get; set; }
     }
 }

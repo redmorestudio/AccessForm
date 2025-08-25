@@ -1,7 +1,10 @@
 using System;
 using System.IO;
+using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Syncfusion.DocIO.DLS;
+using Syncfusion.Pdf.Parsing;
 
 namespace AccessFormServer.Services
 {
@@ -31,8 +34,10 @@ namespace AccessFormServer.Services
                 // Skip Azure, go straight to Anthropic Claude
                 _logger.LogInformation("Starting Anthropic Claude analysis");
                 
-                // Extract text from document for Anthropic
+                // Extract ACTUAL text from document for Anthropic
                 string documentContent = await ExtractTextContent(fileStream, fileName);
+                _logger.LogInformation($"Sending {documentContent.Length} characters to Anthropic");
+                
                 var anthropicResponse = await _anthropicService.AnalyzeFormFieldsAsync(documentContent);
                 result.AnthropicResponse = anthropicResponse;
                 
@@ -48,16 +53,19 @@ namespace AccessFormServer.Services
                 result.ProcessingTime = (long)(DateTime.UtcNow - startTime).TotalMilliseconds;
                 
                 // Store debug data and get ID
-                result.DebugId = _debugCache.StoreDebugData(
-                    anthropicResponse,
-                    null,  // No Azure result
-                    new { 
-                        detectedFields = result.DetectedFields,
-                        anthropicFieldCount = result.AnthropicFields?.Count ?? 0,
-                        processingTime = result.ProcessingTime
-                    }
-                );
-                
+                var debugInfo = new
+                {
+                    timestamp = DateTime.UtcNow.ToString("o"),
+                    fileName = fileName,
+                    processingTimeMs = result.ProcessingTime,
+                    aiProvider = "Anthropic Claude",
+                    detectedFields = result.DetectedFields,
+                    documentTextLength = documentContent.Length,
+                    documentTextPreview = documentContent.Length > 500 ? documentContent.Substring(0, 500) + "..." : documentContent,
+                    anthropicResponse = anthropicResponse,
+                    anthropicFieldCount = result.AnthropicFields?.Count ?? 0
+                };
+                result.DebugId = _debugCache.StoreDebugData(debugInfo);                
                 _logger.LogInformation("AI processing complete. Debug ID: {DebugId}", result.DebugId);
                 result.Success = true;
             }
@@ -68,12 +76,17 @@ namespace AccessFormServer.Services
                 result.ErrorMessage = ex.Message;
                 
                 // Return simulated data on failure
-                result.DetectedFields = 10;
-                result.DebugId = _debugCache.StoreDebugData(
-                    "Error: " + ex.Message,
-                    null,
-                    new { error = true, message = ex.Message }
-                );
+                var errorDebugInfo = new
+                {
+                    timestamp = DateTime.UtcNow.ToString("o"),
+                    fileName = "AI Analysis Error",
+                    processingTimeMs = 0L,
+                    aiProvider = "Anthropic Claude",
+                    error = true,
+                    message = ex.Message,
+                    anthropicResponse = "Error: " + ex.Message
+                };
+                result.DebugId = _debugCache.StoreDebugData(errorDebugInfo);
             }
             
             return result;
@@ -81,9 +94,53 @@ namespace AccessFormServer.Services
 
         private async Task<string> ExtractTextContent(Stream fileStream, string fileName)
         {
-            // Simple text extraction - in production, use proper PDF/Word text extraction
-            // For now, return a placeholder
-            return await Task.FromResult($"Document: {fileName}\n[Document content would be extracted here]");
+            try
+            {
+                // Read the entire stream into memory
+                using var memoryStream = new MemoryStream();
+                await fileStream.CopyToAsync(memoryStream);
+                memoryStream.Position = 0;
+                
+                // For .docx files, extract text using Syncfusion
+                if (fileName.EndsWith(".docx", StringComparison.OrdinalIgnoreCase))
+                {
+                    using var wordDocument = new Syncfusion.DocIO.DLS.WordDocument(memoryStream, Syncfusion.DocIO.FormatType.Docx);
+                    var text = wordDocument.GetText();
+                    _logger.LogInformation($"Extracted {text.Length} characters from Word document");
+                    return text;
+                }
+                else if (fileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                {
+                    // For PDF files, use Syncfusion PDF library
+                    using var pdfDocument = new Syncfusion.Pdf.Parsing.PdfLoadedDocument(memoryStream);
+                    var extractedText = new StringBuilder();
+                    
+                    for (int i = 0; i < pdfDocument.Pages.Count; i++)
+                    {
+                        var page = pdfDocument.Pages[i];
+                        extractedText.AppendLine(page.ExtractText());
+                    }
+                    
+                    var text = extractedText.ToString();
+                    _logger.LogInformation($"Extracted {text.Length} characters from PDF document");
+                    return text;
+                }
+                else
+                {
+                    // For other file types, try to read as text
+                    memoryStream.Position = 0;
+                    using var reader = new StreamReader(memoryStream);
+                    var text = await reader.ReadToEndAsync();
+                    _logger.LogInformation($"Read {text.Length} characters from text file");
+                    return text;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to extract text from document");
+                // Return at least the filename so Claude has something
+                return $"[Error extracting text from {fileName}: {ex.Message}]";
+            }
         }
     }
 

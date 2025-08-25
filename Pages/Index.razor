@@ -198,8 +198,8 @@
                                         <div class="alert alert-info mt-2">
                                             <small>
                                                 <strong>Debug ID:</strong> <code>@lastDebugId</code><br/>
-                                                <a href="/debug-ai-simple.html?id=@lastDebugId" target="_blank" class="text-decoration-none">
-                                                    🔗 Direct Debug Link
+                                                <a href="/debug-raw.html?id=@lastDebugId" target="_blank" class="text-decoration-none">
+                                                    🔗 Raw Debug View
                                                 </a>
                                             </small>
                                         </div>
@@ -659,7 +659,7 @@
                     try
                     {
                         await JSRuntime.InvokeVoidAsync("console.log", "Raw result:", result);
-                        dynamic resultObj = JsonSerializer.Deserialize<JsonElement>(result);
+                        var resultObj = JsonSerializer.Deserialize<JsonElement>(result);
                         await JSRuntime.InvokeVoidAsync("console.log", "Parsed result object");
                         
                         if (resultObj.TryGetProperty("debugId", out JsonElement debugIdElement))
@@ -714,7 +714,7 @@
     {
         try
         {
-            dynamic result = System.Text.Json.JsonSerializer.Deserialize<dynamic>(json);
+            var result = System.Text.Json.JsonSerializer.Deserialize<JsonElement>(json);
             
             if (isWordSource)
             {
