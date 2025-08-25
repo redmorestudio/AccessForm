@@ -1044,6 +1044,67 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
             });
         }
         
+        // Extract page content structure
+        for (int pageIndex = 0; pageIndex < Math.Min(doc.Pages.Count, 3); pageIndex++) // Limit to first 3 pages
+        {
+            var page = doc.Pages[pageIndex];
+            var pageStructure = new List<object>();
+            
+            try
+            {
+                // Extract text to show content structure
+                var pageText = page.ExtractText();
+                if (!string.IsNullOrWhiteSpace(pageText))
+                {
+                    var lines = pageText.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+                    
+                    // Show first few lines as structure elements
+                    for (int i = 0; i < Math.Min(lines.Length, 5); i++)
+                    {
+                        var line = lines[i].Trim();
+                        if (line.Length > 0)
+                        {
+                            var elementType = "Text";
+                            // Try to identify structure based on content
+                            if (line.EndsWith(":") || line.Contains("name") || line.Contains("Name"))
+                                elementType = "Label";
+                            else if (line.Contains("___") || line.Contains("[]") || line.Contains("( )"))
+                                elementType = "FormField";
+                            
+                            pageStructure.Add(new
+                            {
+                                type = elementType,
+                                content = line.Length > 80 ? line.Substring(0, 80) + "..." : line
+                            });
+                        }
+                    }
+                    
+                    if (lines.Length > 5)
+                    {
+                        pageStructure.Add(new
+                        {
+                            type = "Info",
+                            content = $"... and {lines.Length - 5} more lines"
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning($"Could not extract page {pageIndex + 1} structure: {ex.Message}");
+            }
+            
+            if (pageStructure.Count > 0)
+            {
+                structure.Add(new
+                {
+                    type = $"Page{pageIndex + 1}",
+                    content = $"Page {pageIndex + 1} Content",
+                    children = pageStructure
+                });
+            }
+        }
+        
         logger.LogInformation($"Tag structure extracted successfully: {structure.Count} items");
         
         var response = new
