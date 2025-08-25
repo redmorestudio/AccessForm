@@ -39,6 +39,7 @@ builder.Services.AddScoped<AccessibilityRetrofitService>();
 builder.Services.AddScoped<PdfAccessibilityEnhancer>();
 builder.Services.AddScoped<WordToPdfConverter.Services.FieldAnalysisService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.FormFieldCreationService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.WordToPdfWithFieldsService>();
 
 // Add AI services
 builder.Services.AddMemoryCache();
@@ -738,6 +739,7 @@ app.MapPost("/api/convert-with-ai", async (
     AnthropicService anthropicService,
     PassportPdfService passportPdfService,
     FormFieldCreationService fieldCreationService,
+    WordToPdfWithFieldsService wordToPdfService,
     ILogger<Program> logger) =>
 {
     Console.WriteLine("=== AI ENDPOINT HIT (ENHANCED) ===");
@@ -780,26 +782,30 @@ app.MapPost("/api/convert-with-ai", async (
         
         if (isWord)
         {
-            logger.LogInformation("Converting Word to PDF");
-            // Convert Word to PDF using Syncfusion
-            using var inputStream = new MemoryStream(fileBytes);
-            using var wordDoc = new WordDocument(inputStream, FormatType.Docx);
-            using var docRenderer = new DocIORenderer();
-            using var pdfDocument = docRenderer.ConvertToPDF(wordDoc);
-            using var outputStream = new MemoryStream();
-            pdfDocument.Save(outputStream);
-            normalPdfBytes = outputStream.ToArray();
+            logger.LogInformation("Converting Word to PDF with AI-detected form fields");
+            // Use the new service that creates fields during conversion
+            normalPdfBytes = await wordToPdfService.ConvertWordToPdfWithFields(fileBytes, file.FileName, true);
+            logger.LogInformation($"Word to PDF conversion complete with form fields. Size: {normalPdfBytes.Length} bytes");
         }
         else
         {
             normalPdfBytes = fileBytes;
         }
         
-        // Extract text for AI analysis
-        logger.LogInformation("Extracting text for AI analysis");
+        // For PDFs, we still need to extract text and analyze with Claude
+        // (Word documents already had this done during conversion)
         string extractedText = "";
+        List<AnthropicService.FieldAnalysisResult> fieldResults = null;
+        string aiAnalysis = "";
+        int detectedFields = 0;
+        var processingTime = 0.0;
+        var startTime = DateTime.UtcNow;
         
-        // Try PassportPDF first
+        if (!isWord)  // Only do this for PDFs, not Word docs
+        {
+            logger.LogInformation("Extracting text from PDF for AI analysis");
+            
+            // Try PassportPDF first
         try
         {
             extractedText = await passportPdfService.ExtractTextFromPdfAsync(normalPdfBytes);
@@ -873,41 +879,48 @@ app.MapPost("/api/convert-with-ai", async (
             logger.LogWarning("WARNING: Sending EMPTY text to Claude!");
         }
 
-        // Analyze with Anthropic
-        logger.LogInformation("Analyzing with Anthropic AI");
-        var startTime = DateTime.UtcNow;
-        string aiAnalysis = "";
-        int detectedFields = 0;
-        List<AnthropicService.FieldAnalysisResult> fieldResults = null;
-        
-        try
-        {
-            aiAnalysis = await anthropicService.AnalyzeFormFieldsAsync(extractedText);
+            // Analyze with Anthropic (only for PDFs)
+            logger.LogInformation("Analyzing PDF with Anthropic AI");
+            startTime = DateTime.UtcNow;
             
-            // Parse field count from analysis
-            fieldResults = anthropicService.ParseAnalysisResult(aiAnalysis);
-            detectedFields = fieldResults.Count;
-            logger.LogInformation("AI detected {FieldCount} fields", detectedFields);
+            try
+            {
+                aiAnalysis = await anthropicService.AnalyzeFormFieldsAsync(extractedText);
+                
+                // Parse field count from analysis
+                fieldResults = anthropicService.ParseAnalysisResult(aiAnalysis);
+                detectedFields = fieldResults.Count;
+                logger.LogInformation("AI detected {FieldCount} fields in PDF", detectedFields);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "AI analysis failed for PDF");
+                aiAnalysis = "AI analysis failed: " + ex.Message;
+            }
+            
+            processingTime = (DateTime.UtcNow - startTime).TotalMilliseconds;
         }
-        catch (Exception ex)
+        else
         {
-            logger.LogError(ex, "AI analysis failed");
-            aiAnalysis = "AI analysis failed: " + ex.Message;
+            // For Word docs, fields were already detected and created during conversion
+            logger.LogInformation("Word document already processed with AI field detection during conversion");
         }
-        
-        var processingTime = (DateTime.UtcNow - startTime).TotalMilliseconds;
         
         // Apply accessibility remediation and create form fields from AI detection
         logger.LogInformation("Applying accessibility remediation and creating form fields");
         using var remediationStream = new MemoryStream(normalPdfBytes);
         using var remediatedDoc = new PdfLoadedDocument(remediationStream);
         
-        // First apply Claude's detected fields to enhance existing form fields
-        // Note: PdfLoadedDocument can only enhance existing fields, not create new ones
-        if (fieldResults != null && fieldResults.Count > 0)
+        // For PDFs, enhance existing fields with Claude's detection
+        // For Word docs, fields were already created during conversion
+        if (!isWord && fieldResults != null && fieldResults.Count > 0)
         {
-            logger.LogInformation($"Enhancing {fieldResults.Count} form fields from AI detection");
+            logger.LogInformation($"Enhancing {fieldResults.Count} existing PDF form fields from AI detection");
             fieldCreationService.EnhanceExistingFormFields(remediatedDoc, fieldResults);
+        }
+        else if (isWord)
+        {
+            logger.LogInformation("Word document fields were created during conversion - skipping enhancement");
         }
         
         // Then apply accessibility enhancements
