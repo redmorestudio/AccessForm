@@ -41,6 +41,7 @@ builder.Services.AddScoped<WordToPdfConverter.Services.FieldAnalysisService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.FormFieldCreationService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.WordToPdfWithFieldsService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.SimplifiedWordToPdfService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.FieldSizeOptimizer>();
 
 // Add AI services
 builder.Services.AddMemoryCache();
@@ -741,6 +742,7 @@ app.MapPost("/api/convert-with-ai", async (
     PassportPdfService passportPdfService,
     FormFieldCreationService fieldCreationService,
     WordToPdfWithFieldsService wordToPdfService,
+    FieldSizeOptimizer fieldSizeOptimizer,
     ILogger<Program> logger) =>
 {
     Console.WriteLine("=== AI ENDPOINT HIT (ENHANCED) ===");
@@ -912,6 +914,25 @@ app.MapPost("/api/convert-with-ai", async (
         using var remediationStream = new MemoryStream(normalPdfBytes);
         using var remediatedDoc = new PdfLoadedDocument(remediationStream);
         
+        // Get actual field count from the document and optimize field sizes
+        int actualFieldCount = 0;
+        try
+        {
+            actualFieldCount = remediatedDoc.Form?.Fields?.Count ?? 0;
+            logger.LogInformation($"Document has {actualFieldCount} actual form fields");
+            
+            // Optimize field sizes so they're not too small
+            if (actualFieldCount > 0)
+            {
+                logger.LogInformation("Optimizing form field sizes for better usability");
+                fieldSizeOptimizer.OptimizeFieldSizes(remediatedDoc);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning($"Could not count or optimize form fields: {ex.Message}");
+        }
+        
         // For PDFs, enhance existing fields with Claude's detection
         // For Word docs, fields were already created during conversion
         if (!isWord && fieldResults != null && fieldResults.Count > 0)
@@ -966,7 +987,7 @@ app.MapPost("/api/convert-with-ai", async (
             report = new
             {
                 compliance = "WCAG 2.1 AA + Section 508",
-                fieldsProcessed = detectedFields,
+                fieldsProcessed = actualFieldCount > 0 ? actualFieldCount : detectedFields,
                 measuresApplied = 12, // Standard accessibility measures
                 aiEnhanced = true,
                 aiProvider = "Anthropic Claude",
