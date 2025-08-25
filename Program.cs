@@ -795,19 +795,81 @@ app.MapPost("/api/convert-with-ai", async (
         // Extract text for AI analysis
         logger.LogInformation("Extracting text for AI analysis");
         string extractedText = "";
+        
+        // Try PassportPDF first
         try
         {
             extractedText = await passportPdfService.ExtractTextFromPdfAsync(normalPdfBytes);
+            logger.LogInformation($"PassportPDF returned: {extractedText.Length} characters");
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Failed to extract text with PassportPDF, using fallback");
-            // Fallback text extraction using Syncfusion
-            using var pdfStream = new MemoryStream(normalPdfBytes);
-            using var pdfDoc = new PdfLoadedDocument(pdfStream);
-            extractedText = pdfDoc.Pages[0].ExtractText();
+            logger.LogWarning(ex, "PassportPDF threw exception");
         }
         
+        // If PassportPDF failed or returned error text, use Syncfusion
+        if (string.IsNullOrEmpty(extractedText) || 
+            extractedText.StartsWith("Error") || 
+            extractedText.Length < 100)
+        {
+            logger.LogInformation("Using Syncfusion fallback for text extraction");
+            try
+            {
+                using var pdfStream = new MemoryStream(normalPdfBytes);
+                using var pdfDoc = new PdfLoadedDocument(pdfStream);
+                var extractedTextBuilder = new System.Text.StringBuilder();
+                
+                // Extract from ALL pages, not just first!
+                for (int i = 0; i < pdfDoc.Pages.Count; i++)
+                {
+                    var pageText = pdfDoc.Pages[i].ExtractText();
+                    if (!string.IsNullOrWhiteSpace(pageText))
+                    {
+                        extractedTextBuilder.AppendLine($"--- Page {i + 1} ---");
+                        extractedTextBuilder.AppendLine(pageText);
+                    }
+                }
+                
+                var fallbackText = extractedTextBuilder.ToString();
+                if (!string.IsNullOrWhiteSpace(fallbackText))
+                {
+                    extractedText = fallbackText;
+                    logger.LogInformation($"Syncfusion extracted {extractedText.Length} characters from {pdfDoc.Pages.Count} pages");
+                }
+                else
+                {
+                    logger.LogWarning("Syncfusion also failed to extract text");
+                    // Last resort - if this is a Word doc, extract directly from Word
+                    if (isWord)
+                    {
+                        logger.LogInformation("Attempting direct Word text extraction");
+                        using var wordStream = new MemoryStream(fileBytes);
+                        using var wordDoc = new WordDocument(wordStream, FormatType.Docx);
+                        extractedText = wordDoc.GetText();
+                        logger.LogInformation($"Direct Word extraction got {extractedText.Length} characters");
+                    }
+                }
+            }
+            catch (Exception fallbackEx)
+            {
+                logger.LogError(fallbackEx, "Syncfusion fallback also failed");
+                extractedText = "Could not extract text from document";
+            }
+        }
+        
+        // LOG WHAT WE'RE SENDING TO CLAUDE
+        logger.LogInformation($"=== SENDING TO CLAUDE ===");
+        logger.LogInformation($"Text length: {extractedText.Length} characters");
+        if (extractedText.Length > 0)
+        {
+            var preview = extractedText.Length > 500 ? extractedText.Substring(0, 500) + "..." : extractedText;
+            logger.LogInformation($"Text preview: {preview}");
+        }
+        else
+        {
+            logger.LogWarning("WARNING: Sending EMPTY text to Claude!");
+        }
+
         // Analyze with Anthropic
         logger.LogInformation("Analyzing with Anthropic AI");
         var startTime = DateTime.UtcNow;
