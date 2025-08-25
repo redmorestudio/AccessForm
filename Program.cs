@@ -1,3 +1,4 @@
+using System.Linq;
 using Syncfusion.DocIO;
 using Syncfusion.DocIO.DLS;
 using Syncfusion.DocIORenderer;
@@ -970,6 +971,98 @@ app.MapPost("/api/convert-with-ai", async (
 })
 .WithName("ConvertWithAI")
 .DisableAntiforgery();
+
+
+
+// Tag structure extraction endpoint
+app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Program> logger) =>
+{
+    try
+    {
+        using var reader = new StreamReader(request.Body);
+        var body = await reader.ReadToEndAsync();
+        var requestData = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(body);
+        
+        if (!requestData.TryGetProperty("pdfData", out var pdfDataElement))
+        {
+            return Results.Json(new { success = false, error = "No PDF data provided" });
+        }
+        
+        var base64Data = pdfDataElement.GetString();
+        if (string.IsNullOrEmpty(base64Data))
+        {
+            return Results.Json(new { success = false, error = "Empty PDF data" });
+        }
+        
+        if (base64Data.Contains(','))
+        {
+            base64Data = base64Data.Split(',')[1];
+        }
+        
+        var pdfBytes = Convert.FromBase64String(base64Data);
+        logger.LogInformation($"Extracting tag structure from PDF, size: {pdfBytes.Length} bytes");
+        
+        using var stream = new MemoryStream(pdfBytes);
+        using var doc = new PdfLoadedDocument(stream);
+        
+        var structure = new List<object>();
+        
+        // Extract document info
+        structure.Add(new
+        {
+            type = "DocumentInfo",
+            content = $"Title: {doc.DocumentInformation?.Title ?? "Untitled"}",
+            children = new[]
+            {
+                new { type = "Property", content = $"Author: {doc.DocumentInformation?.Author ?? "Unknown"}" },
+                new { type = "Property", content = $"Pages: {doc.Pages.Count}" }
+            }
+        });
+        
+        // Extract form fields
+        if (doc.Form?.Fields?.Count > 0)
+        {
+            var fields = new List<object>();
+            for (int i = 0; i < doc.Form.Fields.Count; i++)
+            {
+                var f = doc.Form.Fields[i];
+                fields.Add(new
+                {
+                    type = $"Field_{f.GetType().Name}",
+                    content = $"{f.Name ?? "Unnamed"} ({f.GetType().Name.Replace("PdfLoaded", "").Replace("Field", "")})",
+                    tooltip = f.ToolTip
+                });
+            }
+            
+            structure.Add(new
+            {
+                type = "FormFields",
+                content = $"{doc.Form.Fields.Count} form fields",
+                children = fields
+            });
+        }
+        
+        return Results.Json(new
+        {
+            success = true,
+            structure = structure,
+            metadata = new
+            {
+                pageCount = doc.Pages.Count,
+                hasForm = doc.Form?.Fields?.Count > 0,
+                fieldCount = doc.Form?.Fields?.Count ?? 0
+            }
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Failed to extract tag structure");
+        return Results.Json(new { success = false, error = ex.Message });
+    }
+})
+.WithName("ExtractTagStructure")
+.DisableAntiforgery();
+
 
 app.Run();
 
