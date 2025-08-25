@@ -89,3 +89,20 @@ test-*.txt
 appsettings.Development.json
 appsettings.Production.json
 secrets.json
+
+# Backup files
+*.bak
+*.bak[0-9]
+*.backup
+*.backup_*
+*.backup-*
+*.old
+*.working
+*.working[0-9]
+*.broken
+*_backup
+temp_*.txt
+fix_*.py
+
+# Debug files
+wwwroot/debug-raw.html
