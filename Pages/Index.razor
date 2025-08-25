@@ -334,6 +334,264 @@
     </div>
 </div>
 
+
+<style>
+    .drop-zone {
+        border: 3px dashed #dee2e6;
+        border-radius: 20px;
+        padding: 60px 40px;
+        text-align: center;
+        transition: all 0.3s ease;
+        background: white !important;
+        min-height: 400px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    }
+    
+    .drop-zone-active {
+        border-color: #4a90e2;
+        background: white !important;
+        transform: scale(1.02);
+        box-shadow: 0 8px 25px rgba(74, 144, 226, 0.15);
+    }
+    
+    .drop-zone.processing {
+        background: white !important;
+        border-color: #4a90e2;
+    }
+    
+    .drop-zone.has-file {
+        border-color: #28a745;
+        background: white !important;
+    }
+    
+    .drop-zone-content {
+        max-width: 400px;
+        margin: 0 auto;
+    }
+    
+    .drop-icon {
+        color: #6c757d;
+        opacity: 0.5;
+    }
+    
+    .file-selected {
+        animation: fadeIn 0.3s ease;
+    }
+    
+    .file-icon svg {
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+    }
+    
+    .results-section {
+        animation: slideUp 0.5s ease;
+    }
+    
+    .info-card {
+        text-align: center;
+        padding: 30px 20px;
+        background: white !important;
+        border-radius: 15px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        height: 100%;
+        color: #212529 !important;
+    }
+    
+    .info-card h5 {
+        color: #212529 !important;
+    }
+    
+    .info-card p {
+        color: #6c757d !important;
+    }
+    
+    .info-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+    }
+    
+    /* Remove AI mode gradient - all cards are white */
+    .info-card.ai-mode {
+        background: white !important;
+        color: #212529 !important;
+    }
+    
+    .info-card.ai-mode .text-muted {
+        color: #6c757d !important;
+    }
+    
+    .info-card.ai-mode h5 {
+        color: #212529 !important;
+    }
+    
+    .info-card.ai-mode p {
+        color: #6c757d !important;
+    }
+    
+    /* Ensure white text on colored backgrounds */
+    .bg-secondary, .bg-success, .bg-info, .bg-primary {
+        color: white !important;
+    }
+    
+    .bg-secondary *, .bg-success *, .bg-info *, .bg-primary * {
+        color: white !important;
+    }
+    
+    /* All buttons use light royal blue */
+    .btn-secondary, .btn-info, .btn-primary, .btn-success, .btn-outline-secondary, .btn-outline-info {
+        background-color: #4a90e2 !important;
+        border-color: #4a90e2 !important;
+        color: white !important;
+    }
+    
+    .btn-secondary:hover, .btn-info:hover, .btn-primary:hover, .btn-success:hover,
+    .btn-outline-secondary:hover, .btn-outline-info:hover {
+        background-color: #357abd !important;
+        border-color: #357abd !important;
+        color: white !important;
+    }
+    
+    .form-check-input:checked {
+        background-color: #4a90e2;
+        border-color: #4a90e2;
+    }
+    
+    .form-check-input:focus {
+        border-color: #4a90e2;
+        box-shadow: 0 0 0 0.25rem rgba(74, 144, 226, 0.25);
+    }
+    
+    .alert-info {
+        background: linear-gradient(135deg, #e3f2fd 0%, #f3f9ff 100%);
+        border: 1px solid #90caf9;
+        color: #1976d2;
+    }
+    
+    .info-icon {
+        font-size: 48px;
+        margin-bottom: 15px;
+    }
+    
+    .improvements-list {
+        background: #f8f9fa;
+        padding: 10px;
+        border-radius: 8px;
+    }
+    
+    /* Ensure proper text contrast */
+    .card-body p, .card-body strong {
+        color: #212529;
+    }
+    
+    .text-muted {
+        color: #6c757d !important;
+    }
+    
+    /* Override text-muted on dark backgrounds */
+    .bg-secondary .text-muted, 
+    .bg-success .text-muted, 
+    .bg-info .text-muted, 
+    .bg-primary .text-muted,
+    .bg-warning .text-muted {
+        color: rgba(255, 255, 255, 0.85) !important;
+    }
+    
+    .improvements-list ul {
+        margin-bottom: 0;
+        padding-left: 20px;
+    }
+    
+    .btn {
+        border-radius: 8px;
+        padding: 10px 20px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+    
+    .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .card {
+        border-radius: 15px;
+        overflow: hidden;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        background: white;
+    }
+    
+    .card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+    }
+    
+    .card-header {
+        border-radius: 0 !important;
+    }
+    
+    .badge {
+        padding: 6px 12px;
+        border-radius: 6px;
+    }
+    
+    /* Ensure badge text contrast */
+    .badge.bg-success {
+        background-color: #198754 !important;
+        color: white !important;
+    }
+    
+    .badge.bg-secondary {
+        background-color: #6c757d !important;
+        color: white !important;
+    }
+    
+    .badge.bg-info {
+        background-color: #0dcaf0 !important;
+        color: #000 !important;
+    }
+    
+    .badge.bg-warning {
+        background-color: #ffc107 !important;
+        color: #000 !important;
+    }
+    
+    @@keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    
+    @@keyframes slideUp {
+        from { 
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to { 
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .animate-in {
+        animation: slideUp 0.5s ease;
+    }
+    
+    /* Responsive adjustments */
+    @@media (max-width: 768px) {
+        .drop-zone {
+            padding: 40px 20px;
+            min-height: 300px;
+        }
+        
+        .info-card {
+            margin-bottom: 20px;
+        }
+    }
+</style>
+
 @code {
     private IBrowserFile? selectedFile;
     private bool isProcessing = false;
@@ -969,150 +1227,100 @@
     
     private async Task RenderTagTree(JsonElement tagData)
     {
-        var rootNode = tagData.GetProperty("rootNode");
-        var statistics = tagData.GetProperty("statistics");
-        var issues = tagData.GetProperty("issues");
-        
-        var html = "<div class='row'>";
-        
-        // Left panel - Tag tree
-        html += "<div class='col-md-8'>";
-        html += "<div class='card'>";
-        html += "<div class='card-header bg-light'>";
-        html += "<h6 class='mb-0'>Tag Hierarchy</h6>";
-        html += "<small class='text-muted'>Document structure and accessibility tags</small>";
-        html += "</div>";
-        html += "<div class='card-body' style='max-height: 600px; overflow-y: auto;'>";
-        
-        if (!rootNode.Equals(default(JsonElement)))
+        try
         {
-            html += "<div class='tag-tree-container' style='font-family: monospace; font-size: 14px;'>";
-            html += RenderTagNode(rootNode, 0);
-            html += "</div>";
-        }
-        else
-        {
-            html += "<p class='text-muted'>No tag structure found in this PDF</p>";
-        }
-        
-        html += "</div></div></div>";
-        
-        // Right panel - Statistics and issues
-        html += "<div class='col-md-4'>";
-        
-        // Statistics card
-        html += "<div class='card mb-3'>";
-        html += "<div class='card-header bg-light'><h6 class='mb-0'>Statistics</h6></div>";
-        html += "<div class='card-body'>";
-        html += "<dl class='row mb-0'>";
-        
-        if (statistics.TryGetProperty("totalTags", out var totalTags))
-            html += $"<dt class='col-sm-7'>Total Tags:</dt><dd class='col-sm-5'>{totalTags.GetInt32()}</dd>";
-        if (statistics.TryGetProperty("formFieldCount", out var formFields))
-            html += $"<dt class='col-sm-7'>Form Fields:</dt><dd class='col-sm-5'>{formFields.GetInt32()}</dd>";
-        if (statistics.TryGetProperty("headingCount", out var headings))
-            html += $"<dt class='col-sm-7'>Headings:</dt><dd class='col-sm-5'>{headings.GetInt32()}</dd>";
-        if (statistics.TryGetProperty("paragraphCount", out var paragraphs))
-            html += $"<dt class='col-sm-7'>Paragraphs:</dt><dd class='col-sm-5'>{paragraphs.GetInt32()}</dd>";
-        if (statistics.TryGetProperty("tableCount", out var tables))
-            html += $"<dt class='col-sm-7'>Tables:</dt><dd class='col-sm-5'>{tables.GetInt32()}</dd>";
-        if (statistics.TryGetProperty("imageCount", out var images))
-            html += $"<dt class='col-sm-7'>Images:</dt><dd class='col-sm-5'>{images.GetInt32()}</dd>";
-        if (statistics.TryGetProperty("maxDepth", out var maxDepth))
-            html += $"<dt class='col-sm-7'>Max Depth:</dt><dd class='col-sm-5'>{maxDepth.GetInt32()}</dd>";
-        
-        html += "</dl></div></div>";
-        
-        // Issues card
-        if (issues.ValueKind == JsonValueKind.Array && issues.GetArrayLength() > 0)
-        {
-            html += "<div class='card'>";
-            html += "<div class='card-header bg-warning bg-opacity-25'><h6 class='mb-0'>Issues Found</h6></div>";
-            html += "<div class='card-body' style='max-height: 300px; overflow-y: auto;'>";
+            // Check what properties actually exist
+            var hasStructure = tagData.TryGetProperty("structure", out var structure);
+            var hasMetadata = tagData.TryGetProperty("metadata", out var metadata);
             
-            foreach (var issue in issues.EnumerateArray())
+            if (!hasStructure)
             {
-                var severity = issue.TryGetProperty("severity", out var sev) ? sev.GetString() : "Warning";
-                var alertClass = severity == "Error" ? "alert-danger" : "alert-warning";
-                
-                html += $"<div class='alert {alertClass} py-2 px-3 mb-2'>";
-                html += "<small>";
-                
-                if (issue.TryGetProperty("type", out var type))
-                    html += $"<strong>{type.GetString()}:</strong> ";
-                    
-                if (issue.TryGetProperty("description", out var desc))
-                    html += desc.GetString();
-                    
-                if (issue.TryGetProperty("location", out var loc) && !string.IsNullOrEmpty(loc.GetString()))
-                    html += $"<br><span class='text-muted'>Location: {loc.GetString()}</span>";
-                    
-                if (issue.TryGetProperty("recommendation", out var rec) && !string.IsNullOrEmpty(rec.GetString()))
-                    html += $"<br><span class='text-info'>Recommendation: {rec.GetString()}</span>";
-                    
-                html += "</small></div>";
+                await JSRuntime.InvokeVoidAsync("console.error", "No structure property in response");
+                await JSRuntime.InvokeVoidAsync("eval", @"
+                    document.getElementById('tagTreeModalBody').innerHTML = `<div class='alert alert-warning'>No structure data available</div>`;
+                ");
+                return;
             }
             
-            html += "</div></div>";
+            var html = "<div class='row'>";
+            
+            // Left side - Tree structure
+            html += "<div class='col-md-8'>";
+            html += "<h6>Document Structure</h6>";
+            html += "<div class='tree-view'>";
+            
+            // Render each item in the structure array
+            foreach (var item in structure.EnumerateArray())
+            {
+                html += RenderTreeNode(item);
+            }
+            
+            html += "</div>";
+            html += "</div>";
+            
+            // Right side - Statistics
+            html += "<div class='col-md-4'>";
+            html += "<h6>Statistics</h6>";
+            html += "<dl class='row'>";
+            
+            if (hasMetadata)
+            {
+                if (metadata.TryGetProperty("pageCount", out var pageCount))
+                    html += $"<dt class='col-sm-7'>Total Pages:</dt><dd class='col-sm-5'>{pageCount.GetInt32()}</dd>";
+                
+                if (metadata.TryGetProperty("fieldCount", out var fieldCount))
+                    html += $"<dt class='col-sm-7'>Form Fields:</dt><dd class='col-sm-5'>{fieldCount.GetInt32()}</dd>";
+                
+                if (metadata.TryGetProperty("hasForm", out var hasForm))
+                    html += $"<dt class='col-sm-7'>Has Form:</dt><dd class='col-sm-5'>{(hasForm.GetBoolean() ? "Yes" : "No")}</dd>";
+            }
+            
+            html += "</dl>";
+            html += "</div>";
+            html += "</div>";
+            
+            // Apply the HTML to the modal
+            // Apply the HTML to the modal
+            var escapedHtml = html.Replace("`", "\\`");
+            await JSRuntime.InvokeVoidAsync("eval", $"document.getElementById('tagTreeModalBody').innerHTML = `{escapedHtml}`;");
         }
-        
-        html += "</div></div>";
-        
-        await JSRuntime.InvokeVoidAsync("eval", $@"
-            document.getElementById('tagTreeModalBody').innerHTML = `{html}`;
-        ");
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", "Error rendering tag tree:", ex.Message);
+            throw;
+        }
     }
     
-    private string RenderTagNode(JsonElement node, int level)
+    
+    private string RenderTreeNode(JsonElement node, int level = 0)
     {
-        var html = $"<div style='margin-left: {level * 20}px; margin-bottom: 4px;'>";
+        var html = "";
+        var indent = new string(' ', level * 4);
         
-        // Node header
-        html += "<div class='d-flex align-items-start'>";
+        var type = node.TryGetProperty("type", out var typeProp) ? typeProp.GetString() : "Unknown";
+        var content = node.TryGetProperty("content", out var contentProp) ? contentProp.GetString() : "";
+        var tooltip = node.TryGetProperty("tooltip", out var tooltipProp) ? tooltipProp.GetString() : "";
         
-        // Type badge
-        if (node.TryGetProperty("type", out var type))
+        html += $"<div class='tree-node' style='margin-left: {level * 20}px;'>";
+        html += $"<span class='node-type badge bg-secondary me-2'>{type}</span>";
+        html += $"<span class='node-content'>{content}</span>";
+        
+        if (!string.IsNullOrEmpty(tooltip))
         {
-            html += $"<span class='badge bg-info text-dark me-2' style='font-size: 11px;'>{type.GetString()}</span>";
-        }
-        
-        // Name
-        if (node.TryGetProperty("name", out var name))
-        {
-            html += $"<span class='fw-bold'>{name.GetString()}</span>";
-        }
-        
-        // Content preview
-        if (node.TryGetProperty("content", out var content) && !string.IsNullOrEmpty(content.GetString()))
-        {
-            var contentStr = content.GetString();
-            if (contentStr.Length > 50)
-                contentStr = contentStr.Substring(0, 50) + "...";
-            html += $"<span class='text-muted ms-2' style='font-style: italic;'>\"{contentStr}\"</span>";
-        }
-        
-        // Attributes
-        if (node.TryGetProperty("attributes", out var attrs) && attrs.ValueKind == JsonValueKind.Object)
-        {
-            var attrCount = attrs.EnumerateObject().Count();
-            if (attrCount > 0)
-            {
-                html += $"<span class='badge bg-secondary ms-2' style='font-size: 10px;'>{attrCount} attrs</span>";
-            }
+            html += $" <small class='text-muted'>({tooltip})</small>";
         }
         
         html += "</div>";
         
-        // Children
-        if (node.TryGetProperty("children", out var children) && children.ValueKind == JsonValueKind.Array)
+        // Render children if present
+        if (node.TryGetProperty("children", out var children))
         {
             foreach (var child in children.EnumerateArray())
             {
-                html += RenderTagNode(child, level + 1);
+                html += RenderTreeNode(child, level + 1);
             }
         }
         
-        html += "</div>";
         return html;
     }
     
@@ -1212,259 +1420,4 @@
     }
 }
 
-<style>
-    .drop-zone {
-        border: 3px dashed #dee2e6;
-        border-radius: 20px;
-        padding: 60px 40px;
-        text-align: center;
-        transition: all 0.3s ease;
-        background: white !important;
-        min-height: 400px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-    }
-    
-    .drop-zone-active {
-        border-color: #4a90e2;
-        background: white !important;
-        transform: scale(1.02);
-        box-shadow: 0 8px 25px rgba(74, 144, 226, 0.15);
-    }
-    
-    .drop-zone.processing {
-        background: white !important;
-        border-color: #4a90e2;
-    }
-    
-    .drop-zone.has-file {
-        border-color: #28a745;
-        background: white !important;
-    }
-    
-    .drop-zone-content {
-        max-width: 400px;
-        margin: 0 auto;
-    }
-    
-    .drop-icon {
-        color: #6c757d;
-        opacity: 0.5;
-    }
-    
-    .file-selected {
-        animation: fadeIn 0.3s ease;
-    }
-    
-    .file-icon svg {
-        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
-    }
-    
-    .results-section {
-        animation: slideUp 0.5s ease;
-    }
-    
-    .info-card {
-        text-align: center;
-        padding: 30px 20px;
-        background: white !important;
-        border-radius: 15px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-        height: 100%;
-        color: #212529 !important;
-    }
-    
-    .info-card h5 {
-        color: #212529 !important;
-    }
-    
-    .info-card p {
-        color: #6c757d !important;
-    }
-    
-    .info-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 8px 25px rgba(0,0,0,0.3);
-    }
-    
-    /* Remove AI mode gradient - all cards are white */
-    .info-card.ai-mode {
-        background: white !important;
-        color: #212529 !important;
-    }
-    
-    .info-card.ai-mode .text-muted {
-        color: #6c757d !important;
-    }
-    
-    .info-card.ai-mode h5 {
-        color: #212529 !important;
-    }
-    
-    .info-card.ai-mode p {
-        color: #6c757d !important;
-    }
-    
-    /* Ensure white text on colored backgrounds */
-    .bg-secondary, .bg-success, .bg-info, .bg-primary {
-        color: white !important;
-    }
-    
-    .bg-secondary *, .bg-success *, .bg-info *, .bg-primary * {
-        color: white !important;
-    }
-    
-    /* All buttons use light royal blue */
-    .btn-secondary, .btn-info, .btn-primary, .btn-success, .btn-outline-secondary, .btn-outline-info {
-        background-color: #4a90e2 !important;
-        border-color: #4a90e2 !important;
-        color: white !important;
-    }
-    
-    .btn-secondary:hover, .btn-info:hover, .btn-primary:hover, .btn-success:hover,
-    .btn-outline-secondary:hover, .btn-outline-info:hover {
-        background-color: #357abd !important;
-        border-color: #357abd !important;
-        color: white !important;
-    }
-    
-    .form-check-input:checked {
-        background-color: #4a90e2;
-        border-color: #4a90e2;
-    }
-    
-    .form-check-input:focus {
-        border-color: #4a90e2;
-        box-shadow: 0 0 0 0.25rem rgba(74, 144, 226, 0.25);
-    }
-    
-    .alert-info {
-        background: linear-gradient(135deg, #e3f2fd 0%, #f3f9ff 100%);
-        border: 1px solid #90caf9;
-        color: #1976d2;
-    }
-    
-    .info-icon {
-        font-size: 48px;
-        margin-bottom: 15px;
-    }
-    
-    .improvements-list {
-        background: #f8f9fa;
-        padding: 10px;
-        border-radius: 8px;
-    }
-    
-    /* Ensure proper text contrast */
-    .card-body p, .card-body strong {
-        color: #212529;
-    }
-    
-    .text-muted {
-        color: #6c757d !important;
-    }
-    
-    /* Override text-muted on dark backgrounds */
-    .bg-secondary .text-muted, 
-    .bg-success .text-muted, 
-    .bg-info .text-muted, 
-    .bg-primary .text-muted,
-    .bg-warning .text-muted {
-        color: rgba(255, 255, 255, 0.85) !important;
-    }
-    
-    .improvements-list ul {
-        margin-bottom: 0;
-        padding-left: 20px;
-    }
-    
-    .btn {
-        border-radius: 8px;
-        padding: 10px 20px;
-        font-weight: 500;
-        transition: all 0.3s ease;
-    }
-    
-    .btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    }
-    
-    .card {
-        border-radius: 15px;
-        overflow: hidden;
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        background: white;
-    }
-    
-    .card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 8px 25px rgba(0,0,0,0.3);
-    }
-    
-    .card-header {
-        border-radius: 0 !important;
-    }
-    
-    .badge {
-        padding: 6px 12px;
-        border-radius: 6px;
-    }
-    
-    /* Ensure badge text contrast */
-    .badge.bg-success {
-        background-color: #198754 !important;
-        color: white !important;
-    }
-    
-    .badge.bg-secondary {
-        background-color: #6c757d !important;
-        color: white !important;
-    }
-    
-    .badge.bg-info {
-        background-color: #0dcaf0 !important;
-        color: #000 !important;
-    }
-    
-    .badge.bg-warning {
-        background-color: #ffc107 !important;
-        color: #000 !important;
-    }
-    
-    @@keyframes fadeIn {
-        from { opacity: 0; }
-        to { opacity: 1; }
-    }
-    
-    @@keyframes slideUp {
-        from { 
-            opacity: 0;
-            transform: translateY(20px);
-        }
-        to { 
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-    
-    .animate-in {
-        animation: slideUp 0.5s ease;
-    }
-    
-    /* Responsive adjustments */
-    @@media (max-width: 768px) {
-        .drop-zone {
-            padding: 40px 20px;
-            min-height: 300px;
-        }
-        
-        .info-card {
-            margin-bottom: 20px;
-        }
-    }
-</style>
+
