@@ -1002,6 +1002,8 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
         var pdfBytes = Convert.FromBase64String(base64Data);
         logger.LogInformation($"Extracting tag structure from PDF, size: {pdfBytes.Length} bytes");
         
+        // Log the extraction process
+        
         using var stream = new MemoryStream(pdfBytes);
         using var doc = new PdfLoadedDocument(stream);
         
@@ -1041,6 +1043,8 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                 children = fields
             });
         }
+        
+        logger.LogInformation($"Tag structure extracted successfully: {structure.Count} items");
         
         return Results.Json(new
         {
