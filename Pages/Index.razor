@@ -910,13 +910,29 @@
             
             var response = await http.PostAsync("/api/extract-tag-structure", requestContent);
             var jsonResponse = await response.Content.ReadAsStringAsync();
-            var tagData = JsonSerializer.Deserialize<JsonElement>(jsonResponse);
+            
+            // Log raw response
+            await JSRuntime.InvokeVoidAsync("console.log", "Raw tag response:", jsonResponse);
+            
+            JsonElement tagData;
+            try 
+            {
+                tagData = JsonSerializer.Deserialize<JsonElement>(jsonResponse);
+            }
+            catch (JsonException jex)
+            {
+                await JSRuntime.InvokeVoidAsync("console.error", "Failed to parse JSON:", jex.Message, "Response was:", jsonResponse);
+                throw new Exception($"Invalid JSON response: {jex.Message}");
+            }
             
             currentTagTreeData = tagData;
             currentTagTreeFileName = fileName;
             
+            // Log the response for debugging
+            await JSRuntime.InvokeVoidAsync("console.log", "Tag tree response:", jsonResponse);
+            
             // Render the tag tree in the modal
-            if (tagData.GetProperty("success").GetBoolean())
+            if (tagData.TryGetProperty("success", out var successProp) && successProp.GetBoolean())
             {
                 await RenderTagTree(tagData);
             }
