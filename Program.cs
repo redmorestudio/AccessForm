@@ -40,6 +40,7 @@ builder.Services.AddScoped<PdfAccessibilityEnhancer>();
 builder.Services.AddScoped<WordToPdfConverter.Services.FieldAnalysisService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.FormFieldCreationService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.WordToPdfWithFieldsService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.SimplifiedWordToPdfService>();
 
 // Add AI services
 builder.Services.AddMemoryCache();
