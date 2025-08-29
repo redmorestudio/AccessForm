@@ -56,11 +56,16 @@ builder.Services.AddSingleton<CostTrackingService>();
 builder.Services.AddHttpClient<AnthropicService>();
 builder.Services.AddScoped<AnthropicService>();
 builder.Services.AddSingleton<DebugCacheService>();
-// builder.Services.AddHttpClient<PassportPdfService>();
 builder.Services.AddScoped<AiDebugProcessor>();
-// builder.Services.AddScoped<PassportPdfService>();
 builder.Services.AddScoped<LlamaGroqService>();
 builder.Services.AddHttpClient();
+
+// Add PassportPDF services
+builder.Services.AddScoped<PassportPdfService>();
+builder.Services.AddScoped<PassportPdfServiceSimple>();
+
+// Add NLP services  
+builder.Services.AddScoped<NLPLabelGenerator>();
 
 var app = builder.Build();
 
@@ -740,7 +745,7 @@ app.MapGet("/api/health", (CostTrackingService costTracking, IConfiguration conf
 
 // Add AI-powered conversion endpoint
 
-// AI Endpoint - Using only PassportPDF and Anthropic
+// AI Endpoint - Using PassportPDF and Anthropic for enhanced PDF processing
 app.MapPost("/api/convert-with-ai", async (
     HttpRequest request,
     AccessibilityService accessibilityService,
@@ -750,8 +755,10 @@ app.MapPost("/api/convert-with-ai", async (
     FormFieldCreationService fieldCreationService,
     ConfigurableFieldDetectionService configService,
     EnhancedPdfService enhancedService,
-    // PassportPdfService passportPdfService,
-    DebugCacheService debugCache,    ILogger<Program> logger) =>
+    PassportPdfService passportPdfService,
+    NLPLabelGenerator nlpGenerator,
+    DebugCacheService debugCache,
+    ILogger<Program> logger) =>
 {
     Console.WriteLine("=== AI ENDPOINT HIT (ENHANCED) ===");
     logger.LogInformation("=== AI ENDPOINT HIT (ENHANCED) ===");
@@ -815,8 +822,7 @@ app.MapPost("/api/convert-with-ai", async (
         // Try PassportPDF first
         try
         {
-            // extractedText = await passportPdfService.ExtractTextFromPdfAsync(normalPdfBytes);
-            extractedText = ""; // PassportPDF temporarily disabled
+            extractedText = await passportPdfService.ExtractTextFromPdfAsync(normalPdfBytes);
             logger.LogInformation($"PassportPDF returned: {extractedText.Length} characters");
         }
         catch (Exception ex)
@@ -1963,3 +1969,171 @@ app.MapGet("/api/debug-text/{debugId}", (string debugId, DebugCacheService debug
 //         return Results.Problem($"AI conversion failed: {ex.Message}");
 //     }
 // });
+
+// PDF Processing Endpoint - Handle existing PDFs with AI field detection
+app.MapPost("/api/process-pdf", async (
+    HttpRequest request,
+    PassportPdfService passportPdfService,
+    AnthropicService anthropicService,
+    ConfigurableFieldDetectionService configService,
+    NLPLabelGenerator nlpGenerator,
+    ILogger<Program> logger) =>
+{
+    logger.LogInformation("=== PDF PROCESSING ENDPOINT HIT ===");
+    
+    try
+    {
+        if (!request.Form.Files.Any())
+        {
+            return Results.BadRequest(new { error = "No file uploaded" });
+        }
+
+        var file = request.Form.Files[0];
+        
+        if (!file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.BadRequest(new { error = "Please upload a PDF file" });
+        }
+
+        // Read uploaded PDF
+        using var stream = file.OpenReadStream();
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        var pdfBytes = ms.ToArray();
+        
+        logger.LogInformation($"Processing PDF: {file.FileName}, Size: {pdfBytes.Length} bytes");
+        
+        // Step 1: Extract text using PassportPDF
+        var extractedText = await passportPdfService.ExtractTextFromPdfAsync(pdfBytes);
+        logger.LogInformation($"Extracted {extractedText.Length} characters of text");
+        
+        // Step 2: Analyze PDF structure
+        var tagStructure = await passportPdfService.ExtractTagTreeAsync(pdfBytes);
+        logger.LogInformation($"PDF Analysis: {tagStructure.PageCount} pages, {tagStructure.FieldCount} existing fields");
+        
+        // Step 3: Use Claude AI to identify potential form fields from text content
+        var aiFieldDetection = await anthropicService.AnalyzeDocumentForFieldsAsync(
+            extractedText, file.FileName);
+        
+        var detectedFields = new List<WordToPdfConverter.Models.FieldDetectionResult>();
+        
+        if (aiFieldDetection?.DetectedFields != null)
+        {
+            // Convert AI detected fields to our format
+            int fieldCounter = 1;
+            foreach (var aiField in aiFieldDetection.DetectedFields)
+            {
+                var fieldResult = new WordToPdfConverter.Models.FieldDetectionResult
+                {
+                    ShortId = $"AI{fieldCounter++}",
+                    FieldName = aiField.FieldName,
+                    FieldType = aiField.FieldType?.ToLower() ?? "text",
+                    X = 50, // Default positioning - would need OCR for exact positioning  
+                    Y = 50 + (fieldCounter * 25),
+                    Width = 200,
+                    Height = 20,
+                    PageNumber = 1, // Default to page 1
+                    Source = "Claude-AI",
+                    Confidence = aiField.Confidence,
+                    IsValid = true,
+                    ValidationNotes = aiField.Description
+                };
+                
+                detectedFields.Add(fieldResult);
+            }
+        }
+        
+        logger.LogInformation($"Claude AI detected {detectedFields.Count} potential form fields");
+        
+        // Step 4: Generate tooltips using NLP generator
+        foreach (var field in detectedFields)
+        {
+            try
+            {
+                var context = new AccessFormServer.Services.FieldContext
+                {
+                    DocumentTitle = file.FileName,
+                    UseAI = false, // Keep it fast
+                    IsRequired = field.IsValid
+                };
+                
+                var labelResult = await nlpGenerator.GenerateLabelsAsync(
+                    field.FieldName, field.FieldType, context);
+                
+                if (labelResult.Success && labelResult.Tooltip != null)
+                {
+                    field.ValidationNotes = labelResult.Tooltip.Primary;
+                    if (!string.IsNullOrEmpty(labelResult.Tooltip.FormatHint))
+                    {
+                        field.ValidationNotes += $" (Example: {labelResult.Tooltip.FormatHint})";
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, $"Failed to generate tooltip for field {field.FieldName}");
+            }
+        }
+        
+        // Step 5: Create enhanced PDF with form fields
+        byte[] enhancedPdfBytes = pdfBytes;
+        
+        if (detectedFields.Any())
+        {
+            logger.LogInformation($"Creating form fields in PDF");
+            enhancedPdfBytes = await passportPdfService.CreateFormFieldsInPdf(pdfBytes, detectedFields);
+        }
+        
+        // Return results
+        var response = new
+        {
+            success = true,
+            originalFile = new
+            {
+                name = file.FileName,
+                size = pdfBytes.Length,
+                pages = tagStructure.PageCount,
+                existingFields = tagStructure.FieldCount,
+                hasTaggedContent = tagStructure.HasTaggedContent
+            },
+            aiAnalysis = new
+            {
+                extractedTextLength = extractedText.Length,
+                detectedFieldCount = detectedFields.Count,
+                fields = detectedFields.Select(f => new
+                {
+                    id = f.ShortId,
+                    name = f.FieldName,
+                    type = f.FieldType,
+                    confidence = f.Confidence,
+                    tooltip = f.ValidationNotes,
+                    position = new { x = f.X, y = f.Y, width = f.Width, height = f.Height },
+                    page = f.PageNumber
+                }).ToList()
+            },
+            enhancedPdf = new
+            {
+                data = Convert.ToBase64String(enhancedPdfBytes),
+                size = enhancedPdfBytes.Length,
+                fieldsAdded = detectedFields.Count
+            },
+            processing = new
+            {
+                timestamp = DateTime.UtcNow,
+                provider = "PassportPDF + Claude AI",
+                nlpEnhanced = true
+            }
+        };
+        
+        logger.LogInformation($"PDF processing complete: {detectedFields.Count} fields added");
+        
+        return Results.Ok(response);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "PDF processing failed");
+        return Results.Problem($"PDF processing failed: {ex.Message}");
+    }
+});
+
+app.Run();

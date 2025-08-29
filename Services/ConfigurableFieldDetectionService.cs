@@ -30,6 +30,7 @@ namespace WordToPdfConverter.Services
         private readonly ClaudeVisionFieldDetector _visionDetector;
         private readonly GoogleDocumentAiService _googleAiService;
         private readonly ClaudeBoundingBoxValidator _boundingBoxValidator;
+        private readonly NLPLabelGenerator _nlpGenerator;
         private int _fieldCounter = 0;
 
         public ConfigurableFieldDetectionService(
@@ -39,7 +40,8 @@ namespace WordToPdfConverter.Services
             WordFormFieldAnalyzer wordAnalyzer,
             ClaudeVisionFieldDetector visionDetector,
             GoogleDocumentAiService googleAiService,
-            ClaudeBoundingBoxValidator boundingBoxValidator)
+            ClaudeBoundingBoxValidator boundingBoxValidator,
+            NLPLabelGenerator nlpGenerator)
         {
             _logger = logger;
             _fieldCreationService = fieldCreationService;
@@ -48,6 +50,7 @@ namespace WordToPdfConverter.Services
             _visionDetector = visionDetector;
             _googleAiService = googleAiService;
             _boundingBoxValidator = boundingBoxValidator;
+            _nlpGenerator = nlpGenerator;
         }
 
         /// <summary>
@@ -630,7 +633,39 @@ namespace WordToPdfConverter.Services
         
         private string GetFieldTooltip(FieldDetectionResult field)
         {
-            // Generate helpful tooltip based on field type
+            // Try to generate intelligent tooltip with NLP generator
+            if (_nlpGenerator != null)
+            {
+                try
+                {
+                    var context = new FieldContext
+                    {
+                        UseAI = false, // Keep it fast for real-time use
+                        IsRequired = field.IsValid
+                    };
+                    
+                    var labelResult = _nlpGenerator.GenerateLabelsAsync(field.FieldName, field.FieldType, context).Result;
+                    
+                    if (labelResult.Success && labelResult.Tooltip != null)
+                    {
+                        var tooltipText = labelResult.Tooltip.Primary;
+                        
+                        // Add format hint if available
+                        if (!string.IsNullOrEmpty(labelResult.Tooltip.FormatHint))
+                        {
+                            tooltipText += $" (Example: {labelResult.Tooltip.FormatHint})";
+                        }
+                        
+                        return tooltipText;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, $"Failed to generate NLP tooltip for field {field.FieldName}");
+                }
+            }
+            
+            // Fallback to simple tooltip generation
             var mask = FieldTypeDetector.GetFieldMask(field.FieldType);
             if (!string.IsNullOrEmpty(mask))
             {
@@ -754,12 +789,14 @@ namespace WordToPdfConverter.Services
                     
                     if (bestMatch != null)
                     {
-                        // Create enhanced text field
+                        // Create enhanced field with intelligent type detection
+                        var detectedType = FieldTypeDetector.DetectFieldType(bestMatch.FieldName, null, bestMatch.FieldType);
+                        
                         var enhanced = new FieldDetectionResult
                         {
                             ShortId = sfField.ShortId,
                             FieldName = bestMatch.FieldName,  // Use Claude's label
-                            FieldType = "text",  // ALWAYS keep text fields as text (not radio/etc)
+                            FieldType = detectedType,  // Use Claude's type or refined detection
                             X = sfField.X,
                             Y = sfField.Y,
                             Width = sfField.Width,
@@ -770,7 +807,7 @@ namespace WordToPdfConverter.Services
                             IsValid = sfField.IsValid
                         };
                         enhancedFields.Add(enhanced);
-                        _logger.LogDebug($"Enhanced text field {sfField.ShortId}: '{sfField.FieldName}' → '{bestMatch.FieldName}' (type: text, originally: {bestMatch.FieldType})");
+                        _logger.LogDebug($"Enhanced field {sfField.ShortId}: '{sfField.FieldName}' → '{bestMatch.FieldName}' (type: {detectedType}, Claude suggested: {bestMatch.FieldType})");
                     }
                     else
                     {
