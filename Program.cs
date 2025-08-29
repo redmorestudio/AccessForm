@@ -908,38 +908,43 @@ app.MapPost("/api/convert-with-ai", async (
         
         var processingTime = (DateTime.UtcNow - startTime).TotalMilliseconds;
         
-        // Create form fields in the PDF using the detected fields
-        // Note: Since AI doesn't detect positions, we'll create fields with automatic layout
-        if (fieldResults.Count > 0)
+        // PROPERLY process the document with field detection pipeline
+        // For Word documents, use ConfigurableFieldDetectionService to:
+        // 1. Convert to PDF with Syncfusion (preserves field positions)
+        // 2. Use Claude Vision to label and verify fields
+        // 3. Create fields at correct positions
+        if (isWord)
         {
-            logger.LogInformation($"Creating {fieldResults.Count} form fields in PDF");
+            logger.LogInformation("Using proper field detection pipeline for Word document");
             
-            // Create a new PDF document with form fields in a structured layout
-            using var inputStream = new MemoryStream(normalPdfBytes);
-            using var loadedDoc = new PdfLoadedDocument(inputStream);
-            
-            // Create new document for adding fields
-            using var newDoc = new PdfDocument();
-            
-            // Copy pages from loaded document
-            for (int i = 0; i < loadedDoc.Pages.Count; i++)
+            // Configure the pipeline to use Syncfusion + Claude Vision
+            var config = new FieldDetectionConfig
             {
-                var pageTemplate = loadedDoc.Pages[i].CreateTemplate();
-                var newPage = newDoc.Pages.Add();
-                newPage.Graphics.DrawPdfTemplate(pageTemplate, PointF.Empty);
-            }
+                Services = new ServiceSelection
+                {
+                    UseSyncfusion = true,        // Detect fields with positions
+                    UseClaudeVision = true,      // Label and verify with Claude
+                    UseGoogle = false,
+                    UseClaudeValidation = false
+                },
+                Mode = ProcessingMode.Sequential,  // Process in order
+                DebugMode = false
+            };
             
-            // Add form fields using automatic layout
-            fieldCreationService.CreateFormFieldsInNewDocument(newDoc, fieldResults);
+            // Process with the full pipeline
+            var (processedPdfBytes, pipelineFields) = await configService.ConvertWithConfig(fileBytes, file.FileName, config);
+            normalPdfBytes = processedPdfBytes;
             
-            // Save the new document with fields
-            using var outputStream = new MemoryStream();
-            newDoc.Save(outputStream);
-            normalPdfBytes = outputStream.ToArray();
-            newDoc.Close(true);
-            loadedDoc.Close(true);
+            // Update field count for reporting
+            detectedFields = pipelineFields?.Count ?? 0;
             
-            logger.LogInformation($"Successfully created {fieldResults.Count} form fields");
+            logger.LogInformation($"Pipeline detected and created {detectedFields} fields at correct positions");
+        }
+        else
+        {
+            // For existing PDFs, we can't easily add fields at specific positions
+            // Log a warning about this limitation
+            logger.LogWarning("PDF field creation requires Word document for accurate positioning");
         }
         
         // Apply accessibility remediation
