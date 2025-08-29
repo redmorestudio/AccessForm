@@ -1412,12 +1412,17 @@
         try
         {
             // Check what properties actually exist
+            // Try to get structure from either 'structure' or 'tagTree' property
             var hasStructure = tagData.TryGetProperty("structure", out var structure);
+            if (!hasStructure)
+            {
+                hasStructure = tagData.TryGetProperty("tagTree", out structure);
+            }
             var hasMetadata = tagData.TryGetProperty("metadata", out var metadata);
             
             if (!hasStructure)
             {
-                await JSRuntime.InvokeVoidAsync("console.error", "No structure property in response");
+                await JSRuntime.InvokeVoidAsync("console.error", "No structure or tagTree property in response");
                 await JSRuntime.InvokeVoidAsync("eval", @"
                     document.getElementById('tagTreeModalBody').innerHTML = `<div class='alert alert-warning'>No structure data available</div>`;
                 ");
