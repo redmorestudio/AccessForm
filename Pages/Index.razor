@@ -152,6 +152,9 @@
                         </div>
                         <h4>Processing Your Document</h4>
                         <p class="text-muted small">AI Mode: @useAiMode</p>
+                        <button class="btn btn-danger mt-3" @onclick="CancelProcessing">
+                            <i class="bi bi-x-circle"></i> Cancel Processing
+                        </button>
                         @if (useAiMode)
                         {
                             <div class="alert alert-info mt-3">
@@ -718,6 +721,7 @@
     private string processingMode = "SyncfusionWithValidation";
     private bool debugMode = true;
     private bool showFieldIds = true;
+    private CancellationTokenSource? processingCancellationTokenSource;
     
     // Timer for AI processing
     private System.Timers.Timer? processingTimer;
@@ -985,11 +989,38 @@
     
     // Drag and drop is handled entirely by JavaScript interop
     
+    private void CancelProcessing()
+    {
+        // Cancel any ongoing HTTP requests
+        processingCancellationTokenSource?.Cancel();
+        processingCancellationTokenSource?.Dispose();
+        processingCancellationTokenSource = null;
+        
+        // Stop the timer
+        StopProcessingTimer();
+        
+        // Reset state
+        isProcessing = false;
+        processingMessage = "Processing cancelled by user";
+        selectedFile = null;
+        droppedFileData = null;
+        processingResults = null;
+        StateHasChanged();
+        
+        // Log cancellation
+        Console.WriteLine("Processing cancelled by user");
+    }
+    
     private async Task ProcessFile()
     {
         if (selectedFile == null) return;
         
         await JSRuntime.InvokeVoidAsync("console.log", "ProcessFile: Starting processing");
+        
+        // Create new cancellation token for this processing session
+        processingCancellationTokenSource?.Cancel();
+        processingCancellationTokenSource?.Dispose();
+        processingCancellationTokenSource = new CancellationTokenSource();
         
         // Force UI update
         isProcessing = true;
