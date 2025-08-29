@@ -126,15 +126,28 @@ window.accessForm = {
                     const isWord = fileName.endsWith('.docx');
                     // Determine endpoint based on AI mode and file type
                     let endpoint;
+                    let config = null;
                     if (window.accessForm && window.accessForm.isAiModeEnabled && window.accessForm.isAiModeEnabled()) {
-                        // Use AI-enhanced endpoint when AI mode is active
-                        endpoint = '/api/convert-with-ai';
+                        // Use configurable endpoint for Word docs in AI mode
+                        endpoint = isWord ? '/api/convert-with-config' : '/api/convert-with-ai';
+                        // Get configuration from UI if using configurable endpoint
+                        if (endpoint === '/api/convert-with-config') {
+                            config = {
+                                useSyncfusion: document.querySelector('#useSyncfusion')?.checked ?? true,
+                                useGoogle: document.querySelector('#useGoogle')?.checked ?? false,
+                                useClaudeVision: document.querySelector('#useClaudeVision')?.checked ?? false,
+                                useClaudeValidation: document.querySelector('#useClaudeValidation')?.checked ?? false,
+                                mode: document.querySelector('input[name="processingMode"]:checked')?.value ?? 'Sequential',
+                                debugMode: document.querySelector('#debugMode')?.checked ?? true,
+                                showFieldIds: document.querySelector('#showFieldIds')?.checked ?? true
+                            };
+                        }
                     } else {
                         // Use standard endpoints
                         endpoint = isWord ? '/api/convert' : '/api/remediate-pdf';
                     }
                     
-                    const result = await window.accessForm.uploadOriginalFile(endpoint, file);
+                    const result = await window.accessForm.uploadOriginalFile(endpoint, file, config);
                     
                     if (result) {
                         console.log('Upload successful, calling Blazor to show results');
@@ -174,7 +187,7 @@ window.accessForm = {
     },
 
     // Upload original file directly without base64 conversion
-    uploadOriginalFile: async function (endpoint, file) {
+    uploadOriginalFile: async function (endpoint, file, config) {
         try {
             console.log(`uploadOriginalFile: ${endpoint}, file: ${file.name}`);
             console.log(`uploadOriginalFile: file size: ${file.size}, type: ${file.type}`);
@@ -183,10 +196,24 @@ window.accessForm = {
             const formData = new FormData();
             formData.append('file', file, file.name);
             
+            // Add configuration parameters if provided
+            if (config) {
+                if (config.useSyncfusion !== undefined) formData.append("useSyncfusion", config.useSyncfusion);
+                if (config.useGoogle !== undefined) formData.append("useGoogle", config.useGoogle);
+                if (config.useClaudeVision !== undefined) formData.append("useClaudeVision", config.useClaudeVision);
+                if (config.useClaudeValidation !== undefined) formData.append("useClaudeValidation", config.useClaudeValidation);
+                if (config.mode !== undefined) formData.append("mode", config.mode);
+                if (config.debugMode !== undefined) formData.append("debugMode", config.debugMode);
+                if (config.showFieldIds !== undefined) formData.append("showFieldIds", config.showFieldIds);
+                console.log(`uploadOriginalFile: Added config parameters`, config);
+            }
+            
             console.log(`uploadOriginalFile: FormData created`);
             
             // Send request
-            const response = await fetch(`http://localhost:5008${endpoint}`, {
+            // Use current window location instead of hardcoded port
+            const baseUrl = window.location.origin;
+            const response = await fetch(`${baseUrl}${endpoint}`, {
                 method: 'POST',
                 body: formData
             });
@@ -210,7 +237,7 @@ window.accessForm = {
     },
 
     // Upload file from base64 data (for Blazor file input)
-    uploadFileDirectly: async function (endpoint, fileName, base64Data, contentType, useAi) {
+    uploadFileDirectly: async function (endpoint, fileName, base64Data, contentType, useAi, config) {
         try {
             console.log(`uploadFileDirectly: ${endpoint}, file: ${fileName}`);
             console.log(`uploadFileDirectly: contentType: ${contentType}`);
@@ -229,11 +256,26 @@ window.accessForm = {
             formData.append('file', blob, fileName);
             
             formData.append("useAi", useAi || false);
+            
+            // Add configuration parameters if provided
+            if (config) {
+                if (config.useSyncfusion !== undefined) formData.append("useSyncfusion", config.useSyncfusion);
+                if (config.useGoogle !== undefined) formData.append("useGoogle", config.useGoogle);
+                if (config.useClaudeVision !== undefined) formData.append("useClaudeVision", config.useClaudeVision);
+                if (config.useClaudeValidation !== undefined) formData.append("useClaudeValidation", config.useClaudeValidation);
+                if (config.mode !== undefined) formData.append("mode", config.mode);
+                if (config.debugMode !== undefined) formData.append("debugMode", config.debugMode);
+                if (config.showFieldIds !== undefined) formData.append("showFieldIds", config.showFieldIds);
+                console.log(`uploadFileDirectly: Added config parameters`, config);
+            }
+            
             console.log(`uploadFileDirectly: useAi flag: ${useAi || false}`);
             console.log(`uploadFileDirectly: FormData created with blob size: ${blob.size}`);
             
             // Send request
-            const response = await fetch(`http://localhost:5008${endpoint}`, {
+            // Use current window location instead of hardcoded port
+            const baseUrl = window.location.origin;
+            const response = await fetch(`${baseUrl}${endpoint}`, {
                 method: 'POST',
                 body: formData
             });
@@ -424,15 +466,28 @@ window.accessForm = {
                         const isWord = fileName.endsWith('.docx');
                         // Determine endpoint based on AI mode and file type
                         let endpoint;
+                        let config = null;
                         if (window.accessForm && window.accessForm.isAiModeEnabled && window.accessForm.isAiModeEnabled()) {
-                            // Use AI-enhanced endpoint when AI mode is active
-                            endpoint = '/api/convert-with-ai';
+                            // Use configurable endpoint for Word docs in AI mode
+                            endpoint = isWord ? '/api/convert-with-config' : '/api/convert-with-ai';
+                            // Get configuration from UI if using configurable endpoint
+                            if (endpoint === '/api/convert-with-config') {
+                                config = {
+                                    useSyncfusion: document.querySelector('#useSyncfusion')?.checked ?? true,
+                                    useGoogle: document.querySelector('#useGoogle')?.checked ?? false,
+                                    useClaudeVision: document.querySelector('#useClaudeVision')?.checked ?? false,
+                                    useClaudeValidation: document.querySelector('#useClaudeValidation')?.checked ?? false,
+                                    mode: document.querySelector('input[name="processingMode"]:checked')?.value ?? 'Sequential',
+                                    debugMode: document.querySelector('#debugMode')?.checked ?? true,
+                                    showFieldIds: document.querySelector('#showFieldIds')?.checked ?? true
+                                };
+                            }
                         } else {
                             // Use standard endpoints
                             endpoint = isWord ? '/api/convert' : '/api/remediate-pdf';
                         }
                         
-                        const result = await window.accessForm.uploadOriginalFile(endpoint, file);
+                        const result = await window.accessForm.uploadOriginalFile(endpoint, file, config);
                         
                         // Remove processing overlay
                         if (timerInterval) {

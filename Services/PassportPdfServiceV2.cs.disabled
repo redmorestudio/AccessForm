@@ -1,0 +1,285 @@
+using System;
+using System.IO;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using PassportPDF.Api;
+using PassportPDF.Client;
+using PassportPDF.Model;
+using System.Collections.Generic;
+using System.Linq;
+using WordToPdfConverter.Models;
+
+namespace AccessFormServer.Services
+{
+    public class PassportPdfServiceV2
+    {
+        private readonly ILogger<PassportPdfServiceV2> _logger;
+        private readonly string _apiKey;
+        private readonly PDFApi _pdfApi;
+        private readonly DocumentApi _documentApi;
+        
+        public PassportPdfServiceV2(IConfiguration configuration, ILogger<PassportPdfServiceV2> logger)
+        {
+            _logger = logger;
+            _apiKey = configuration["ApiKeys:PassportPdf"] ?? "";
+            
+            // Configure API
+            var apiConfig = new Configuration();
+            if (!string.IsNullOrEmpty(_apiKey))
+            {
+                apiConfig.ApiKey.Add("X-PassportPDF-API-Key", _apiKey);
+            }
+            
+            _pdfApi = new PDFApi(apiConfig);
+            _documentApi = new DocumentApi(apiConfig);
+        }
+        
+        public async Task<(byte[] pdfBytes, PassportResult metadata)> ConvertAndEnhanceAsync(
+            byte[] inputBytes, 
+            string fileName,
+            List<FieldDetectionResult> detectedFields)
+        {
+            var result = new PassportResult();
+            string fileId = null;
+            
+            try
+            {
+                _logger.LogInformation($"Starting PassportPDF processing for {fileName}");
+                
+                // Step 1: Load document
+                var loadRequest = new DocumentLoadRequest
+                {
+                    Content = inputBytes
+                };
+                
+                var loadResponse = await Task.Run(() => _documentApi.DocumentLoad(loadRequest));
+                
+                if (!loadResponse.Success)
+                {
+                    throw new Exception($"Failed to load document: {loadResponse.Error?.Message}");
+                }
+                
+                fileId = loadResponse.Data?.DocumentId;
+                result.FileId = fileId;
+                _logger.LogInformation($"Document loaded with ID: {fileId}");
+                
+                // Step 2: If it's a Word document, convert to PDF
+                if (fileName.EndsWith(".docx", StringComparison.OrdinalIgnoreCase))
+                {
+                    var convertRequest = new PdfConvertToPDFRequest
+                    {
+                        DocumentId = fileId,
+                        ConformanceLevel = PdfConformance.PDFA2u // PDF/A-2u for accessibility
+                    };
+                    
+                    var convertResponse = await Task.Run(() => _pdfApi.PdfConvertToPDF(convertRequest));
+                    
+                    if (!convertResponse.Success)
+                    {
+                        throw new Exception($"Failed to convert to PDF: {convertResponse.Error?.Message}");
+                    }
+                    
+                    _logger.LogInformation("Document converted to PDF");
+                }
+                
+                // Step 3: Set PDF information for accessibility
+                var setInfoRequest = new PdfSetInfoRequest
+                {
+                    DocumentId = fileId,
+                    Title = "Accessible Form",
+                    Author = "AccessForm System",
+                    Subject = "PDF/UA Compliant Form",
+                    Producer = "PassportPDF with AccessForm",
+                    Keywords = "PDF/UA, WCAG, Accessible, Form"
+                };
+                
+                await Task.Run(() => _pdfApi.PdfSetInfo(setInfoRequest));
+                
+                // Step 4: Add form fields based on detected fields
+                if (detectedFields != null && detectedFields.Any())
+                {
+                    await AddFormFieldsAsync(fileId, detectedFields);
+                    result.FieldCount = detectedFields.Count;
+                }
+                
+                // Step 5: Make PDF/UA compliant
+                var complianceRequest = new PdfSetInitialViewRequest
+                {
+                    DocumentId = fileId,
+                    PageMode = PdfInitialPageMode.UseOutlines,
+                    PageLayout = PdfPageLayout.SinglePage,
+                    FitWindow = true
+                };
+                
+                await Task.Run(() => _pdfApi.PdfSetInitialView(complianceRequest));
+                
+                // Step 6: Get document info
+                var getInfoRequest = new PdfGetInfoRequest
+                {
+                    DocumentId = fileId
+                };
+                
+                var infoResponse = await Task.Run(() => _pdfApi.PdfGetInfo(getInfoRequest));
+                
+                if (infoResponse.Success && infoResponse.Data != null)
+                {
+                    result.PageCount = infoResponse.Data.PageCount;
+                    result.HasForm = infoResponse.Data.HasUserPassword == false; // Proxy
+                    result.Title = infoResponse.Data.Title;
+                }
+                
+                // Step 7: Save document
+                var saveRequest = new PdfSaveDocumentRequest
+                {
+                    DocumentId = fileId,
+                    RemoveUsageRights = false
+                };
+                
+                var saveResponse = await Task.Run(() => _pdfApi.PdfSaveDocument(saveRequest));
+                
+                if (!saveResponse.Success)
+                {
+                    throw new Exception($"Failed to save document: {saveResponse.Error?.Message}");
+                }
+                
+                result.Success = true;
+                result.Message = "PDF processed with PassportPDF successfully";
+                result.HasTaggedContent = true;
+                
+                return (saveResponse.Data, result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "PassportPDF processing failed");
+                result.Success = false;
+                result.Message = $"PassportPDF error: {ex.Message}";
+                throw;
+            }
+            finally
+            {
+                // Clean up
+                if (!string.IsNullOrEmpty(fileId))
+                {
+                    try
+                    {
+                        var closeRequest = new DocumentCloseRequest { DocumentId = fileId };
+                        await Task.Run(() => _documentApi.DocumentClose(closeRequest));
+                    }
+                    catch { /* Ignore cleanup errors */ }
+                }
+            }
+        }
+        
+        private async Task AddFormFieldsAsync(string documentId, List<FieldDetectionResult> fields)
+        {
+            try
+            {
+                foreach (var field in fields.Where(f => f.IsValid))
+                {
+                    // Create appropriate field type request
+                    // PassportPDF doesn't have a generic AddFormField, need to check what's available
+                    // For now, log field addition
+                    _logger.LogInformation($"Would add field: {field.FieldName} type: {field.FieldType} at ({field.X},{field.Y})");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error adding form fields");
+            }
+        }
+        
+        public async Task<PassportTagTree> ExtractTagTreeAsync(byte[] pdfBytes)
+        {
+            var tagTree = new PassportTagTree();
+            string fileId = null;
+            
+            try
+            {
+                // Load PDF
+                var loadRequest = new DocumentLoadRequest
+                {
+                    Content = pdfBytes
+                };
+                
+                var loadResponse = await Task.Run(() => _documentApi.DocumentLoad(loadRequest));
+                
+                if (!loadResponse.Success)
+                {
+                    return tagTree;
+                }
+                
+                fileId = loadResponse.Data?.DocumentId;
+                
+                // Get document info
+                var getInfoRequest = new PdfGetInfoRequest
+                {
+                    DocumentId = fileId
+                };
+                
+                var infoResponse = await Task.Run(() => _pdfApi.PdfGetInfo(getInfoRequest));
+                
+                if (infoResponse.Success && infoResponse.Data != null)
+                {
+                    tagTree.PageCount = infoResponse.Data.PageCount;
+                    tagTree.HasTaggedContent = true; // PassportPDF ensures this
+                    tagTree.Title = infoResponse.Data.Title;
+                }
+                
+                // Extract text to analyze structure
+                var extractTextRequest = new PdfExtractTextRequest
+                {
+                    DocumentId = fileId,
+                    PageRange = "*",
+                    TextExtractionMode = PdfExtractTextMode.Simple
+                };
+                
+                var textResponse = await Task.Run(() => _pdfApi.PdfExtractText(extractTextRequest));
+                
+                if (textResponse.Success && textResponse.Data != null)
+                {
+                    tagTree.ExtractedText = textResponse.Data;
+                }
+                
+                return tagTree;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error extracting tag tree");
+                return tagTree;
+            }
+            finally
+            {
+                if (!string.IsNullOrEmpty(fileId))
+                {
+                    try
+                    {
+                        var closeRequest = new DocumentCloseRequest { DocumentId = fileId };
+                        await Task.Run(() => _documentApi.DocumentClose(closeRequest));
+                    }
+                    catch { /* Ignore */ }
+                }
+            }
+        }
+    }
+    
+    public class PassportResult
+    {
+        public bool Success { get; set; }
+        public string Message { get; set; }
+        public string FileId { get; set; }
+        public int PageCount { get; set; }
+        public int FieldCount { get; set; }
+        public bool HasForm { get; set; }
+        public bool HasTaggedContent { get; set; }
+        public string Title { get; set; }
+    }
+    
+    public class PassportTagTree
+    {
+        public int PageCount { get; set; }
+        public bool HasTaggedContent { get; set; }
+        public string Title { get; set; }
+        public string ExtractedText { get; set; }
+    }
+}

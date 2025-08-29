@@ -1,4 +1,3 @@
-using System.Linq;
 using Syncfusion.DocIO;
 using Syncfusion.DocIO.DLS;
 using Syncfusion.DocIORenderer;
@@ -38,19 +37,16 @@ builder.Services.AddScoped<AccessibilityReportService>();
 builder.Services.AddScoped<AccessibilityRetrofitService>();
 builder.Services.AddScoped<PdfAccessibilityEnhancer>();
 builder.Services.AddScoped<WordToPdfConverter.Services.FieldAnalysisService>();
-builder.Services.AddScoped<WordToPdfConverter.Services.FormFieldCreationService>();
-builder.Services.AddScoped<WordToPdfConverter.Services.WordToPdfWithFieldsService>();
-builder.Services.AddScoped<WordToPdfConverter.Services.SimplifiedWordToPdfService>();
-builder.Services.AddScoped<WordToPdfConverter.Services.FieldSizeOptimizer>();
 
 // Add AI services
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<CostTrackingService>();
-builder.Services.AddScoped<AzureFormRecognizerService>();
 builder.Services.AddHttpClient<AnthropicService>();
 builder.Services.AddScoped<AnthropicService>();
-builder.Services.AddSingleton<DebugCacheService>();builder.Services.AddHttpClient<PassportPdfService>();
-builder.Services.AddScoped<AiDebugProcessor>();builder.Services.AddScoped<PassportPdfService>();
+builder.Services.AddSingleton<DebugCacheService>();
+// builder.Services.AddHttpClient<PassportPdfService>();
+builder.Services.AddScoped<AiDebugProcessor>();
+// builder.Services.AddScoped<PassportPdfService>();
 builder.Services.AddScoped<LlamaGroqService>();
 builder.Services.AddHttpClient();
 
@@ -707,7 +703,7 @@ app.MapPost("/api/remediate-pdf", async (HttpRequest request, AccessibilityServi
 // Add health check endpoint
 app.MapGet("/api/health", (CostTrackingService costTracking, IConfiguration configuration) =>
 {
-    var azureEnabled = configuration.GetValue<bool>("AiServices:AzureFormRecognizer:Enabled", false);
+    var anthropicEnabled = true;
     var llamaEnabled = configuration.GetValue<bool>("AiServices:LlamaGroq:Enabled", false);
     
     var dailySummary = costTracking.GetDailySummary();
@@ -717,7 +713,7 @@ app.MapGet("/api/health", (CostTrackingService costTracking, IConfiguration conf
         status = "healthy",
         services = new
         {
-            azureFormRecognizer = new { enabled = azureEnabled },
+            anthropic = new { enabled = anthropicEnabled },
             llamaGroq = new { enabled = llamaEnabled }
         },
         costTracking = new
@@ -739,11 +735,8 @@ app.MapPost("/api/convert-with-ai", async (
     AccessibilityRetrofitService retrofitService,
     PdfAccessibilityEnhancer enhancer,
     AnthropicService anthropicService,
-    PassportPdfService passportPdfService,
-    FormFieldCreationService fieldCreationService,
-    WordToPdfWithFieldsService wordToPdfService,
-    FieldSizeOptimizer fieldSizeOptimizer,
-    ILogger<Program> logger) =>
+    // PassportPdfService passportPdfService,
+    DebugCacheService debugCache,    ILogger<Program> logger) =>
 {
     Console.WriteLine("=== AI ENDPOINT HIT (ENHANCED) ===");
     logger.LogInformation("=== AI ENDPOINT HIT (ENHANCED) ===");
@@ -785,33 +778,30 @@ app.MapPost("/api/convert-with-ai", async (
         
         if (isWord)
         {
-            logger.LogInformation("Converting Word to PDF with AI-detected form fields");
-            // Use the new service that creates fields during conversion
-            normalPdfBytes = await wordToPdfService.ConvertWordToPdfWithFields(fileBytes, file.FileName, true);
-            logger.LogInformation($"Word to PDF conversion complete with form fields. Size: {normalPdfBytes.Length} bytes");
+            logger.LogInformation("Converting Word to PDF");
+            // Convert Word to PDF using Syncfusion
+            using var inputStream = new MemoryStream(fileBytes);
+            using var wordDoc = new WordDocument(inputStream, FormatType.Docx);
+            using var docRenderer = new DocIORenderer();
+            using var pdfDocument = docRenderer.ConvertToPDF(wordDoc);
+            using var outputStream = new MemoryStream();
+            pdfDocument.Save(outputStream);
+            normalPdfBytes = outputStream.ToArray();
         }
         else
         {
             normalPdfBytes = fileBytes;
         }
         
-        // For PDFs, we still need to extract text and analyze with Claude
-        // (Word documents already had this done during conversion)
+        // Extract text for AI analysis
+        logger.LogInformation("Extracting text for AI analysis");
         string extractedText = "";
-        List<AnthropicService.FieldAnalysisResult> fieldResults = null;
-        string aiAnalysis = "";
-        int detectedFields = 0;
-        var processingTime = 0.0;
-        var startTime = DateTime.UtcNow;
         
-        if (!isWord)  // Only do this for PDFs, not Word docs
-        {
-            logger.LogInformation("Extracting text from PDF for AI analysis");
-            
-            // Try PassportPDF first
+        // Try PassportPDF first
         try
         {
-            extractedText = await passportPdfService.ExtractTextFromPdfAsync(normalPdfBytes);
+            // extractedText = await passportPdfService.ExtractTextFromPdfAsync(normalPdfBytes);
+            extractedText = ""; // PassportPDF temporarily disabled
             logger.LogInformation($"PassportPDF returned: {extractedText.Length} characters");
         }
         catch (Exception ex)
@@ -830,8 +820,6 @@ app.MapPost("/api/convert-with-ai", async (
                 using var pdfStream = new MemoryStream(normalPdfBytes);
                 using var pdfDoc = new PdfLoadedDocument(pdfStream);
                 var extractedTextBuilder = new System.Text.StringBuilder();
-                
-                // Extract from ALL pages, not just first!
                 for (int i = 0; i < pdfDoc.Pages.Count; i++)
                 {
                     var pageText = pdfDoc.Pages[i].ExtractText();
@@ -841,7 +829,6 @@ app.MapPost("/api/convert-with-ai", async (
                         extractedTextBuilder.AppendLine(pageText);
                     }
                 }
-                
                 var fallbackText = extractedTextBuilder.ToString();
                 if (!string.IsNullOrWhiteSpace(fallbackText))
                 {
@@ -869,85 +856,47 @@ app.MapPost("/api/convert-with-ai", async (
             }
         }
         
-        // LOG WHAT WE'RE SENDING TO CLAUDE
-        logger.LogInformation($"=== SENDING TO CLAUDE ===");
-        logger.LogInformation($"Text length: {extractedText.Length} characters");
-        if (extractedText.Length > 0)
-        {
-            var preview = extractedText.Length > 500 ? extractedText.Substring(0, 500) + "..." : extractedText;
-            logger.LogInformation($"Text preview: {preview}");
-        }
-        else
-        {
-            logger.LogWarning("WARNING: Sending EMPTY text to Claude!");
-        }
-
-            // Analyze with Anthropic (only for PDFs)
-            logger.LogInformation("Analyzing PDF with Anthropic AI");
-            startTime = DateTime.UtcNow;
-            
-            try
-            {
-                aiAnalysis = await anthropicService.AnalyzeFormFieldsAsync(extractedText);
-                
-                // Parse field count from analysis
-                fieldResults = anthropicService.ParseAnalysisResult(aiAnalysis);
-                detectedFields = fieldResults.Count;
-                logger.LogInformation("AI detected {FieldCount} fields in PDF", detectedFields);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "AI analysis failed for PDF");
-                aiAnalysis = "AI analysis failed: " + ex.Message;
-            }
-            
-            processingTime = (DateTime.UtcNow - startTime).TotalMilliseconds;
-        }
-        else
-        {
-            // For Word docs, fields were already detected and created during conversion
-            logger.LogInformation("Word document already processed with AI field detection during conversion");
-        }
+        // Analyze with Anthropic
+        logger.LogInformation("Analyzing with Anthropic AI");
+        var startTime = DateTime.UtcNow;
+        string aiAnalysis = "";
+        int detectedFields = 0;
         
-        // Apply accessibility remediation and create form fields from AI detection
-        logger.LogInformation("Applying accessibility remediation and creating form fields");
-        using var remediationStream = new MemoryStream(normalPdfBytes);
-        using var remediatedDoc = new PdfLoadedDocument(remediationStream);
-        
-        // Get actual field count from the document and optimize field sizes
-        int actualFieldCount = 0;
         try
         {
-            actualFieldCount = remediatedDoc.Form?.Fields?.Count ?? 0;
-            logger.LogInformation($"Document has {actualFieldCount} actual form fields");
-            
-            // Optimize field sizes so they're not too small
-            if (actualFieldCount > 0)
+            // LOG WHAT WE'RE SENDING TO CLAUDE
+            logger.LogInformation($"=== SENDING TO CLAUDE ===");
+            logger.LogInformation($"Text length: {extractedText.Length} characters");
+            if (extractedText.Length > 0)
             {
-                logger.LogInformation("Optimizing form field sizes for better usability");
-                fieldSizeOptimizer.OptimizeFieldSizes(remediatedDoc);
+                var preview = extractedText.Length > 500 ? extractedText.Substring(0, 500) + "..." : extractedText;
+                logger.LogInformation($"Text preview: {preview}");
             }
+            else
+            {
+                logger.LogWarning("WARNING: Sending EMPTY text to Claude!");
+            }
+            
+            aiAnalysis = await anthropicService.AnalyzeFormFieldsAsync(extractedText);
+            
+            // Parse field count from analysis
+            var fieldResults = anthropicService.ParseAnalysisResult(aiAnalysis);
+            detectedFields = fieldResults.Count;
+            logger.LogInformation("AI detected {FieldCount} fields", detectedFields);
         }
         catch (Exception ex)
         {
-            logger.LogWarning($"Could not count or optimize form fields: {ex.Message}");
+            logger.LogError(ex, "AI analysis failed");
+            aiAnalysis = "AI analysis failed: " + ex.Message;
         }
         
-        // For PDFs, enhance existing fields with Claude's detection
-        // For Word docs, fields were already created during conversion
-        if (!isWord && fieldResults != null && fieldResults.Count > 0)
-        {
-            logger.LogInformation($"Enhancing {fieldResults.Count} existing PDF form fields from AI detection");
-            fieldCreationService.EnhanceExistingFormFields(remediatedDoc, fieldResults);
-        }
-        else if (isWord)
-        {
-            logger.LogInformation("Word document fields were created during conversion - skipping enhancement");
-        }
+        var processingTime = (DateTime.UtcNow - startTime).TotalMilliseconds;
         
-        // Then apply accessibility enhancements
+        // Apply accessibility remediation
+        logger.LogInformation("Applying accessibility remediation");
+        using var remediationStream = new MemoryStream(normalPdfBytes);
+        using var remediatedDoc = new PdfLoadedDocument(remediationStream);
         enhancer.EnhanceAccessibility(remediatedDoc, file.FileName);
-        
         using var remediatedOutputStream = new MemoryStream();
         remediatedDoc.Save(remediatedOutputStream);
         remediatedPdfBytes = remediatedOutputStream.ToArray();
@@ -987,7 +936,7 @@ app.MapPost("/api/convert-with-ai", async (
             report = new
             {
                 compliance = "WCAG 2.1 AA + Section 508",
-                fieldsProcessed = actualFieldCount > 0 ? actualFieldCount : detectedFields,
+                fieldsProcessed = detectedFields,
                 measuresApplied = 12, // Standard accessibility measures
                 aiEnhanced = true,
                 aiProvider = "Anthropic Claude",
@@ -997,7 +946,7 @@ app.MapPost("/api/convert-with-ai", async (
             },
             // Include debug info separately
             debugInfo = debugInfo,
-            // debugId = debugCache.StoreDebugData(debugInfo) // debugCache not in scope here
+            debugId = debugCache.StoreDebugData(debugInfo)
         };
         
         logger.LogInformation("Successfully completed AI processing for {FileName}", file.FileName);
@@ -1020,168 +969,6 @@ app.MapPost("/api/convert-with-ai", async (
 })
 .WithName("ConvertWithAI")
 .DisableAntiforgery();
-
-
-
-// Tag structure extraction endpoint
-app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Program> logger) =>
-{
-    try
-    {
-        using var reader = new StreamReader(request.Body);
-        var body = await reader.ReadToEndAsync();
-        var requestData = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(body);
-        
-        if (!requestData.TryGetProperty("pdfData", out var pdfDataElement))
-        {
-            return Results.Json(new { success = false, error = "No PDF data provided" });
-        }
-        
-        var base64Data = pdfDataElement.GetString();
-        if (string.IsNullOrEmpty(base64Data))
-        {
-            return Results.Json(new { success = false, error = "Empty PDF data" });
-        }
-        
-        if (base64Data.Contains(','))
-        {
-            base64Data = base64Data.Split(',')[1];
-        }
-        
-        var pdfBytes = Convert.FromBase64String(base64Data);
-        logger.LogInformation($"Extracting tag structure from PDF, size: {pdfBytes.Length} bytes");
-        
-        // Log the extraction process
-        
-        using var stream = new MemoryStream(pdfBytes);
-        using var doc = new PdfLoadedDocument(stream);
-        
-        var structure = new List<object>();
-        
-        // Extract document info
-        structure.Add(new
-        {
-            type = "DocumentInfo",
-            content = $"Title: {doc.DocumentInformation?.Title ?? "Untitled"}",
-            children = new[]
-            {
-                new { type = "Property", content = $"Author: {doc.DocumentInformation?.Author ?? "Unknown"}" },
-                new { type = "Property", content = $"Pages: {doc.Pages.Count}" }
-            }
-        });
-        
-        // Extract form fields
-        if (doc.Form?.Fields?.Count > 0)
-        {
-            var fields = new List<object>();
-            for (int i = 0; i < doc.Form.Fields.Count; i++)
-            {
-                var f = doc.Form.Fields[i];
-                fields.Add(new
-                {
-                    type = $"Field_{f.GetType().Name}",
-                    content = $"{f.Name ?? "Unnamed"} ({f.GetType().Name.Replace("PdfLoaded", "").Replace("Field", "")})",
-                    tooltip = f.ToolTip
-                });
-            }
-            
-            structure.Add(new
-            {
-                type = "FormFields",
-                content = $"{doc.Form.Fields.Count} form fields",
-                children = fields
-            });
-        }
-        
-        // Extract page content structure
-        for (int pageIndex = 0; pageIndex < Math.Min(doc.Pages.Count, 3); pageIndex++) // Limit to first 3 pages
-        {
-            var page = doc.Pages[pageIndex];
-            var pageStructure = new List<object>();
-            
-            try
-            {
-                // Extract text to show content structure
-                var pageText = page.ExtractText();
-                if (!string.IsNullOrWhiteSpace(pageText))
-                {
-                    var lines = pageText.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-                    
-                    // Show first few lines as structure elements
-                    for (int i = 0; i < Math.Min(lines.Length, 5); i++)
-                    {
-                        var line = lines[i].Trim();
-                        if (line.Length > 0)
-                        {
-                            var elementType = "Text";
-                            // Try to identify structure based on content
-                            if (line.EndsWith(":") || line.Contains("name") || line.Contains("Name"))
-                                elementType = "Label";
-                            else if (line.Contains("___") || line.Contains("[]") || line.Contains("( )"))
-                                elementType = "FormField";
-                            
-                            pageStructure.Add(new
-                            {
-                                type = elementType,
-                                content = line.Length > 80 ? line.Substring(0, 80) + "..." : line
-                            });
-                        }
-                    }
-                    
-                    if (lines.Length > 5)
-                    {
-                        pageStructure.Add(new
-                        {
-                            type = "Info",
-                            content = $"... and {lines.Length - 5} more lines"
-                        });
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning($"Could not extract page {pageIndex + 1} structure: {ex.Message}");
-            }
-            
-            if (pageStructure.Count > 0)
-            {
-                structure.Add(new
-                {
-                    type = $"Page{pageIndex + 1}",
-                    content = $"Page {pageIndex + 1} Content",
-                    children = pageStructure
-                });
-            }
-        }
-        
-        logger.LogInformation($"Tag structure extracted successfully: {structure.Count} items");
-        
-        var response = new
-        {
-            success = true,
-            structure = structure,
-            metadata = new
-            {
-                pageCount = doc.Pages.Count,
-                hasForm = doc.Form?.Fields?.Count > 0,
-                fieldCount = doc.Form?.Fields?.Count ?? 0
-            }
-        };
-        
-        // Log the response
-        logger.LogInformation($"Sending tag structure response: success={response.success}, items={structure.Count}, fieldCount={response.metadata.fieldCount}");
-        
-        return Results.Json(response);
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Failed to extract tag structure");
-        return Results.Json(new { success = false, error = ex.Message });
-    }
-})
-.WithName("ExtractTagStructure")
-.DisableAntiforgery();
-
 
 app.Run();
 
@@ -1767,16 +1554,48 @@ app.MapGet("/api/debug/{debugId}", (string debugId, DebugCacheService debugCache
         return Results.NotFound(new { error = "Debug data not found or expired" });
     }
     
-    return Results.Ok(new
+    // Return the complete raw debug data exactly as stored
+    return Results.Json(debugData, new System.Text.Json.JsonSerializerOptions
     {
-        id = debugData.Id,
-        timestamp = debugData.Timestamp,
-        success = debugData.Success,
-        processingTime = debugData.ProcessingTime,
-        anthropicResponse = debugData.AnthropicResponse,
-        // azureResponse = debugData.AzureResponse, // Commented out - AzureResponse not available
-        fieldResults = debugData.FieldResults
+        WriteIndented = true,
+        PropertyNamingPolicy = null,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     });
+});
+
+// Raw text endpoint - returns ONLY the AnthropicResponse as plain text
+app.MapGet("/api/debug-text/{debugId}", (string debugId, DebugCacheService debugCache) =>
+{
+    var debugData = debugCache.GetDebugData(debugId);
+    if (debugData == null)
+    {
+        return Results.NotFound("Debug data not found or expired");
+    }
+    
+    // Convert the AnthropicResponse to a string
+    string responseText = "";
+    if (debugData.AnthropicResponse != null)
+    {
+        // If it's already a string, use it directly
+        if (debugData.AnthropicResponse is string strResponse)
+        {
+            responseText = strResponse;
+        }
+        else
+        {
+            // Otherwise serialize it to JSON to see the structure
+            responseText = System.Text.Json.JsonSerializer.Serialize(
+                debugData.AnthropicResponse, 
+                new System.Text.Json.JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    PropertyNamingPolicy = null,
+                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                });
+        }
+    }
+    
+    return Results.Text(responseText, "text/plain");
 });
 
 // Enhanced AI endpoint with debug support
