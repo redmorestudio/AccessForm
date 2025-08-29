@@ -128,20 +128,8 @@ window.accessForm = {
                     let endpoint;
                     let config = null;
                     if (window.accessForm && window.accessForm.isAiModeEnabled && window.accessForm.isAiModeEnabled()) {
-                        // Use configurable endpoint for Word docs in AI mode
-                        endpoint = isWord ? '/api/convert-with-config' : '/api/convert-with-ai';
-                        // Get configuration from UI if using configurable endpoint
-                        if (endpoint === '/api/convert-with-config') {
-                            config = {
-                                useSyncfusion: document.querySelector('#useSyncfusion')?.checked ?? true,
-                                useGoogle: document.querySelector('#useGoogle')?.checked ?? false,
-                                useClaudeVision: document.querySelector('#useClaudeVision')?.checked ?? false,
-                                useClaudeValidation: document.querySelector('#useClaudeValidation')?.checked ?? false,
-                                mode: document.querySelector('input[name="processingMode"]:checked')?.value ?? 'Sequential',
-                                debugMode: document.querySelector('#debugMode')?.checked ?? true,
-                                showFieldIds: document.querySelector('#showFieldIds')?.checked ?? true
-                            };
-                        }
+                        // Use AI endpoint for both Word and PDF in AI mode
+                        endpoint = '/api/convert-with-ai';
                     } else {
                         // Use standard endpoints
                         endpoint = isWord ? '/api/convert' : '/api/remediate-pdf';
@@ -468,20 +456,8 @@ window.accessForm = {
                         let endpoint;
                         let config = null;
                         if (window.accessForm && window.accessForm.isAiModeEnabled && window.accessForm.isAiModeEnabled()) {
-                            // Use configurable endpoint for Word docs in AI mode
-                            endpoint = isWord ? '/api/convert-with-config' : '/api/convert-with-ai';
-                            // Get configuration from UI if using configurable endpoint
-                            if (endpoint === '/api/convert-with-config') {
-                                config = {
-                                    useSyncfusion: document.querySelector('#useSyncfusion')?.checked ?? true,
-                                    useGoogle: document.querySelector('#useGoogle')?.checked ?? false,
-                                    useClaudeVision: document.querySelector('#useClaudeVision')?.checked ?? false,
-                                    useClaudeValidation: document.querySelector('#useClaudeValidation')?.checked ?? false,
-                                    mode: document.querySelector('input[name="processingMode"]:checked')?.value ?? 'Sequential',
-                                    debugMode: document.querySelector('#debugMode')?.checked ?? true,
-                                    showFieldIds: document.querySelector('#showFieldIds')?.checked ?? true
-                                };
-                            }
+                            // Use AI endpoint for both Word and PDF in AI mode
+                            endpoint = '/api/convert-with-ai';
                         } else {
                             // Use standard endpoints
                             endpoint = isWord ? '/api/convert' : '/api/remediate-pdf';
