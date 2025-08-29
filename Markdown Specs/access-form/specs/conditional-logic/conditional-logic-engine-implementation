@@ -1,0 +1,505 @@
+---
+title: Conditional Logic Engine
+type: note
+permalink: access-form/fields/conditional-logic-engine
+tags:
+- '["conditional-logic"'
+- '"engine"'
+- '"implementation"'
+- '"visual-builder"'
+- '"performance"]'
+---
+
+# Conditional Logic Engine Specification
+
+## Overview
+Conditional logic in forms allows you to create a more responsive and user-friendly experience by tailoring the form to individual user input. It adjusts form content or behavior dynamically based on user responses, showing or hiding fields based on their previous answers.
+
+## Core Conditional Logic Types
+
+### 1. Visibility Conditions (Show/Hide)
+This type of conditional logic allows you to show or hide specific fields or question elements based on user responses. It keeps your forms clean and concise, presenting only the relevant information.
+
+```javascript
+class VisibilityCondition {
+  constructor() {
+    this.rules = new Map()
+  }
+  
+  addRule(config) {
+    const rule = {
+      id: generateId(),
+      trigger: {
+        fieldId: config.triggerField,
+        operator: config.operator, // equals, not_equals, contains, greater_than, etc.
+        value: config.triggerValue,
+        type: config.triggerType // checkbox, radio, text, number, etc.
+      },
+      target: {
+        fieldIds: config.targetFields,
+        action: config.action // 'show', 'hide'
+      },
+      logic: config.logic || 'AND', // AND/OR for multiple conditions
+      priority: config.priority || 0
+    }
+    
+    this.rules.set(rule.id, rule)
+    return rule.id
+  }
+  
+  evaluateVisibility(formData) {
+    const visibilityMap = new Map()
+    
+    // Sort rules by priority
+    const sortedRules = Array.from(this.rules.values())
+      .sort((a, b) => b.priority - a.priority)
+    
+    for (const rule of sortedRules) {
+      const shouldApply = this.evaluateCondition(rule.trigger, formData)
+      
+      for (const fieldId of rule.target.fieldIds) {
+        if (shouldApply) {
+          visibilityMap.set(fieldId, rule.target.action === 'show')
+        }
+      }
+    }
+    
+    return visibilityMap
+  }
+}
+```
+
+### 2. Enable/Disable Conditions
+An "Editable If" rule determines whether a specific field is editable based on a specified condition. This rule allows you to dynamically enable or disable the Read-only mode for a survey element.
+
+```javascript
+class EnableCondition {
+  evaluateEnablement(rule, formData) {
+    const triggers = Array.isArray(rule.triggers) ? rule.triggers : [rule.trigger]
+    
+    // Support complex logic with multiple triggers
+    if (rule.logic === 'OR') {
+      return triggers.some(trigger => this.checkTrigger(trigger, formData))
+    } else { // AND logic
+      return triggers.every(trigger => this.checkTrigger(trigger, formData))
+    }
+  }
+  
+  checkTrigger(trigger, formData) {
+    const fieldValue = formData[trigger.fieldId]
+    
+    switch (trigger.operator) {
+      case 'equals':
+        return fieldValue === trigger.value
+      case 'not_equals':
+        return fieldValue !== trigger.value
+      case 'contains':
+        return String(fieldValue).includes(trigger.value)
+      case 'greater_than':
+        return Number(fieldValue) > Number(trigger.value)
+      case 'less_than':
+        return Number(fieldValue) < Number(trigger.value)
+      case 'empty':
+        return !fieldValue || fieldValue === ''
+      case 'not_empty':
+        return fieldValue && fieldValue !== ''
+      case 'any_of':
+        return Array.isArray(trigger.value) && trigger.value.includes(fieldValue)
+      default:
+        return false
+    }
+  }
+}
+```
+
+### 3. Required Field Conditions
+Fields can become required or optional based on other field values.
+
+```javascript
+class RequiredCondition {
+  evaluateRequired(field, formData, rules) {
+    // Default required state
+    let isRequired = field.required || false
+    
+    // Check conditional required rules
+    for (const rule of rules) {
+      if (rule.targetField === field.id) {
+        const triggerValue = formData[rule.triggerField]
+        
+        if (this.evaluateCondition(rule, triggerValue)) {
+          isRequired = rule.makeRequired
+        }
+      }
+    }
+    
+    return isRequired
+  }
+}
+```
+
+### 4. Value Population Conditions
+Automatically populate field values based on other selections.
+
+```javascript
+class ValuePopulation {
+  populateConditionalValues(rules, formData) {
+    const populatedValues = {}
+    
+    for (const rule of rules) {
+      if (rule.type === 'auto_populate') {
+        const shouldPopulate = this.evaluateCondition(rule.condition, formData)
+        
+        if (shouldPopulate) {
+          // Support different population strategies
+          switch (rule.populationType) {
+            case 'static':
+              populatedValues[rule.targetField] = rule.value
+              break
+            
+            case 'copy':
+              populatedValues[rule.targetField] = formData[rule.sourceField]
+              break
+            
+            case 'calculate':
+              populatedValues[rule.targetField] = this.calculate(
+                rule.formula,
+                formData
+              )
+              break
+            
+            case 'lookup':
+              populatedValues[rule.targetField] = this.lookupValue(
+                rule.lookupTable,
+                formData[rule.lookupKey]
+              )
+              break
+          }
+        }
+      }
+    }
+    
+    return populatedValues
+  }
+}
+```
+
+## Complex Conditional Logic Patterns
+
+### 1. Nested Conditions
+Support for conditions that depend on other conditional fields.
+
+```javascript
+class NestedConditionEvaluator {
+  constructor() {
+    this.dependencyGraph = new Map()
+  }
+  
+  buildDependencyGraph(rules) {
+    // Build a graph of field dependencies
+    for (const rule of rules) {
+      const triggers = this.extractTriggerFields(rule)
+      const targets = this.extractTargetFields(rule)
+      
+      for (const target of targets) {
+        if (!this.dependencyGraph.has(target)) {
+          this.dependencyGraph.set(target, new Set())
+        }
+        triggers.forEach(trigger => 
+          this.dependencyGraph.get(target).add(trigger)
+        )
+      }
+    }
+    
+    // Check for circular dependencies
+    this.validateNoCycles()
+  }
+  
+  evaluateInOrder(formData) {
+    // Topological sort to evaluate in dependency order
+    const evaluated = new Set()
+    const results = {}
+    
+    const evaluate = (fieldId) => {
+      if (evaluated.has(fieldId)) return
+      
+      // Evaluate dependencies first
+      const deps = this.dependencyGraph.get(fieldId) || []
+      for (const dep of deps) {
+        evaluate(dep)
+      }
+      
+      // Then evaluate this field
+      results[fieldId] = this.evaluateField(fieldId, formData, results)
+      evaluated.add(fieldId)
+    }
+    
+    // Evaluate all fields
+    for (const fieldId of this.dependencyGraph.keys()) {
+      evaluate(fieldId)
+    }
+    
+    return results
+  }
+}
+```
+
+### 2. Branching Logic (Page Flow)
+Guide responders seamlessly through their journey and direct them to distinct destinations based on their responses.
+
+```javascript
+class BranchingLogic {
+  constructor() {
+    this.branches = new Map()
+    this.currentPath = []
+  }
+  
+  defineBranch(config) {
+    const branch = {
+      id: config.id,
+      condition: config.condition,
+      nextPage: config.nextPage,
+      skipPages: config.skipPages || [],
+      customPath: config.customPath || null
+    }
+    
+    this.branches.set(branch.id, branch)
+  }
+  
+  determineNextPage(currentPage, formData) {
+    const applicableBranches = this.findApplicableBranches(currentPage, formData)
+    
+    if (applicableBranches.length === 0) {
+      // Default: go to next sequential page
+      return this.getNextSequentialPage(currentPage)
+    }
+    
+    // Use highest priority branch
+    const branch = applicableBranches[0]
+    this.currentPath.push({
+      from: currentPage,
+      to: branch.nextPage,
+      branch: branch.id
+    })
+    
+    return branch.nextPage
+  }
+  
+  generateFormPath(formData) {
+    // Pre-calculate entire form path based on current data
+    const path = []
+    let currentPage = 'start'
+    
+    while (currentPage !== 'end') {
+      path.push(currentPage)
+      currentPage = this.determineNextPage(currentPage, formData)
+    }
+    
+    return path
+  }
+}
+```
+
+### 3. Cross-Field Validation
+Validation rules that involve multiple fields.
+
+```javascript
+class CrossFieldValidation {
+  addValidationRule(rule) {
+    return {
+      id: rule.id,
+      fields: rule.fields, // Array of field IDs involved
+      validator: rule.validator, // Function that validates
+      message: rule.message,
+      severity: rule.severity || 'error' // error, warning, info
+    }
+  }
+  
+  validateDateRange(startFieldId, endFieldId) {
+    return {
+      fields: [startFieldId, endFieldId],
+      validator: (formData) => {
+        const start = new Date(formData[startFieldId])
+        const end = new Date(formData[endFieldId])
+        return start <= end
+      },
+      message: 'End date must be after start date',
+      severity: 'error'
+    }
+  }
+  
+  validateTotalPercentage(fieldIds) {
+    return {
+      fields: fieldIds,
+      validator: (formData) => {
+        const total = fieldIds.reduce((sum, id) => 
+          sum + (Number(formData[id]) || 0), 0
+        )
+        return Math.abs(total - 100) < 0.01 // Allow for floating point errors
+      },
+      message: 'Percentages must total 100%',
+      severity: 'error'
+    }
+  }
+}
+```
+
+## Visual Conditional Logic Builder
+
+```javascript
+class VisualLogicBuilder {
+  constructor() {
+    this.canvas = null
+    this.nodes = [] // Field nodes
+    this.connections = [] // Logic connections
+  }
+  
+  renderVisualBuilder() {
+    return {
+      type: 'canvas',
+      elements: [
+        this.renderFieldNodes(),
+        this.renderLogicConnections(),
+        this.renderConditionLabels()
+      ],
+      interactions: {
+        onNodeClick: this.handleNodeClick,
+        onConnectionDrag: this.handleConnectionDrag,
+        onConditionEdit: this.handleConditionEdit
+      }
+    }
+  }
+  
+  generateRuleFromVisual() {
+    // Convert visual representation to executable rules
+    const rules = []
+    
+    for (const connection of this.connections) {
+      rules.push({
+        trigger: {
+          fieldId: connection.source.id,
+          operator: connection.condition.operator,
+          value: connection.condition.value
+        },
+        target: {
+          fieldId: connection.target.id,
+          action: connection.action
+        }
+      })
+    }
+    
+    return rules
+  }
+  
+  validateLogicFlow() {
+    // Check for issues in the logic flow
+    const issues = []
+    
+    // Check for circular dependencies
+    if (this.hasCircularDependency()) {
+      issues.push({
+        type: 'error',
+        message: 'Circular dependency detected'
+      })
+    }
+    
+    // Check for unreachable fields
+    const unreachable = this.findUnreachableFields()
+    if (unreachable.length > 0) {
+      issues.push({
+        type: 'warning',
+        message: `Fields may be unreachable: ${unreachable.join(', ')}`
+      })
+    }
+    
+    return issues
+  }
+}
+```
+
+## Performance Optimization
+
+```javascript
+class ConditionalLogicOptimizer {
+  constructor() {
+    this.ruleCache = new Map()
+    this.evaluationCache = new Map()
+  }
+  
+  optimizeRules(rules) {
+    // Group rules by trigger field for efficient evaluation
+    const optimized = {
+      byTriggerField: new Map(),
+      byTargetField: new Map(),
+      globalRules: []
+    }
+    
+    for (const rule of rules) {
+      // Index by trigger field
+      if (rule.trigger?.fieldId) {
+        if (!optimized.byTriggerField.has(rule.trigger.fieldId)) {
+          optimized.byTriggerField.set(rule.trigger.fieldId, [])
+        }
+        optimized.byTriggerField.get(rule.trigger.fieldId).push(rule)
+      }
+      
+      // Index by target field
+      for (const targetId of rule.target?.fieldIds || []) {
+        if (!optimized.byTargetField.has(targetId)) {
+          optimized.byTargetField.set(targetId, [])
+        }
+        optimized.byTargetField.get(targetId).push(rule)
+      }
+    }
+    
+    return optimized
+  }
+  
+  memoizedEvaluate(rule, formData) {
+    const cacheKey = `${rule.id}_${JSON.stringify(formData)}`
+    
+    if (this.evaluationCache.has(cacheKey)) {
+      return this.evaluationCache.get(cacheKey)
+    }
+    
+    const result = this.evaluateRule(rule, formData)
+    this.evaluationCache.set(cacheKey, result)
+    
+    // Limit cache size
+    if (this.evaluationCache.size > 1000) {
+      const firstKey = this.evaluationCache.keys().next().value
+      this.evaluationCache.delete(firstKey)
+    }
+    
+    return result
+  }
+}
+```
+
+## Best Practices
+
+### Design Principles
+1. **Keep logic intuitive** - Users should understand why fields appear/disappear
+2. **Avoid overcomplication** - Too many conditions confuse users
+3. **Test thoroughly** - Conditional logic can create complex paths
+4. **Provide clear feedback** - Explain why fields are disabled/hidden
+5. **Handle edge cases** - What happens when conditions conflict?
+
+### Implementation Guidelines
+1. **Evaluate conditions efficiently** - Cache results, optimize rule order
+2. **Handle circular dependencies** - Detect and prevent infinite loops
+3. **Support undo/redo** - Users may change answers that trigger conditions
+4. **Maintain accessibility** - Screen readers must announce changes
+5. **Test all paths** - Ensure every combination works correctly
+
+### Performance Considerations
+1. **Batch DOM updates** - Don't update fields one at a time
+2. **Use requestAnimationFrame** - For smooth animations
+3. **Debounce evaluations** - Don't re-evaluate on every keystroke
+4. **Lazy evaluate** - Only check rules for changed fields
+5. **Optimize rule storage** - Index by trigger and target fields
+
+---
+
+*Document Version: 1.0*
+*Last Updated: August 8, 2025*
+*Status: Complete and Ready for Implementation*
