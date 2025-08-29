@@ -792,11 +792,18 @@ namespace WordToPdfConverter.Services
                         // Create enhanced field with intelligent type detection
                         var detectedType = FieldTypeDetector.DetectFieldType(bestMatch.FieldName, null, bestMatch.FieldType);
                         
+                        // Validate the type conversion is compatible
+                        var compatibleType = FieldTypeCompatibilityChecker.GetCompatibleType(sfField.FieldType, detectedType);
+                        if (compatibleType != detectedType)
+                        {
+                            _logger.LogWarning($"Prevented invalid conversion for {sfField.ShortId}: {sfField.FieldType} → {detectedType}, using {compatibleType} instead");
+                        }
+                        
                         var enhanced = new FieldDetectionResult
                         {
                             ShortId = sfField.ShortId,
                             FieldName = bestMatch.FieldName,  // Use Claude's label
-                            FieldType = detectedType,  // Use Claude's type or refined detection
+                            FieldType = compatibleType,  // Use compatible type
                             X = sfField.X,
                             Y = sfField.Y,
                             Width = sfField.Width,
