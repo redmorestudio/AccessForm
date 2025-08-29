@@ -1451,9 +1451,14 @@
             }
             var hasMetadata = tagData.TryGetProperty("metadata", out var metadata);
             
-            if (!hasStructure)
+            // Check if we have form fields to display even if no structure
+            var hasFormFields = tagData.TryGetProperty("formFields", out var formFields) && 
+                               formFields.ValueKind == JsonValueKind.Array && 
+                               formFields.GetArrayLength() > 0;
+            
+            if (!hasStructure && !hasFormFields)
             {
-                await JSRuntime.InvokeVoidAsync("console.error", "No structure or tagTree property in response");
+                await JSRuntime.InvokeVoidAsync("console.error", "No structure or formFields in response");
                 await JSRuntime.InvokeVoidAsync("eval", @"
                     document.getElementById('tagTreeModalBody').innerHTML = `<div class='alert alert-warning'>No structure data available</div>`;
                 ");
@@ -1468,34 +1473,57 @@
             html += "<div class='tree-view'>";
             
             // Check if structure is an object with properties or an array
-            if (structure.ValueKind == JsonValueKind.Object)
+            if (hasStructure && structure.ValueKind == JsonValueKind.Object)
             {
-                // Render the tree structure if it exists
-                html += RenderTreeNode(structure);
-                
-                // Also show form fields if they exist
-                if (tagData.TryGetProperty("formFields", out var formFields) && formFields.ValueKind == JsonValueKind.Array)
+                // Check if the structure has actual children
+                var hasChildren = false;
+                if (structure.TryGetProperty("children", out var children) && 
+                    children.ValueKind == JsonValueKind.Array && 
+                    children.GetArrayLength() > 0)
                 {
-                    html += "<h6 class='mt-3'>Form Fields</h6>";
-                    html += "<ul class='list-group'>";
-                    foreach (var field in formFields.EnumerateArray())
-                    {
-                        if (field.TryGetProperty("name", out var name) && field.TryGetProperty("type", out var type))
-                        {
-                            var page = field.TryGetProperty("page", out var p) ? p.GetInt32() : 1;
-                            html += $"<li class='list-group-item'><strong>{name.GetString()}</strong> - {type.GetString()} (Page {page})</li>";
-                        }
-                    }
-                    html += "</ul>";
+                    hasChildren = true;
+                }
+                
+                // Only render tree if it has content
+                if (hasChildren)
+                {
+                    html += RenderTreeNode(structure);
+                }
+                else
+                {
+                    html += "<p class='text-muted'>Document structure is empty</p>";
                 }
             }
-            else if (structure.ValueKind == JsonValueKind.Array)
+            else if (hasStructure && structure.ValueKind == JsonValueKind.Array)
             {
                 // Render each item in the structure array
                 foreach (var item in structure.EnumerateArray())
                 {
                     html += RenderTreeNode(item);
                 }
+            }
+            
+            // Always show form fields if they exist
+            if (hasFormFields)
+            {
+                html += "<h6 class='mt-3'>Form Fields</h6>";
+                html += "<div style='max-height: 400px; overflow-y: auto;'>";
+                html += "<table class='table table-sm table-striped'>";
+                html += "<thead><tr><th>Field Name</th><th>Type</th><th>Page</th></tr></thead>";
+                html += "<tbody>";
+                foreach (var field in formFields.EnumerateArray())
+                {
+                    if (field.TryGetProperty("name", out var name) && field.TryGetProperty("type", out var type))
+                    {
+                        var page = field.TryGetProperty("page", out var p) ? p.GetInt32() : 1;
+                        var fieldType = type.GetString();
+                        var typeClass = fieldType.Contains("Radio") ? "text-warning" : 
+                                       fieldType.Contains("Check") ? "text-success" : "text-primary";
+                        html += $"<tr><td><strong>{name.GetString()}</strong></td><td class='{typeClass}'>{fieldType}</td><td>{page}</td></tr>";
+                    }
+                }
+                html += "</tbody></table>";
+                html += "</div>";
             }
             
             html += "</div>";
