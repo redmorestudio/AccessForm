@@ -1,0 +1,404 @@
+@page "/field-editor"
+@using WordToPdfConverter.Models
+@using System.Text.Json
+@inject IJSRuntime JSRuntime
+
+<h3>PDF Form Field Editor</h3>
+
+@if (!string.IsNullOrEmpty(ErrorMessage))
+{
+    <div class="alert alert-danger" role="alert">
+        @ErrorMessage
+    </div>
+}
+
+<div class="container-fluid">
+    <div class="row">
+        <!-- Left Panel: Field Table Editor -->
+        <div class="col-md-7">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Form Fields</h5>
+                    <div class="btn-group" role="group">
+                        <button class="btn btn-sm btn-primary" @onclick="AddField">
+                            <i class="bi bi-plus"></i> Add Field
+                        </button>
+                        <button class="btn btn-sm btn-success" @onclick="SaveChanges" disabled="@(!HasChanges)">
+                            <i class="bi bi-save"></i> Save Changes
+                        </button>
+                        <button class="btn btn-sm btn-info" @onclick="ExportFields">
+                            <i class="bi bi-download"></i> Export JSON
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body" style="max-height: 70vh; overflow-y: auto;">
+                    @if (Fields != null && Fields.Any())
+                    {
+                        <table class="table table-sm table-hover">
+                            <thead class="sticky-top bg-white">
+                                <tr>
+                                    <th width="5%">#</th>
+                                    <th width="20%">Field Name</th>
+                                    <th width="15%">Type</th>
+                                    <th width="10%">Page</th>
+                                    <th width="10%">X</th>
+                                    <th width="10%">Y</th>
+                                    <th width="10%">Width</th>
+                                    <th width="10%">Height</th>
+                                    <th width="5%">Req</th>
+                                    <th width="5%">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var field in Fields)
+                                {
+                                    <tr class="@(field.IsSelected ? "table-primary" : "")" 
+                                        @onclick="() => SelectField(field)">
+                                        <td>@field.ShortId</td>
+                                        <td>
+                                            <input type="text" class="form-control form-control-sm" 
+                                                   @bind="field.FieldName" @bind:event="oninput"
+                                                   @onchange="() => MarkAsChanged(field)" />
+                                        </td>
+                                        <td>
+                                            <select class="form-select form-select-sm" 
+                                                    @bind="field.FieldType"
+                                                    @onchange="() => MarkAsChanged(field)">
+                                                @foreach (var type in FieldTypes)
+                                                {
+                                                    <option value="@type">@type</option>
+                                                }
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <input type="number" class="form-control form-control-sm" 
+                                                   @bind="field.PageNumber" @bind:event="oninput"
+                                                   @onchange="() => MarkAsChanged(field)" />
+                                        </td>
+                                        <td>
+                                            <input type="number" class="form-control form-control-sm" 
+                                                   @bind="field.X" @bind:event="oninput" step="0.5"
+                                                   @onchange="() => MarkAsChanged(field)" />
+                                        </td>
+                                        <td>
+                                            <input type="number" class="form-control form-control-sm" 
+                                                   @bind="field.Y" @bind:event="oninput" step="0.5"
+                                                   @onchange="() => MarkAsChanged(field)" />
+                                        </td>
+                                        <td>
+                                            <input type="number" class="form-control form-control-sm" 
+                                                   @bind="field.Width" @bind:event="oninput" step="0.5"
+                                                   @onchange="() => MarkAsChanged(field)" />
+                                        </td>
+                                        <td>
+                                            <input type="number" class="form-control form-control-sm" 
+                                                   @bind="field.Height" @bind:event="oninput" step="0.5"
+                                                   @onchange="() => MarkAsChanged(field)" />
+                                        </td>
+                                        <td class="text-center">
+                                            <input type="checkbox" class="form-check-input" 
+                                                   @bind="field.IsRequired"
+                                                   @onchange="() => MarkAsChanged(field)" />
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-sm btn-danger" 
+                                                    @onclick="() => RemoveField(field)"
+                                                    @onclick:stopPropagation="true">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                    else
+                    {
+                        <div class="alert alert-info">
+                            No fields loaded. Upload a PDF to begin editing.
+                        </div>
+                    }
+                </div>
+            </div>
+            
+            <!-- Advanced Field Properties -->
+            @if (SelectedField != null)
+            {
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h6>Advanced Properties: @SelectedField.FieldName</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label class="form-label">Tooltip/Help Text</label>
+                                <input type="text" class="form-control form-control-sm" 
+                                       @bind="SelectedField.Tooltip" 
+                                       @onchange="() => MarkAsChanged(SelectedField)" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Validation Pattern</label>
+                                <input type="text" class="form-control form-control-sm" 
+                                       @bind="SelectedField.ValidationPattern" 
+                                       @onchange="() => MarkAsChanged(SelectedField)"
+                                       placeholder="e.g., ^\d{3}-\d{2}-\d{4}$ for SSN" />
+                            </div>
+                        </div>
+                        <div class="row mt-2">
+                            <div class="col-md-4">
+                                <label class="form-label">Source</label>
+                                <input type="text" class="form-control form-control-sm" 
+                                       @bind="SelectedField.Source" readonly />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Confidence</label>
+                                <input type="number" class="form-control form-control-sm" 
+                                       @bind="SelectedField.Confidence" step="0.01" min="0" max="1" readonly />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Tab Index</label>
+                                <input type="number" class="form-control form-control-sm" 
+                                       @bind="SelectedField.TabIndex" 
+                                       @onchange="() => MarkAsChanged(SelectedField)" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+        
+        <!-- Right Panel: Visual Preview -->
+        <div class="col-md-5">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Visual Preview</h5>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" @bind="ShowFieldOverlay">
+                        <label class="form-check-label">Show Field Overlay</label>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="pdf-preview-container" style="position: relative; overflow: auto; max-height: 70vh;">
+                        @if (PdfPreviewUrl != null)
+                        {
+                            <img src="@PdfPreviewUrl" style="width: 100%; height: auto;" />
+                            
+                            @if (ShowFieldOverlay && Fields != null)
+                            {
+                                <!-- Field overlay boxes -->
+                                @foreach (var field in Fields.Where(f => f.PageNumber == CurrentPage))
+                                {
+                                    <div style="position: absolute; 
+                                              left: @(field.X * PreviewScale)px; 
+                                              top: @(field.Y * PreviewScale)px; 
+                                              width: @(field.Width * PreviewScale)px; 
+                                              height: @(field.Height * PreviewScale)px;
+                                              border: 2px solid @(field.IsSelected ? "blue" : "red");
+                                              background-color: @(field.IsSelected ? "rgba(0,0,255,0.2)" : "rgba(255,0,0,0.1)");
+                                              cursor: pointer;"
+                                         @onclick="() => SelectField(field)"
+                                         title="@field.FieldName">
+                                        <span style="font-size: 10px; background: white; padding: 2px;">
+                                            @field.ShortId
+                                        </span>
+                                    </div>
+                                }
+                            }
+                        }
+                        else
+                        {
+                            <div class="alert alert-info">
+                                PDF preview will appear here
+                            </div>
+                        }
+                    </div>
+                    
+                    <!-- Page Navigation -->
+                    @if (TotalPages > 1)
+                    {
+                        <div class="mt-2 text-center">
+                            <button class="btn btn-sm btn-secondary" @onclick="PreviousPage" disabled="@(CurrentPage <= 1)">
+                                <i class="bi bi-chevron-left"></i>
+                            </button>
+                            <span class="mx-2">Page @CurrentPage of @TotalPages</span>
+                            <button class="btn btn-sm btn-secondary" @onclick="NextPage" disabled="@(CurrentPage >= TotalPages)">
+                                <i class="bi bi-chevron-right"></i>
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    // Field editing models
+    private List<EditableFieldDetectionResult> Fields = new();
+    private EditableFieldDetectionResult? SelectedField;
+    private bool HasChanges = false;
+    private string? ErrorMessage;
+    
+    // Preview properties
+    private string? PdfPreviewUrl;
+    private int CurrentPage = 1;
+    private int TotalPages = 1;
+    private double PreviewScale = 1.0;
+    private bool ShowFieldOverlay = true;
+    
+    // Field type options (matching the 33 types from specification)
+    private readonly List<string> FieldTypes = new()
+    {
+        "text", "textarea", "checkbox", "radio", "dropdown", "date", "time", 
+        "email", "phone", "ssn_full", "ssn_partial", "ein", "signature", 
+        "initials", "numeric", "currency", "percentage", "file_upload",
+        "case_number", "calculated", "protected", "conditional", "field_group",
+        "full_name", "address", "url", "drivers_license", "gender_pronoun",
+        "language_preference", "tin", "repeatable_section", "error_display",
+        "compliance_acknowledgment"
+    };
+    
+    protected override async Task OnInitializedAsync()
+    {
+        // Load fields from session or API
+        await LoadFields();
+    }
+    
+    private async Task LoadFields()
+    {
+        try
+        {
+            // TODO: Load from API or session storage
+            // For now, using sample data
+            Fields = new List<EditableFieldDetectionResult>
+            {
+                new() { ShortId = "F1", FieldName = "Customer Name", FieldType = "text", PageNumber = 1, X = 100, Y = 100, Width = 200, Height = 20, IsRequired = true },
+                new() { ShortId = "F2", FieldName = "Date of Birth", FieldType = "date", PageNumber = 1, X = 100, Y = 130, Width = 100, Height = 20, IsRequired = true },
+                new() { ShortId = "F3", FieldName = "Email", FieldType = "email", PageNumber = 1, X = 100, Y = 160, Width = 200, Height = 20, IsRequired = false }
+            };
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Failed to load fields: {ex.Message}";
+        }
+    }
+    
+    private void SelectField(EditableFieldDetectionResult field)
+    {
+        // Deselect all fields
+        Fields.ForEach(f => f.IsSelected = false);
+        
+        // Select this field
+        field.IsSelected = true;
+        SelectedField = field;
+        
+        // Navigate to the page containing this field
+        if (field.PageNumber != CurrentPage)
+        {
+            CurrentPage = field.PageNumber;
+        }
+        
+        StateHasChanged();
+    }
+    
+    private void MarkAsChanged(EditableFieldDetectionResult field)
+    {
+        field.IsModified = true;
+        HasChanges = true;
+    }
+    
+    private void AddField()
+    {
+        var newField = new EditableFieldDetectionResult
+        {
+            ShortId = $"F{Fields.Count + 1}",
+            FieldName = $"New Field {Fields.Count + 1}",
+            FieldType = "text",
+            PageNumber = CurrentPage,
+            X = 100,
+            Y = 100 + (Fields.Count * 30),
+            Width = 200,
+            Height = 20,
+            IsRequired = false,
+            IsNew = true,
+            IsModified = true
+        };
+        
+        Fields.Add(newField);
+        SelectField(newField);
+        HasChanges = true;
+    }
+    
+    private void RemoveField(EditableFieldDetectionResult field)
+    {
+        Fields.Remove(field);
+        if (SelectedField == field)
+        {
+            SelectedField = null;
+        }
+        HasChanges = true;
+    }
+    
+    private async Task SaveChanges()
+    {
+        try
+        {
+            // TODO: Send changes to API
+            await Task.Delay(500); // Simulate API call
+            
+            // Reset modification flags
+            Fields.ForEach(f => { f.IsModified = false; f.IsNew = false; });
+            HasChanges = false;
+            
+            await JSRuntime.InvokeVoidAsync("alert", "Changes saved successfully!");
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Failed to save changes: {ex.Message}";
+        }
+    }
+    
+    private async Task ExportFields()
+    {
+        var json = JsonSerializer.Serialize(Fields, new JsonSerializerOptions { WriteIndented = true });
+        await JSRuntime.InvokeVoidAsync("downloadJson", json, "form-fields.json");
+    }
+    
+    private void PreviousPage()
+    {
+        if (CurrentPage > 1) CurrentPage--;
+    }
+    
+    private void NextPage()
+    {
+        if (CurrentPage < TotalPages) CurrentPage++;
+    }
+    
+    // Extended field model for editing
+    public class EditableFieldDetectionResult : FieldDetectionResult
+    {
+        public bool IsSelected { get; set; }
+        public bool IsModified { get; set; }
+        public bool IsNew { get; set; }
+        public string? Tooltip { get; set; }
+        public string? ValidationPattern { get; set; }
+        public int TabIndex { get; set; }
+    }
+}
+
+<style>
+    .table-hover tbody tr:hover {
+        background-color: #f5f5f5;
+        cursor: pointer;
+    }
+    
+    .sticky-top {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    
+    .form-control-sm, .form-select-sm {
+        font-size: 0.875rem;
+    }
+</style>
