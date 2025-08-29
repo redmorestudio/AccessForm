@@ -1,0 +1,606 @@
+@page "/field-editor-modal"
+@using System.Text.Json
+@using WordToPdfConverter.Models
+@inject IJSRuntime JSRuntime
+
+<style>
+    .field-editor-modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+    }
+    
+    .field-editor-content {
+        background: white;
+        width: 95%;
+        max-width: 1400px;
+        height: 90vh;
+        border-radius: 10px;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    }
+    
+    .field-editor-header {
+        padding: 20px;
+        border-bottom: 2px solid #e0e0e0;
+        background: #f5f5f5;
+        border-radius: 10px 10px 0 0;
+    }
+    
+    .field-editor-body {
+        flex: 1;
+        overflow: auto;
+        padding: 20px;
+    }
+    
+    .field-editor-footer {
+        padding: 20px;
+        border-top: 2px solid #e0e0e0;
+        background: #f5f5f5;
+        border-radius: 0 0 10px 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .field-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+    }
+    
+    .field-table th {
+        background: #4a90e2;
+        color: white;
+        padding: 10px 8px;
+        text-align: left;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    
+    .field-table td {
+        padding: 8px;
+        border-bottom: 1px solid #ddd;
+    }
+    
+    .field-table tr:hover {
+        background: #f0f8ff;
+    }
+    
+    .field-table input[type="text"],
+    .field-table input[type="number"],
+    .field-table select,
+    .field-table textarea {
+        width: 100%;
+        padding: 4px 6px;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        font-size: 13px;
+    }
+    
+    .field-table input[type="number"] {
+        width: 60px;
+    }
+    
+    .field-table textarea {
+        resize: vertical;
+        min-height: 35px;
+    }
+    
+    .position-controls {
+        display: flex;
+        gap: 5px;
+        align-items: center;
+    }
+    
+    .position-btn {
+        padding: 2px 8px;
+        background: #e0e0e0;
+        border: 1px solid #999;
+        border-radius: 3px;
+        cursor: pointer;
+        font-size: 12px;
+    }
+    
+    .position-btn:hover {
+        background: #d0d0d0;
+    }
+    
+    .field-type-select {
+        font-size: 12px;
+        padding: 3px 5px;
+    }
+    
+    .field-status {
+        display: inline-block;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 11px;
+        font-weight: bold;
+    }
+    
+    .status-valid {
+        background: #d4edda;
+        color: #155724;
+    }
+    
+    .status-invalid {
+        background: #f8d7da;
+        color: #721c24;
+    }
+    
+    .quick-actions {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 15px;
+    }
+    
+    .quick-action-btn {
+        padding: 8px 16px;
+        background: #6c757d;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 13px;
+    }
+    
+    .quick-action-btn:hover {
+        background: #5a6268;
+    }
+    
+    .field-preview {
+        position: absolute;
+        background: white;
+        border: 2px solid #4a90e2;
+        padding: 10px;
+        border-radius: 5px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        z-index: 1000;
+        font-size: 12px;
+        max-width: 300px;
+    }
+</style>
+
+<div class="field-editor-modal" @onclick="HandleBackgroundClick">
+    <div class="field-editor-content" @onclick:stopPropagation="true">
+        <div class="field-editor-header">
+            <h3>Field Editor - Review and Adjust Form Fields</h3>
+            <p class="text-muted mb-0">Edit field properties, positions, and types before final PDF generation</p>
+        </div>
+        
+        <div class="field-editor-body">
+            <div class="quick-actions">
+                <button class="quick-action-btn" @onclick="AutoAlignFields">
+                    🎯 Auto-Align Fields
+                </button>
+                <button class="quick-action-btn" @onclick="StandardizeSizes">
+                    📏 Standardize Sizes
+                </button>
+                <button class="quick-action-btn" @onclick="GenerateAllTooltips">
+                    💡 Generate All Tooltips
+                </button>
+                <button class="quick-action-btn" @onclick="ValidateAllFields">
+                    ✅ Validate All
+                </button>
+            </div>
+            
+            <table class="field-table">
+                <thead>
+                    <tr>
+                        <th style="width: 40px">#</th>
+                        <th style="width: 80px">Page</th>
+                        <th style="width: 150px">Field Name</th>
+                        <th style="width: 120px">Type</th>
+                        <th style="width: 200px">Tooltip</th>
+                        <th style="width: 180px">Position (X, Y)</th>
+                        <th style="width: 140px">Size (W x H)</th>
+                        <th style="width: 80px">Required</th>
+                        <th style="width: 80px">Status</th>
+                        <th style="width: 100px">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Fields != null)
+                    {
+                        @for (int i = 0; i < Fields.Count; i++)
+                        {
+                            var field = Fields[i];
+                            var index = i;
+                            <tr>
+                                <td>@(i + 1)</td>
+                                <td>@field.PageNumber</td>
+                                <td>
+                                    <input type="text" @bind="field.FieldName" 
+                                           placeholder="Enter field name"
+                                           @oninput="@(() => MarkFieldModified(index))" />
+                                </td>
+                                <td>
+                                    <select class="field-type-select" @bind="field.FieldType"
+                                            @onchange="@(() => OnFieldTypeChanged(index))">
+                                        @foreach (var type in GetAllFieldTypes())
+                                        {
+                                            <option value="@type.Value">@type.Display</option>
+                                        }
+                                    </select>
+                                </td>
+                                <td>
+                                    <textarea @bind="field.Tooltip" 
+                                             placeholder="Enter helpful tooltip"
+                                             @oninput="@(() => MarkFieldModified(index))"></textarea>
+                                </td>
+                                <td>
+                                    <div class="position-controls">
+                                        <input type="number" @bind="field.X" 
+                                               @oninput="@(() => MarkFieldModified(index))"
+                                               step="1" min="0" />
+                                        <span>,</span>
+                                        <input type="number" @bind="field.Y"
+                                               @oninput="@(() => MarkFieldModified(index))" 
+                                               step="1" min="0" />
+                                        <button class="position-btn" @onclick="@(() => NudgeField(index, -5, 0))" title="Move left">←</button>
+                                        <button class="position-btn" @onclick="@(() => NudgeField(index, 5, 0))" title="Move right">→</button>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="position-controls">
+                                        <input type="number" @bind="field.Width"
+                                               @oninput="@(() => MarkFieldModified(index))" 
+                                               step="5" min="20" />
+                                        <span>x</span>
+                                        <input type="number" @bind="field.Height"
+                                               @oninput="@(() => MarkFieldModified(index))" 
+                                               step="2" min="10" />
+                                    </div>
+                                </td>
+                                <td style="text-align: center">
+                                    <input type="checkbox" @bind="field.RequiredField"
+                                           @onchange="@(() => MarkFieldModified(index))" />
+                                </td>
+                                <td>
+                                    <span class="field-status @(field.IsValid ? "status-valid" : "status-invalid")">
+                                        @(field.IsValid ? "Valid" : "Invalid")
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="position-btn" @onclick="@(() => DuplicateField(index))" title="Duplicate">📋</button>
+                                    <button class="position-btn" @onclick="@(() => DeleteField(index))" title="Delete">🗑️</button>
+                                    <button class="position-btn" @onclick="@(() => ShowFieldPreview(index))" title="Preview">👁️</button>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+            
+            @if (Fields == null || Fields.Count == 0)
+            {
+                <div class="text-center mt-5">
+                    <p class="text-muted">No fields detected. Please process a document first.</p>
+                </div>
+            }
+        </div>
+        
+        <div class="field-editor-footer">
+            <div>
+                <span class="text-muted">Total Fields: <strong>@(Fields?.Count ?? 0)</strong></span>
+                <span class="text-muted ms-3">Modified: <strong>@ModifiedCount</strong></span>
+            </div>
+            <div>
+                <button class="btn btn-secondary me-2" @onclick="Cancel">Cancel</button>
+                <button class="btn btn-warning me-2" @onclick="ResetChanges">Reset Changes</button>
+                <button class="btn btn-primary" @onclick="SaveAndContinue">Save & Continue to PassportPDF</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public List<FieldDetectionResult>? Fields { get; set; }
+    [Parameter] public EventCallback<List<FieldDetectionResult>> OnSave { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+    
+    private List<FieldDetectionResult>? originalFields;
+    private HashSet<int> modifiedIndices = new HashSet<int>();
+    private int ModifiedCount => modifiedIndices.Count;
+    
+    protected override void OnInitialized()
+    {
+        // Create a deep copy of the original fields
+        if (Fields != null)
+        {
+            originalFields = Fields.Select(f => new FieldDetectionResult
+            {
+                ShortId = f.ShortId,
+                FieldName = f.FieldName,
+                FieldType = f.FieldType,
+                X = f.X,
+                Y = f.Y,
+                Width = f.Width,
+                Height = f.Height,
+                PageNumber = f.PageNumber,
+                Tooltip = f.Tooltip,
+                RequiredField = f.RequiredField,
+                IsValid = f.IsValid,
+                Source = f.Source,
+                Confidence = f.Confidence
+            }).ToList();
+        }
+    }
+    
+    private List<(string Value, string Display)> GetAllFieldTypes()
+    {
+        return new List<(string, string)>
+        {
+            ("text", "Text"),
+            ("textarea", "Text Area"),
+            ("checkbox", "Checkbox"),
+            ("radio", "Radio Button"),
+            ("dropdown", "Dropdown"),
+            ("date", "Date"),
+            ("time", "Time"),
+            ("email", "Email"),
+            ("phone", "Phone Number"),
+            ("ssn", "SSN (Full)"),
+            ("ssn_partial", "SSN (Last 4)"),
+            ("ein", "EIN"),
+            ("signature", "Signature"),
+            ("initials", "Initials"),
+            ("numeric", "Number"),
+            ("currency", "Currency"),
+            ("percentage", "Percentage"),
+            ("file_upload", "File Upload"),
+            ("case_number", "Case Number"),
+            ("calculated", "Calculated"),
+            ("protected", "Protected"),
+            ("conditional", "Conditional"),
+            ("field_group", "Field Group"),
+            ("name", "Full Name"),
+            ("address", "Address"),
+            ("url", "URL"),
+            ("drivers_license", "Driver's License"),
+            ("gender_pronoun", "Gender/Pronoun"),
+            ("language_preference", "Language"),
+            ("tin", "Taxpayer ID"),
+            ("repeatable_section", "Repeatable Section"),
+            ("error_display", "Error Display"),
+            ("compliance_acknowledgment", "Compliance Acknowledgment")
+        };
+    }
+    
+    private void MarkFieldModified(int index)
+    {
+        modifiedIndices.Add(index);
+    }
+    
+    private void OnFieldTypeChanged(int index)
+    {
+        MarkFieldModified(index);
+        // Auto-generate tooltip based on type
+        if (Fields != null && index < Fields.Count)
+        {
+            var field = Fields[index];
+            field.Tooltip = GenerateTooltipForType(field.FieldType, field.FieldName);
+        }
+    }
+    
+    private string GenerateTooltipForType(string fieldType, string fieldName)
+    {
+        return fieldType switch
+        {
+            "email" => "Enter a valid email address (e.g., name@example.com)",
+            "phone" => "Enter phone number with area code (e.g., 555-123-4567)",
+            "ssn" => "Enter 9-digit Social Security Number (XXX-XX-XXXX)",
+            "ssn_partial" => "Enter last 4 digits of SSN",
+            "ein" => "Enter Employer Identification Number (XX-XXXXXXX)",
+            "date" => "Select or enter date (MM/DD/YYYY)",
+            "signature" => "Click to add your signature",
+            "currency" => "Enter amount in dollars (e.g., $100.00)",
+            "percentage" => "Enter percentage value (0-100)",
+            _ => $"Enter {fieldName}"
+        };
+    }
+    
+    private void NudgeField(int index, float deltaX, float deltaY)
+    {
+        if (Fields != null && index < Fields.Count)
+        {
+            Fields[index].X += deltaX;
+            Fields[index].Y += deltaY;
+            MarkFieldModified(index);
+        }
+    }
+    
+    private void DuplicateField(int index)
+    {
+        if (Fields != null && index < Fields.Count)
+        {
+            var original = Fields[index];
+            var duplicate = new FieldDetectionResult
+            {
+                ShortId = $"{original.ShortId}_copy",
+                FieldName = $"{original.FieldName} (Copy)",
+                FieldType = original.FieldType,
+                X = original.X + 10,
+                Y = original.Y + 10,
+                Width = original.Width,
+                Height = original.Height,
+                PageNumber = original.PageNumber,
+                Tooltip = original.Tooltip,
+                RequiredField = original.RequiredField,
+                IsValid = true,
+                Source = "Manual",
+                Confidence = 1.0f
+            };
+            Fields.Insert(index + 1, duplicate);
+            StateHasChanged();
+        }
+    }
+    
+    private void DeleteField(int index)
+    {
+        if (Fields != null && index < Fields.Count)
+        {
+            Fields.RemoveAt(index);
+            modifiedIndices.Remove(index);
+            // Adjust indices for fields after the deleted one
+            var newIndices = new HashSet<int>();
+            foreach (var i in modifiedIndices)
+            {
+                if (i > index) newIndices.Add(i - 1);
+                else if (i < index) newIndices.Add(i);
+            }
+            modifiedIndices = newIndices;
+            StateHasChanged();
+        }
+    }
+    
+    private void ShowFieldPreview(int index)
+    {
+        // TODO: Show a preview of the field on the PDF page
+        JSRuntime.InvokeVoidAsync("alert", $"Preview for field {index + 1}");
+    }
+    
+    private void AutoAlignFields()
+    {
+        if (Fields == null) return;
+        
+        // Group fields by page
+        var pageGroups = Fields.GroupBy(f => f.PageNumber);
+        
+        foreach (var group in pageGroups)
+        {
+            var fields = group.OrderBy(f => f.Y).ThenBy(f => f.X).ToList();
+            
+            // Find common X positions (columns)
+            var xPositions = fields.Select(f => f.X).Distinct().OrderBy(x => x).ToList();
+            
+            // Snap fields to nearest column
+            foreach (var field in fields)
+            {
+                var nearestX = xPositions.OrderBy(x => Math.Abs(x - field.X)).First();
+                if (Math.Abs(nearestX - field.X) < 20) // Within 20 pixels
+                {
+                    field.X = nearestX;
+                    MarkFieldModified(Fields.IndexOf(field));
+                }
+            }
+        }
+        
+        StateHasChanged();
+    }
+    
+    private void StandardizeSizes()
+    {
+        if (Fields == null) return;
+        
+        // Standard sizes by type
+        var standardSizes = new Dictionary<string, (float Width, float Height)>
+        {
+            ["text"] = (200, 20),
+            ["textarea"] = (300, 60),
+            ["checkbox"] = (15, 15),
+            ["radio"] = (15, 15),
+            ["dropdown"] = (150, 25),
+            ["date"] = (100, 20),
+            ["signature"] = (150, 40),
+            ["email"] = (200, 20),
+            ["phone"] = (120, 20),
+            ["ssn"] = (100, 20),
+            ["currency"] = (80, 20)
+        };
+        
+        foreach (var field in Fields)
+        {
+            if (standardSizes.TryGetValue(field.FieldType, out var size))
+            {
+                field.Width = size.Width;
+                field.Height = size.Height;
+                MarkFieldModified(Fields.IndexOf(field));
+            }
+        }
+        
+        StateHasChanged();
+    }
+    
+    private void GenerateAllTooltips()
+    {
+        if (Fields == null) return;
+        
+        for (int i = 0; i < Fields.Count; i++)
+        {
+            var field = Fields[i];
+            field.Tooltip = GenerateTooltipForType(field.FieldType, field.FieldName);
+            MarkFieldModified(i);
+        }
+        
+        StateHasChanged();
+    }
+    
+    private void ValidateAllFields()
+    {
+        if (Fields == null) return;
+        
+        foreach (var field in Fields)
+        {
+            field.IsValid = !string.IsNullOrWhiteSpace(field.FieldName) &&
+                           field.Width > 0 && field.Height > 0;
+        }
+        
+        StateHasChanged();
+    }
+    
+    private void ResetChanges()
+    {
+        if (originalFields != null && Fields != null)
+        {
+            Fields.Clear();
+            Fields.AddRange(originalFields.Select(f => new FieldDetectionResult
+            {
+                ShortId = f.ShortId,
+                FieldName = f.FieldName,
+                FieldType = f.FieldType,
+                X = f.X,
+                Y = f.Y,
+                Width = f.Width,
+                Height = f.Height,
+                PageNumber = f.PageNumber,
+                Tooltip = f.Tooltip,
+                RequiredField = f.RequiredField,
+                IsValid = f.IsValid,
+                Source = f.Source,
+                Confidence = f.Confidence
+            }));
+            modifiedIndices.Clear();
+            StateHasChanged();
+        }
+    }
+    
+    private async Task SaveAndContinue()
+    {
+        if (Fields != null)
+        {
+            await OnSave.InvokeAsync(Fields);
+        }
+    }
+    
+    private async Task Cancel()
+    {
+        await OnCancel.InvokeAsync();
+    }
+    
+    private void HandleBackgroundClick()
+    {
+        // Allow closing by clicking outside
+        Cancel();
+    }
+}
