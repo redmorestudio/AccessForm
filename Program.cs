@@ -10,6 +10,7 @@ using WordToPdfConverter.Services;
 using WordToPdfConverter.Models;
 using AccessFormServer.Services;
 using System.Text.RegularExpressions;
+using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -1017,6 +1018,114 @@ app.MapPost("/api/convert-with-ai", async (
     }
 })
 .WithName("ConvertWithAI")
+.DisableAntiforgery();
+
+// Add endpoint for extracting tag structure
+app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Program> logger) =>
+{
+    try
+    {
+        using var reader = new StreamReader(request.Body);
+        var body = await reader.ReadToEndAsync();
+        var requestData = JsonSerializer.Deserialize<JsonElement>(body);
+        
+        if (!requestData.TryGetProperty("pdfData", out var pdfDataElement))
+        {
+            return Results.BadRequest(new { error = "Missing PDF data" });
+        }
+        
+        var base64Data = pdfDataElement.GetString();
+        if (string.IsNullOrEmpty(base64Data))
+        {
+            return Results.BadRequest(new { error = "Empty PDF data" });
+        }
+        
+        var pdfBytes = Convert.FromBase64String(base64Data);
+        
+        logger.LogInformation($"Extracting tag structure from PDF ({pdfBytes.Length} bytes)");
+        
+        // Extract basic tag structure from PDF
+        var tagStructure = new
+        {
+            success = true,
+            pageCount = 0,
+            hasTaggedContent = false,
+            hasForm = false,
+            formFields = new List<object>(),
+            tagTree = new
+            {
+                type = "Document",
+                title = "Untitled",
+                author = "",
+                subject = "",
+                children = new List<object>()
+            },
+            errors = new List<string>()
+        };
+        
+        try
+        {
+            using var pdfStream = new MemoryStream(pdfBytes);
+            using var pdfDoc = new PdfLoadedDocument(pdfStream);
+            
+            // Get basic PDF info
+            tagStructure = new
+            {
+                success = true,
+                pageCount = pdfDoc.Pages.Count,
+                hasTaggedContent = false, // Tagged property doesn't exist in Syncfusion
+                hasForm = pdfDoc.Form?.Fields?.Count > 0,
+                formFields = (pdfDoc.Form?.Fields?.Cast<PdfLoadedField>().Select(f => (object)new
+                {
+                    name = (f as PdfLoadedField)?.Name ?? "Unknown",
+                    type = f.GetType().Name.Replace("PdfLoaded", "").Replace("Field", ""),
+                    page = 1 // Page index not directly available
+                }).ToList()) ?? new List<object>(),
+                tagTree = new
+                {
+                    type = "Document",
+                    title = pdfDoc.DocumentInformation?.Title ?? "Untitled",
+                    author = pdfDoc.DocumentInformation?.Author ?? "",
+                    subject = pdfDoc.DocumentInformation?.Subject ?? "",
+                    children = new List<object>()
+                },
+                errors = new List<string>()
+            };
+            
+            pdfDoc.Close(true);
+        }
+        catch (Exception innerEx)
+        {
+            logger.LogWarning($"Failed to extract detailed structure: {innerEx.Message}");
+            tagStructure = new
+            {
+                success = true,
+                pageCount = 0,
+                hasTaggedContent = false,
+                hasForm = false,
+                formFields = new List<object>(),
+                tagTree = new
+                {
+                    type = "Document",
+                    title = "Untitled",
+                    author = "",
+                    subject = "",
+                    children = new List<object>()
+                },
+                errors = new List<string> { $"Could not extract detailed structure: {innerEx.Message}" }
+            };
+        }
+        
+        // Return as JSON
+        return Results.Ok(tagStructure);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Failed to extract tag structure");
+        return Results.Problem($"Failed to extract tag structure: {ex.Message}");
+    }
+})
+.WithName("ExtractTagStructure")
 .DisableAntiforgery();
 
 // Add endpoint for configurable field detection
