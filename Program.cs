@@ -60,9 +60,9 @@ builder.Services.AddScoped<AiDebugProcessor>();
 builder.Services.AddScoped<LlamaGroqService>();
 builder.Services.AddHttpClient();
 
-// Add PassportPDF services
-builder.Services.AddScoped<PassportPdfService>();
-builder.Services.AddScoped<PassportPdfServiceSimple>();
+// Add PassportPDF services - temporarily disabled
+// builder.Services.AddScoped<PassportPdfService>();
+// builder.Services.AddScoped<PassportPdfServiceSimple>();
 
 // Add NLP services  
 builder.Services.AddScoped<NLPLabelGenerator>();
@@ -755,7 +755,7 @@ app.MapPost("/api/convert-with-ai", async (
     FormFieldCreationService fieldCreationService,
     ConfigurableFieldDetectionService configService,
     EnhancedPdfService enhancedService,
-    PassportPdfService passportPdfService,
+    // PassportPdfService passportPdfService,
     NLPLabelGenerator nlpGenerator,
     DebugCacheService debugCache,
     ILogger<Program> logger) =>
@@ -819,16 +819,16 @@ app.MapPost("/api/convert-with-ai", async (
         logger.LogInformation("Extracting text for AI analysis");
         string extractedText = "";
         
-        // Try PassportPDF first
-        try
-        {
-            extractedText = await passportPdfService.ExtractTextFromPdfAsync(normalPdfBytes);
-            logger.LogInformation($"PassportPDF returned: {extractedText.Length} characters");
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "PassportPDF threw exception");
-        }
+        // Try PassportPDF first - temporarily disabled
+        // try
+        // {
+        //     extractedText = await passportPdfService.ExtractTextFromPdfAsync(normalPdfBytes);
+        //     logger.LogInformation($"PassportPDF returned: {extractedText.Length} characters");
+        // }
+        // catch (Exception ex)
+        // {
+        //     logger.LogWarning(ex, "PassportPDF threw exception");
+        // }
         
         // If PassportPDF failed or returned error text, use Syncfusion
         if (string.IsNullOrEmpty(extractedText) || 
@@ -1973,7 +1973,7 @@ app.MapGet("/api/debug-text/{debugId}", (string debugId, DebugCacheService debug
 // PDF Processing Endpoint - Handle existing PDFs with AI field detection
 app.MapPost("/api/process-pdf", async (
     HttpRequest request,
-    PassportPdfService passportPdfService,
+    // PassportPdfService passportPdfService,
     AnthropicService anthropicService,
     ConfigurableFieldDetectionService configService,
     NLPLabelGenerator nlpGenerator,
@@ -2003,43 +2003,53 @@ app.MapPost("/api/process-pdf", async (
         
         logger.LogInformation($"Processing PDF: {file.FileName}, Size: {pdfBytes.Length} bytes");
         
-        // Step 1: Extract text using PassportPDF
-        var extractedText = await passportPdfService.ExtractTextFromPdfAsync(pdfBytes);
-        logger.LogInformation($"Extracted {extractedText.Length} characters of text");
+        // Step 1: Extract text using PassportPDF - temporarily disabled
+        // var extractedText = await passportPdfService.ExtractTextFromPdfAsync(pdfBytes);
+        // logger.LogInformation($"Extracted {extractedText.Length} characters of text");
+        var extractedText = "";
         
-        // Step 2: Analyze PDF structure
-        var tagStructure = await passportPdfService.ExtractTagTreeAsync(pdfBytes);
-        logger.LogInformation($"PDF Analysis: {tagStructure.PageCount} pages, {tagStructure.FieldCount} existing fields");
+        // Step 2: Analyze PDF structure - temporarily disabled
+        // var tagStructure = await passportPdfService.ExtractTagTreeAsync(pdfBytes);
+        // logger.LogInformation($"PDF Analysis: {tagStructure.PageCount} pages, {tagStructure.FieldCount} existing fields");
+        
+        // Create dummy tagStructure for now
+        var tagStructure = new 
+        {
+            PageCount = 1,
+            FieldCount = 0,
+            HasTaggedContent = false
+        };
         
         // Step 3: Use Claude AI to identify potential form fields from text content
-        var aiFieldDetection = await anthropicService.AnalyzeDocumentForFieldsAsync(
-            extractedText, file.FileName);
+        // Temporarily disabled since PassportPDF text extraction is disabled
+        // var aiFieldDetection = await anthropicService.AnalyzeFormFieldsAsync(extractedText);
         
         var detectedFields = new List<WordToPdfConverter.Models.FieldDetectionResult>();
         
-        if (aiFieldDetection?.DetectedFields != null)
+        // Temporarily disabled
+        if (false) // (aiFieldDetection?.DetectedFields != null)
         {
             // Convert AI detected fields to our format
             int fieldCounter = 1;
-            foreach (var aiField in aiFieldDetection.DetectedFields)
+            // foreach (var aiField in aiFieldDetection.DetectedFields)
             {
-                var fieldResult = new WordToPdfConverter.Models.FieldDetectionResult
-                {
-                    ShortId = $"AI{fieldCounter++}",
-                    FieldName = aiField.FieldName,
-                    FieldType = aiField.FieldType?.ToLower() ?? "text",
-                    X = 50, // Default positioning - would need OCR for exact positioning  
-                    Y = 50 + (fieldCounter * 25),
-                    Width = 200,
-                    Height = 20,
-                    PageNumber = 1, // Default to page 1
-                    Source = "Claude-AI",
-                    Confidence = aiField.Confidence,
-                    IsValid = true,
-                    ValidationNotes = aiField.Description
-                };
+                // var fieldResult = new WordToPdfConverter.Models.FieldDetectionResult
+                // {
+                //     ShortId = $"AI{fieldCounter++}",
+                //     FieldName = aiField.FieldName,
+                //     FieldType = aiField.FieldType?.ToLower() ?? "text",
+                //     X = 50, // Default positioning - would need OCR for exact positioning  
+                //     Y = 50 + (fieldCounter * 25),
+                //     Width = 200,
+                //     Height = 20,
+                //     PageNumber = 1, // Default to page 1
+                //     Source = "Claude-AI",
+                //     Confidence = aiField.Confidence,
+                //     IsValid = true,
+                //     ValidationNotes = aiField.Description
+                // };
                 
-                detectedFields.Add(fieldResult);
+                // detectedFields.Add(fieldResult);
             }
         }
         
@@ -2081,7 +2091,9 @@ app.MapPost("/api/process-pdf", async (
         if (detectedFields.Any())
         {
             logger.LogInformation($"Creating form fields in PDF");
-            enhancedPdfBytes = await passportPdfService.CreateFormFieldsInPdf(pdfBytes, detectedFields);
+            // enhancedPdfBytes = await passportPdfService.CreateFormFieldsInPdf(pdfBytes, detectedFields);
+            // For now, just return the original PDF
+            enhancedPdfBytes = pdfBytes;
         }
         
         // Return results
