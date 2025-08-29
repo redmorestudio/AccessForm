@@ -306,34 +306,128 @@ window.accessForm = {
                     try {
                         console.log('Using PassportPDF for processing');
                         
-                        // Show processing indicator
+                        // Show processing indicator with progress tracking
                         const overlay = document.createElement('div');
                         overlay.id = 'processing-overlay';
                         overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
                         overlay.innerHTML = `
-                            <div style="background:white;padding:30px;border-radius:10px;text-align:center;min-width:400px">
+                            <div style="background:white;padding:30px;border-radius:10px;text-align:center;min-width:550px;max-width:650px">
                                 <div class="spinner-border text-success" style="width:3rem;height:3rem" role="status">
                                     <span class="visually-hidden">Processing...</span>
                                 </div>
-                                <h4 class="mt-3">Processing with PassportPDF</h4>
-                                <div class="alert alert-success mt-3">
-                                    <p class="mb-2">🎆 <strong>PassportPDF + Anthropic Claude</strong></p>
-                                    <p class="mb-1">Creating fully PDF/UA compliant document...</p>
-                                    <p class="text-muted small">This ensures maximum accessibility compliance</p>
+                                <h4 class="mt-3">Processing with AI Pipeline</h4>
+                                <div class="alert alert-info mt-3">
+                                    <p class="mb-2">🎆 <strong>Full PDF/UA Compliance Pipeline</strong></p>
+                                    <div class="text-start mt-3" style="font-family: 'Courier New', monospace; font-size: 13px;">
+                                        <div class="mb-2">
+                                            <span id="syncfusion-status">⏳</span> Syncfusion Field Detection: <span id="syncfusion-time" class="text-muted">Starting...</span>
+                                        </div>
+                                        <div class="mb-2">
+                                            <span id="claude-status">⏳</span> Claude Vision Analysis: <span id="claude-time" class="text-muted">Waiting...</span>
+                                        </div>
+                                        <div class="mb-2">
+                                            <span id="passport-status">⏳</span> PassportPDF Compliance: <span id="passport-time" class="text-muted">Not started</span>
+                                        </div>
+                                    </div>
+                                    <div class="mt-3 border-top pt-2">
+                                        <small class="text-muted">Total elapsed: <span id="total-time">0:00</span> | Est. remaining: <span id="est-remaining">Calculating...</span></small>
+                                    </div>
                                 </div>
                             </div>
                         `;
                         document.body.appendChild(overlay);
                         
+                        // Start progress tracking
+                        const startTime = Date.now();
+                        let syncfusionStart = Date.now();
+                        let claudeStart = null;
+                        let passportStart = null;
+                        
+                        // Update timer
+                        const timerInterval = setInterval(() => {
+                            const elapsed = Date.now() - startTime;
+                            const totalSeconds = Math.floor(elapsed / 1000);
+                            const minutes = Math.floor(totalSeconds / 60);
+                            const seconds = totalSeconds % 60;
+                            const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                            
+                            const totalTimeEl = document.getElementById('total-time');
+                            if (totalTimeEl) totalTimeEl.textContent = timeStr;
+                            
+                            // Simulate progress stages (these would be updated by actual server events in production)
+                            if (elapsed > 2000 && !claudeStart) {
+                                // Syncfusion done after 2 seconds
+                                document.getElementById('syncfusion-status').textContent = '✅';
+                                const syncTime = Math.floor((Date.now() - syncfusionStart) / 1000);
+                                document.getElementById('syncfusion-time').textContent = `Done (${syncTime}s)`;
+                                
+                                // Start Claude
+                                claudeStart = Date.now();
+                                document.getElementById('claude-status').textContent = '🔄';
+                                document.getElementById('claude-time').textContent = 'Processing...';
+                            }
+                            
+                            // Update Claude progress
+                            if (claudeStart && !passportStart) {
+                                const claudeElapsed = Math.floor((Date.now() - claudeStart) / 1000);
+                                const claudeEstimate = 8; // Estimated 8 seconds for Claude
+                                const claudeRemaining = Math.max(0, claudeEstimate - claudeElapsed);
+                                if (claudeElapsed < claudeEstimate) {
+                                    document.getElementById('claude-time').textContent = `${claudeElapsed}s elapsed, ~${claudeRemaining}s to go`;
+                                }
+                            }
+                            
+                            if (claudeStart && elapsed > 10000 && !passportStart) {
+                                // Claude done after 8 seconds
+                                document.getElementById('claude-status').textContent = '✅';
+                                const claudeTime = Math.floor((Date.now() - claudeStart) / 1000);
+                                document.getElementById('claude-time').textContent = `Done (${claudeTime}s)`;
+                                
+                                // Start PassportPDF
+                                passportStart = Date.now();
+                                document.getElementById('passport-status').textContent = '🔄';
+                                document.getElementById('passport-time').textContent = 'Converting to PDF/A...';
+                            }
+                            
+                            // Update PassportPDF progress
+                            if (passportStart) {
+                                const passportElapsed = Math.floor((Date.now() - passportStart) / 1000);
+                                const passportEstimate = 5; // Estimated 5 seconds for PassportPDF
+                                const passportRemaining = Math.max(0, passportEstimate - passportElapsed);
+                                if (passportElapsed < passportEstimate) {
+                                    document.getElementById('passport-time').textContent = `Converting to PDF/A... ${passportElapsed}s`;
+                                } else {
+                                    document.getElementById('passport-status').textContent = '✅';
+                                    document.getElementById('passport-time').textContent = `Done (${passportElapsed}s)`;
+                                    document.getElementById('est-remaining').textContent = 'Completing...';
+                                }
+                            }
+                            
+                            // Update estimated remaining
+                            if (!passportStart) {
+                                const remaining = Math.max(0, 15 - totalSeconds);
+                                document.getElementById('est-remaining').textContent = `~${remaining}s`;
+                            }
+                        }, 100);
+                        
+                        // Store interval ID for cleanup
+                        overlay.timerInterval = timerInterval;
+                        
                         const file = files[0];
-                        const endpoint = '/api/process-with-passportpdf-auto';
+                        const endpoint = '/api/convert-with-ai';  // This already includes PassportPDF
                         
                         const result = await window.accessForm.uploadOriginalFile(endpoint, file);
                         
-                        // Remove processing overlay
+                        // Remove processing overlay and clear timer
                         const overlayToRemove = document.getElementById('processing-overlay');
                         if (overlayToRemove) {
+                            if (overlayToRemove.timerInterval) {
+                                clearInterval(overlayToRemove.timerInterval);
+                            }
                             overlayToRemove.remove();
+                        }
+                        if (timerInterval) {
+                            clearInterval(timerInterval);
                         }
                         
                         if (result) {

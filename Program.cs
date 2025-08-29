@@ -60,9 +60,8 @@ builder.Services.AddScoped<AiDebugProcessor>();
 builder.Services.AddScoped<LlamaGroqService>();
 builder.Services.AddHttpClient();
 
-// Add PassportPDF services - temporarily disabled
-// builder.Services.AddScoped<PassportPdfService>();
-// builder.Services.AddScoped<PassportPdfServiceSimple>();
+// Add PassportPDF services
+builder.Services.AddScoped<PassportPdfService>();
 
 // Add NLP services  
 builder.Services.AddScoped<NLPLabelGenerator>();
@@ -755,7 +754,7 @@ app.MapPost("/api/convert-with-ai", async (
     FormFieldCreationService fieldCreationService,
     ConfigurableFieldDetectionService configService,
     EnhancedPdfService enhancedService,
-    // PassportPdfService passportPdfService,
+    PassportPdfService passportPdfService,
     NLPLabelGenerator nlpGenerator,
     DebugCacheService debugCache,
     ILogger<Program> logger) =>
@@ -962,6 +961,31 @@ app.MapPost("/api/convert-with-ai", async (
         remediatedDoc.Save(remediatedOutputStream);
         remediatedPdfBytes = remediatedOutputStream.ToArray();
         remediatedDoc.Close(true);
+        
+        // Step 5: Convert to PDF/A-2u using PassportPDF for full compliance
+        try
+        {
+            logger.LogInformation("Converting to PDF/A-2u with PassportPDF for full accessibility compliance");
+            var pdfABytes = await passportPdfService.ConvertToPdfAAsync(remediatedPdfBytes, file.FileName);
+            
+            // Validate the PDF/A conversion
+            var validationResult = await passportPdfService.ValidatePdfAAsync(pdfABytes);
+            if (validationResult.IsValid)
+            {
+                logger.LogInformation($"PDF/A validation successful: {validationResult.ConformanceLevel}");
+                remediatedPdfBytes = pdfABytes; // Use the PDF/A version
+            }
+            else
+            {
+                logger.LogWarning($"PDF/A validation failed: {validationResult.ErrorMessage}");
+                // Continue with non-PDF/A version
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning($"PassportPDF conversion failed, continuing with standard PDF: {ex.Message}");
+            // Continue with the remediated PDF even if PassportPDF fails
+        }
         
         // Create debug response with all information
         var debugInfo = new
