@@ -1055,6 +1055,143 @@ app.MapPost("/api/convert-with-ai", async (
 .WithName("ConvertWithAI")
 .DisableAntiforgery();
 
+// PDF page preview endpoint for visual field editor
+app.MapPost("/api/pdf-page-preview", async (HttpRequest request, ILogger<Program> logger) =>
+{
+    try
+    {
+        using var reader = new StreamReader(request.Body);
+        var json = await reader.ReadToEndAsync();
+        var requestData = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json);
+        
+        if (!requestData.ContainsKey("pdfData"))
+        {
+            return Results.BadRequest(new { error = "Missing pdfData" });
+        }
+        
+        var pdfBase64 = requestData["pdfData"].GetString();
+        var pageNumber = requestData.ContainsKey("page") ? requestData["page"].GetInt32() : 1;
+        var pdfBytes = Convert.FromBase64String(pdfBase64);
+        
+        // Convert PDF page to image
+        using var pdfStream = new MemoryStream(pdfBytes);
+        using var pdfDoc = new PdfLoadedDocument(pdfStream);
+        
+        if (pageNumber < 1 || pageNumber > pdfDoc.Pages.Count)
+        {
+            return Results.BadRequest(new { error = "Invalid page number" });
+        }
+        
+        // Use PDFtoImage to convert page to image
+        var options = new PDFtoImage.RenderOptions
+        {
+            Dpi = 150,  // Lower DPI for preview
+            WithAnnotations = true,
+            WithFormFill = true
+        };
+        
+        using var bitmap = PDFtoImage.Conversion.ToImage(pdfBytes, pageNumber - 1, options: options);
+        
+        if (bitmap != null)
+        {
+            using var image = SkiaSharp.SKImage.FromBitmap(bitmap);
+            using var data = image.Encode(SkiaSharp.SKEncodedImageFormat.Png, 85);
+            var imageBytes = data.ToArray();
+            
+            // Get field positions for this page
+            var fields = new List<object>();
+            if (pdfDoc.Form != null)
+            {
+                foreach (PdfLoadedField field in pdfDoc.Form.Fields)
+                {
+                    // Check if field is on this page
+                    // For text fields, get bounds directly
+                    if (field is PdfLoadedTextBoxField textField)
+                    {
+                        fields.Add(new
+                        {
+                            name = field.Name,
+                            x = textField.Bounds.X,
+                            y = textField.Bounds.Y,
+                            width = textField.Bounds.Width,
+                            height = textField.Bounds.Height,
+                            type = "text"
+                        });
+                    }
+                    else if (field is PdfLoadedCheckBoxField checkField)
+                    {
+                        fields.Add(new
+                        {
+                            name = field.Name,
+                            x = checkField.Bounds.X,
+                            y = checkField.Bounds.Y,
+                            width = checkField.Bounds.Width,
+                            height = checkField.Bounds.Height,
+                            type = "checkbox"
+                        });
+                    }
+                    else if (field is PdfLoadedRadioButtonListField radioField)
+                    {
+                        fields.Add(new
+                        {
+                            name = field.Name,
+                            x = 0,  // Radio groups don't have single bounds
+                            y = 0,
+                            width = 50,
+                            height = 20,
+                            type = "radio"
+                        });
+                    }
+                    else if (field is PdfLoadedSignatureField sigField)
+                    {
+                        fields.Add(new
+                        {
+                            name = field.Name,
+                            x = sigField.Bounds.X,
+                            y = sigField.Bounds.Y,
+                            width = sigField.Bounds.Width,
+                            height = sigField.Bounds.Height,
+                            type = "signature"
+                        });
+                    }
+                    else
+                    {
+                        fields.Add(new
+                        {
+                            name = field.Name,
+                            x = 0,
+                            y = 0,
+                            width = 100,
+                            height = 20,
+                            type = "unknown"
+                        });
+                    }
+                }
+            }
+            
+            var response = new
+            {
+                success = true,
+                imageData = Convert.ToBase64String(imageBytes),
+                pageWidth = pdfDoc.Pages[pageNumber - 1].Size.Width,
+                pageHeight = pdfDoc.Pages[pageNumber - 1].Size.Height,
+                fields = fields
+            };
+            
+            return Results.Ok(response);
+        }
+        else
+        {
+            return Results.Problem("Failed to convert page to image");
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error generating PDF page preview");
+        return Results.Problem(ex.Message);
+    }
+});
+
 // Add endpoint for extracting tag structure
 app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Program> logger) =>
 {
@@ -1110,11 +1247,61 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                 pageCount = pdfDoc.Pages.Count,
                 hasTaggedContent = false, // Tagged property doesn't exist in Syncfusion
                 hasForm = pdfDoc.Form?.Fields?.Count > 0,
-                formFields = (pdfDoc.Form?.Fields?.Cast<PdfLoadedField>().Select(f => (object)new
+                formFields = (pdfDoc.Form?.Fields?.Cast<PdfLoadedField>().Select(f => 
                 {
-                    name = (f as PdfLoadedField)?.Name ?? "Unknown",
-                    type = f.GetType().Name.Replace("PdfLoaded", "").Replace("Field", ""),
-                    page = 1 // Page index not directly available
+                    string tooltip = "";
+                    string fieldType = "text";
+                    string displayName = f.Name ?? "Unknown";
+                    
+                    // Extract field type from name if embedded (format: "FieldName[type]")
+                    var match = System.Text.RegularExpressions.Regex.Match(displayName, @"^(.+?)\[([^\]]+)\]$");
+                    if (match.Success)
+                    {
+                        displayName = match.Groups[1].Value;
+                        fieldType = match.Groups[2].Value;
+                    }
+                    
+                    // Get tooltip and proper field type based on field class
+                    if (f is PdfLoadedTextBoxField textField)
+                    {
+                        tooltip = textField.ToolTip ?? "";
+                        // If we extracted a type from the name, use that instead of generic "text"
+                        if (!match.Success)
+                            fieldType = "text";
+                    }
+                    else if (f is PdfLoadedCheckBoxField checkField)
+                    {
+                        tooltip = checkField.ToolTip ?? "";
+                        fieldType = "checkbox";
+                    }
+                    else if (f is PdfLoadedRadioButtonListField radioField)
+                    {
+                        tooltip = radioField.ToolTip ?? "";
+                        fieldType = "radio";
+                    }
+                    else if (f is PdfLoadedComboBoxField comboField)
+                    {
+                        tooltip = comboField.ToolTip ?? "";
+                        fieldType = "dropdown";
+                    }
+                    else if (f is PdfLoadedListBoxField listField)
+                    {
+                        tooltip = listField.ToolTip ?? "";
+                        fieldType = "listbox";
+                    }
+                    else if (f is PdfLoadedSignatureField)
+                    {
+                        tooltip = "Click to add signature";
+                        fieldType = "signature";
+                    }
+                    
+                    return (object)new
+                    {
+                        name = displayName,
+                        type = fieldType,
+                        tooltip = tooltip,
+                        page = 1 // Page index not directly available
+                    };
                 }).ToList()) ?? new List<object>(),
                 tagTree = new
                 {

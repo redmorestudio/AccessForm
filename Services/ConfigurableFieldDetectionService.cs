@@ -68,6 +68,22 @@ namespace WordToPdfConverter.Services
             var detectedFields = new List<FieldDetectionResult>();
             byte[] pdfBytes = null;
             
+            // Extract text from Word document for better field labeling
+            string extractedText = "";
+            try
+            {
+                using (var stream = new MemoryStream(wordBytes))
+                using (var wordDoc = new Syncfusion.DocIO.DLS.WordDocument(stream, Syncfusion.DocIO.FormatType.Docx))
+                {
+                    extractedText = wordDoc.GetText();
+                    _logger.LogInformation($"Extracted {extractedText.Length} characters from Word document for analysis");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Failed to extract text from Word: {ex.Message}");
+            }
+            
             if (config.Mode == ProcessingMode.Sequential || config.Mode == ProcessingMode.SyncfusionWithValidation)
             {
                 // PHASE 1: Get base detections from Syncfusion and/or Google
@@ -107,7 +123,23 @@ namespace WordToPdfConverter.Services
                     if (config.Services.UseSyncfusion && detectedFields.Any(f => f.Source == "Syncfusion"))
                     {
                         _logger.LogInformation("PHASE 3: Using Claude Vision for intelligent field labeling");
-                        detectedFields = await EnhanceFieldsWithClaudeLabels(pdfBytes, detectedFields);
+                        
+                        // Convert PDF to Markdown for better structure analysis
+                        string pdfMarkdown = "";
+                        try
+                        {
+                            var markdownConverter = new PdfToMarkdownConverter(_logger as ILogger<PdfToMarkdownConverter>);
+                            pdfMarkdown = markdownConverter.ConvertToMarkdown(pdfBytes);
+                            _logger.LogInformation($"Converted PDF to Markdown: {pdfMarkdown.Length} characters");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning($"Failed to convert PDF to Markdown: {ex.Message}");
+                        }
+                        
+                        // Use markdown if available, otherwise use extracted text
+                        detectedFields = await EnhanceFieldsWithClaudeLabels(pdfBytes, detectedFields, 
+                            string.IsNullOrEmpty(pdfMarkdown) ? extractedText : pdfMarkdown);
                     }
                     else
                     {
@@ -558,15 +590,26 @@ namespace WordToPdfConverter.Services
                         
                     default:
                         // Create text field for all text-based types
+                        // Include the field type in the name for downstream processing
+                        var fieldNameWithType = $"{field.FieldName ?? field.ShortId}[{field.FieldType}]";
                         var textField = new PdfTextBoxField(pdfDoc.Pages[field.PageNumber - 1],
-                            field.FieldName ?? field.ShortId);
+                            fieldNameWithType);
                         textField.Bounds = bounds;
                         
                         // Apply field-type specific formatting and validation
                         ApplyFieldTypeFormatting(textField, field.FieldType);
                         
-                        // Set tooltip
-                        textField.ToolTip = tooltip;
+                        // Set tooltip with type-specific guidance
+                        textField.ToolTip = FieldTooltipGenerator.GenerateTooltip(field.FieldType, field.FieldName);
+                        
+                        // Store the field type in the field's export value for processing
+                        textField.DefaultValue = $"";
+                        
+                        // Add field type to the field's appearance
+                        if (!string.IsNullOrEmpty(FieldTooltipGenerator.GetFormatHint(field.FieldType)))
+                        {
+                            textField.ToolTip += $" Format: {FieldTooltipGenerator.GetFormatHint(field.FieldType)}";
+                        }
                         
                         pdfField = textField;
                         break;
@@ -599,7 +642,10 @@ namespace WordToPdfConverter.Services
             {
                 case "date":
                     textField.MaxLength = 10; // MM/DD/YYYY
-                    // Could add JavaScript format validation here
+                    break;
+                    
+                case "time":
+                    textField.MaxLength = 8; // HH:MM AM
                     break;
                     
                 case "phone":
@@ -612,11 +658,39 @@ namespace WordToPdfConverter.Services
                     
                 case "ssn":
                     textField.MaxLength = 11; // XXX-XX-XXXX
-                    textField.Password = false; // Don't hide SSN
+                    textField.Password = false; // Don't hide SSN for accessibility
+                    break;
+                    
+                case "ssn_partial":
+                    textField.MaxLength = 4; // XXXX
                     break;
                     
                 case "ein":
                     textField.MaxLength = 10; // XX-XXXXXXX
+                    break;
+                    
+                case "tin":
+                    textField.MaxLength = 11; // Tax ID
+                    break;
+                    
+                case "drivers_license":
+                    textField.MaxLength = 20; // Varies by state
+                    break;
+                    
+                case "url":
+                    textField.MaxLength = 200;
+                    break;
+                    
+                case "currency":
+                    textField.MaxLength = 15; // $999,999,999.99
+                    break;
+                    
+                case "percentage":
+                    textField.MaxLength = 6; // 100.00
+                    break;
+                    
+                case "case_number":
+                    textField.MaxLength = 20;
                     break;
                     
                 case "zip":
@@ -624,9 +698,22 @@ namespace WordToPdfConverter.Services
                     textField.MaxLength = 10; // XXXXX-XXXX
                     break;
                     
+                case "numeric":
                 case "number":
                 case "integer":
-                    // Could add numeric validation
+                    // General numeric fields
+                    break;
+                    
+                case "textarea":
+                    // Multi-line text - no max length
+                    break;
+                    
+                case "name":
+                    textField.MaxLength = 100;
+                    break;
+                    
+                case "address":
+                    textField.MaxLength = 200;
                     break;
             }
         }
@@ -709,12 +796,93 @@ namespace WordToPdfConverter.Services
         }
 
         /// <summary>
+        /// Analyze extracted text to get field names
+        /// </summary>
+        private async Task<List<string>> AnalyzeTextForFieldNames(string extractedText)
+        {
+            var fieldNames = new List<string>();
+            
+            if (string.IsNullOrEmpty(extractedText))
+                return fieldNames;
+            
+            try
+            {
+                // Send text to Claude for field name extraction  
+                var prompt = @"List ALL field labels from this form. 
+
+IMPORTANT RULES:
+- Return ONLY field names/labels, nothing else
+- One field name per line
+- No JSON, no formatting, no explanations
+- No quotes, brackets, or special characters
+- Just the plain text of each field label
+
+Include ALL of these:
+- Every checkbox label
+- Every text field label  
+- Every radio button option
+- Every dropdown option
+- Any field that expects user input
+
+For example, if you see checkboxes for disabilities, list each one:
+Autism
+ADHD  
+Blindness
+Deafness
+
+DO NOT write 'Here is...' or any other text. ONLY field names.
+
+Document:
+" + extractedText;
+                
+                // Use Anthropic service to analyze
+                var analysis = await _anthropicService.AnalyzeFormFieldsAsync(prompt);
+                if (!string.IsNullOrEmpty(analysis))
+                {
+                    // Clean up Claude's response - remove JSON formatting and explanatory text
+                    var lines = analysis.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                    foreach (var line in lines)
+                    {
+                        var cleaned = line.Trim();
+                        
+                        // Skip JSON formatting, explanatory text, and code blocks
+                        if (cleaned.StartsWith("```") || cleaned.StartsWith("{") || cleaned.StartsWith("}") || 
+                            cleaned.StartsWith("[") || cleaned.StartsWith("]") || cleaned.Contains("JSON") ||
+                            cleaned.Contains("response") || cleaned.Contains("Here") || cleaned.StartsWith("\"") ||
+                            cleaned.Length < 3 || cleaned.Length > 100)
+                        {
+                            continue;
+                        }
+                        
+                        // Only add legitimate field names
+                        fieldNames.Add(cleaned);
+                    }
+                    _logger.LogInformation($"Extracted {fieldNames.Count} field names from text");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Failed to analyze text for field names: {ex.Message}");
+            }
+            
+            return fieldNames;
+        }
+        
+        /// <summary>
         /// Enhance existing fields with Claude Vision labels
         /// </summary>
         private async Task<List<FieldDetectionResult>> EnhanceFieldsWithClaudeLabels(
-            byte[] pdfBytes, List<FieldDetectionResult> existingFields)
+            byte[] pdfBytes, List<FieldDetectionResult> existingFields, string extractedText = null)
         {
             _logger.LogInformation($"Enhancing {existingFields.Count} fields with Claude labels");
+            
+            // Get field names from text if available
+            List<string> textFieldNames = null;
+            if (!string.IsNullOrEmpty(extractedText))
+            {
+                textFieldNames = await AnalyzeTextForFieldNames(extractedText);
+                _logger.LogInformation($"Got {textFieldNames?.Count ?? 0} field names from text analysis");
+            }
             
             // For now, just call the vision detector to get labels
             // In the future, we could send field positions to Claude for targeted labeling
@@ -761,109 +929,130 @@ namespace WordToPdfConverter.Services
                 var cvPageGroup = cvFieldsByPage.FirstOrDefault(g => g.Key == pageNum);
                 var cvFields = cvPageGroup?.OrderBy(f => f.FieldName).ToList() ?? new List<FieldDetectionResult>();
                 
-                // Separate checkboxes and text fields for better matching
-                var sfCheckboxes = sfFields.Where(f => f.FieldType.ToLower() == "checkbox").ToList();
-                var sfTextFields = sfFields.Where(f => f.FieldType.ToLower() != "checkbox").ToList();
-                var cvCheckboxLabels = cvFields.Where(f => f.FieldType?.ToLower() == "checkbox").ToList();
-                var cvTextLabels = cvFields.Where(f => f.FieldType?.ToLower() != "checkbox").ToList();
+                // Sort fields by position for better matching
+                var sfFieldsSorted = sfFields.OrderBy(f => f.Y).ThenBy(f => f.X).ToList();
+                var cvFieldsSorted = cvFields.OrderBy(f => f.FieldName).ToList();  // Claude fields ordered by name
                 
-                _logger.LogInformation($"Page {pageNum}: {sfFields.Count} Syncfusion fields ({sfCheckboxes.Count} checkboxes, {sfTextFields.Count} text), {cvFields.Count} Claude labels");
+                _logger.LogInformation($"Page {pageNum}: {sfFields.Count} Syncfusion fields, {cvFields.Count} Claude labels");
                 
-                // Process text fields first
-                int textIndex = 0;
-                foreach (var sfField in sfTextFields)
+                // Create a pool of available Claude labels
+                var availableLabels = new Queue<FieldDetectionResult>(cvFieldsSorted);
+                var usedLabels = new HashSet<string>();
+                
+                // Also create a pool of text-extracted field names
+                var textLabelQueue = textFieldNames != null ? new Queue<string>(textFieldNames) : new Queue<string>();
+                
+                // Process all Syncfusion fields in position order
+                foreach (var sfField in sfFieldsSorted)
                 {
                     FieldDetectionResult bestMatch = null;
                     
-                    // Match text fields with text labels
-                    if (textIndex < cvTextLabels.Count)
+                    // For checkboxes, try to find any unused label
+                    if (sfField.FieldType.ToLower() == "checkbox")
                     {
-                        bestMatch = cvTextLabels[textIndex];
-                        textIndex++;
-                    }
-                    else if (cvTextLabels.Any())
-                    {
-                        // If we run out, use the last available label
-                        bestMatch = cvTextLabels.Last();
-                    }
-                    
-                    if (bestMatch != null)
-                    {
-                        // Create enhanced field with intelligent type detection
-                        var detectedType = FieldTypeDetector.DetectFieldType(bestMatch.FieldName, null, bestMatch.FieldType);
-                        
-                        // Validate the type conversion is compatible
-                        var compatibleType = FieldTypeCompatibilityChecker.GetCompatibleType(sfField.FieldType, detectedType);
-                        if (compatibleType != detectedType)
+                        // Try to get the next available label for checkboxes
+                        if (availableLabels.Any())
                         {
-                            _logger.LogWarning($"Prevented invalid conversion for {sfField.ShortId}: {sfField.FieldType} → {detectedType}, using {compatibleType} instead");
+                            bestMatch = availableLabels.Dequeue();
+                            usedLabels.Add(bestMatch.FieldName);
                         }
                         
-                        var enhanced = new FieldDetectionResult
+                        if (bestMatch != null)
                         {
-                            ShortId = sfField.ShortId,
-                            FieldName = bestMatch.FieldName,  // Use Claude's label
-                            FieldType = compatibleType,  // Use compatible type
-                            X = sfField.X,
-                            Y = sfField.Y,
-                            Width = sfField.Width,
-                            Height = sfField.Height,
-                            PageNumber = sfField.PageNumber,
-                            Source = "Syncfusion+Claude",
-                            Confidence = Math.Max(sfField.Confidence, bestMatch.Confidence),
-                            IsValid = sfField.IsValid
-                        };
-                        enhancedFields.Add(enhanced);
-                        _logger.LogDebug($"Enhanced field {sfField.ShortId}: '{sfField.FieldName}' → '{bestMatch.FieldName}' (type: {detectedType}, Claude suggested: {bestMatch.FieldType})");
+                            // Keep it as checkbox but use Claude's label
+                            var enhanced = new FieldDetectionResult
+                            {
+                                ShortId = sfField.ShortId,
+                                FieldName = bestMatch.FieldName,     // Claude's label
+                                FieldType = "checkbox",               // ALWAYS keep as checkbox
+                                X = sfField.X,
+                                Y = sfField.Y,
+                                Width = sfField.Width,
+                                Height = sfField.Height,
+                                PageNumber = sfField.PageNumber,
+                                Source = "Syncfusion+Claude",
+                                Confidence = sfField.Confidence,
+                                IsValid = sfField.IsValid,
+                                Tooltip = FieldTooltipGenerator.GenerateTooltip("checkbox", bestMatch.FieldName)
+                            };
+                            enhancedFields.Add(enhanced);
+                            _logger.LogDebug($"Enhanced checkbox {sfField.ShortId}: label → '{bestMatch.FieldName}'");
+                        }
+                        else
+                        {
+                            // Try to get a label from text extraction
+                            string labelToUse = null;
+                            if (textLabelQueue.Any())
+                            {
+                                labelToUse = textLabelQueue.Dequeue();
+                                _logger.LogDebug($"Using text-extracted label for checkbox: {labelToUse}");
+                            }
+                            
+                            if (!string.IsNullOrEmpty(labelToUse))
+                            {
+                                sfField.FieldName = labelToUse;
+                                sfField.Tooltip = FieldTooltipGenerator.GenerateTooltip("checkbox", labelToUse);
+                            }
+                            else if (!string.IsNullOrWhiteSpace(sfField.FieldName) && !sfField.FieldName.StartsWith("Check") && !sfField.FieldName.Contains("502fba303ae4"))
+                            {
+                                // Keep original name if it's meaningful
+                                sfField.Tooltip = FieldTooltipGenerator.GenerateTooltip("checkbox", sfField.FieldName);
+                            }
+                            else
+                            {
+                                // Generate a contextual default based on position
+                                sfField.FieldName = $"Option {sfField.ShortId.Replace("SF", "")}";
+                                sfField.Tooltip = $"Check if Option {sfField.ShortId.Replace("SF", "")} applies";
+                            }
+                            enhancedFields.Add(sfField);
+                            _logger.LogDebug($"No Claude label for checkbox {sfField.ShortId}, using: {sfField.FieldName}");
+                        }
                     }
                     else
                     {
-                        enhancedFields.Add(sfField);
-                    }
-                }
-                
-                // Process checkboxes - keep them as checkboxes but try to get labels
-                int checkboxIndex = 0;
-                foreach (var sfCheckbox in sfCheckboxes)
-                {
-                    FieldDetectionResult bestLabel = null;
-                    
-                    // Try to match with Claude checkbox labels
-                    if (checkboxIndex < cvCheckboxLabels.Count)
-                    {
-                        bestLabel = cvCheckboxLabels[checkboxIndex];
-                        checkboxIndex++;
-                    }
-                    else if (cvCheckboxLabels.Any())
-                    {
-                        // Use a generic checkbox label if we run out
-                        bestLabel = cvCheckboxLabels.Last();
-                    }
-                    
-                    if (bestLabel != null)
-                    {
-                        // Keep it as checkbox but use Claude's label
-                        var enhanced = new FieldDetectionResult
+                        // For text fields, try to get a matching label
+                        if (availableLabels.Any())
                         {
-                            ShortId = sfCheckbox.ShortId,
-                            FieldName = bestLabel.FieldName,     // Claude's label
-                            FieldType = "checkbox",               // ALWAYS keep as checkbox
-                            X = sfCheckbox.X,
-                            Y = sfCheckbox.Y,
-                            Width = sfCheckbox.Width,
-                            Height = sfCheckbox.Height,
-                            PageNumber = sfCheckbox.PageNumber,
-                            Source = "Syncfusion+Claude",
-                            Confidence = sfCheckbox.Confidence,
-                            IsValid = sfCheckbox.IsValid
-                        };
-                        enhancedFields.Add(enhanced);
-                        _logger.LogDebug($"Enhanced checkbox {sfCheckbox.ShortId}: label → '{bestLabel.FieldName}'");
-                    }
-                    else
-                    {
-                        // No label found, keep original checkbox
-                        enhancedFields.Add(sfCheckbox);
+                            bestMatch = availableLabels.Dequeue();
+                            usedLabels.Add(bestMatch.FieldName);
+                        }
+                        
+                        if (bestMatch != null)
+                        {
+                            // Create enhanced field with intelligent type detection
+                            var detectedType = FieldTypeDetector.DetectFieldType(bestMatch.FieldName, null, bestMatch.FieldType);
+                            
+                            // Validate the type conversion is compatible
+                            var compatibleType = FieldTypeCompatibilityChecker.GetCompatibleType(sfField.FieldType, detectedType);
+                            if (compatibleType != detectedType)
+                            {
+                                _logger.LogWarning($"Prevented invalid conversion for {sfField.ShortId}: {sfField.FieldType} → {detectedType}, using {compatibleType} instead");
+                            }
+                            
+                            var enhanced = new FieldDetectionResult
+                            {
+                                ShortId = sfField.ShortId,
+                                FieldName = bestMatch.FieldName,  // Use Claude's label
+                                FieldType = compatibleType,  // Use compatible type
+                                X = sfField.X,
+                                Y = sfField.Y,
+                                Width = sfField.Width,
+                                Height = sfField.Height,
+                                PageNumber = sfField.PageNumber,
+                                Source = "Syncfusion+Claude",
+                                Confidence = Math.Max(sfField.Confidence, bestMatch.Confidence),
+                                IsValid = sfField.IsValid,
+                                Tooltip = FieldTooltipGenerator.GenerateTooltip(compatibleType, bestMatch.FieldName)
+                            };
+                            enhancedFields.Add(enhanced);
+                            _logger.LogDebug($"Enhanced field {sfField.ShortId}: '{sfField.FieldName}' → '{bestMatch.FieldName}' (type: {compatibleType})");
+                        }
+                        else
+                        {
+                            // No more labels available
+                            sfField.Tooltip = FieldTooltipGenerator.GenerateTooltip(sfField.FieldType, sfField.FieldName);
+                            enhancedFields.Add(sfField);
+                        }
                     }
                 }
             }

@@ -418,6 +418,26 @@ window.accessForm = {
                         
                         const result = await window.accessForm.uploadOriginalFile(endpoint, file);
                         
+                        // Mark all stages as complete when response received
+                        if (document.getElementById('syncfusion-status')) {
+                            document.getElementById('syncfusion-status').textContent = '✅';
+                            document.getElementById('syncfusion-time').textContent = 'Done';
+                        }
+                        if (document.getElementById('claude-status')) {
+                            document.getElementById('claude-status').textContent = '✅';
+                            document.getElementById('claude-time').textContent = 'Done';
+                        }
+                        if (document.getElementById('passport-status')) {
+                            document.getElementById('passport-status').textContent = '✅';
+                            document.getElementById('passport-time').textContent = 'Done';
+                        }
+                        if (document.getElementById('est-remaining')) {
+                            document.getElementById('est-remaining').textContent = 'Complete';
+                        }
+                        
+                        // Small delay to show completion status
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        
                         // Remove processing overlay and clear timer
                         const overlayToRemove = document.getElementById('processing-overlay');
                         if (overlayToRemove) {
@@ -690,3 +710,75 @@ document.addEventListener('DOMContentLoaded', function () {
         console.warn('Browser does not fully support drag and drop file uploads');
     }
 });
+
+// Display tag tree in the modal
+window.displayTagTree = function(elementId, tagTreeJson) {
+    try {
+        const element = document.getElementById(elementId);
+        if (!element) {
+            console.error('Element not found:', elementId);
+            return;
+        }
+        
+        const tagData = JSON.parse(tagTreeJson);
+        
+        // Build HTML for tree display
+        let html = '<div class="tree-view">';
+        
+        function renderNode(node, level = 0) {
+            const indent = '  '.repeat(level);
+            let nodeHtml = `<div class="tree-node" style="margin-left: ${level * 20}px;">`;
+            
+            if (node.type) {
+                nodeHtml += `<span class="tree-node-label">`;
+                nodeHtml += `<strong>${node.type}</strong>`;
+                
+                if (node.title) {
+                    nodeHtml += `: ${node.title}`;
+                }
+                
+                if (node.name) {
+                    nodeHtml += ` - ${node.name}`;
+                }
+                
+                nodeHtml += '</span>';
+            }
+            
+            nodeHtml += '</div>';
+            
+            if (node.children && node.children.length > 0) {
+                node.children.forEach(child => {
+                    nodeHtml += renderNode(child, level + 1);
+                });
+            }
+            
+            return nodeHtml;
+        }
+        
+        if (tagData.tagTree) {
+            html += renderNode(tagData.tagTree);
+        } else {
+            html += '<p class="text-muted">No tag structure available</p>';
+        }
+        
+        if (tagData.formFields && tagData.formFields.length > 0) {
+            html += '<div class="mt-3"><strong>Form Fields:</strong></div>';
+            tagData.formFields.forEach(field => {
+                html += `<div class="tree-node" style="margin-left: 20px;">`;
+                html += `<span class="field-type-badge type-${field.type}">${field.type}</span> `;
+                html += `${field.name}`;
+                if (field.tooltip) {
+                    html += ` <small class="text-muted">(${field.tooltip})</small>`;
+                }
+                html += '</div>';
+            });
+        }
+        
+        html += '</div>';
+        element.innerHTML = html;
+        
+    } catch (error) {
+        console.error('Error displaying tag tree:', error);
+        document.getElementById(elementId).innerHTML = '<p class="text-danger">Error displaying tag tree</p>';
+    }
+};
