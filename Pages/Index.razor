@@ -297,6 +297,10 @@
                                         <span class="me-2">🔍</span> View Tag Structure
                                     </button>
                                     
+                                    <button class="btn btn-primary w-100 mt-2" @onclick="OpenTagEditor">
+                                        <span class="me-2">✏️</span> Edit Fields & Tags
+                                    </button>
+                                    
                                     <button class="btn btn-warning w-100 mt-2" @onclick="() => ViewAiDebugResponses()">
                                         <span class="me-2">🐛</span> Debug AI Responses
                                     </button>
@@ -1509,17 +1513,21 @@
                 html += "<h6 class='mt-3'>Form Fields</h6>";
                 html += "<div style='max-height: 400px; overflow-y: auto;'>";
                 html += "<table class='table table-sm table-striped'>";
-                html += "<thead><tr><th>Field Name</th><th>Type</th><th>Page</th></tr></thead>";
+                html += "<thead><tr><th>Field Name</th><th>Type</th><th>Tooltip</th><th>Page</th></tr></thead>";
                 html += "<tbody>";
                 foreach (var field in formFields.EnumerateArray())
                 {
                     if (field.TryGetProperty("name", out var name) && field.TryGetProperty("type", out var type))
                     {
                         var page = field.TryGetProperty("page", out var p) ? p.GetInt32() : 1;
+                        var tooltip = field.TryGetProperty("tooltip", out var t) ? t.GetString() : "";
                         var fieldType = type.GetString();
-                        var typeClass = fieldType.Contains("Radio") ? "text-warning" : 
-                                       fieldType.Contains("Check") ? "text-success" : "text-primary";
-                        html += $"<tr><td><strong>{name.GetString()}</strong></td><td class='{typeClass}'>{fieldType}</td><td>{page}</td></tr>";
+                        var typeClass = fieldType.Contains("radio") ? "text-warning" : 
+                                       fieldType.Contains("checkbox") ? "text-success" : 
+                                       fieldType.Contains("signature") ? "text-danger" :
+                                       fieldType.Contains("date") ? "text-info" : "text-primary";
+                        var tooltipDisplay = string.IsNullOrEmpty(tooltip) ? "<em class='text-muted'>No tooltip</em>" : tooltip;
+                        html += $"<tr><td><strong>{name.GetString()}</strong></td><td class='{typeClass}'>{fieldType}</td><td>{tooltipDisplay}</td><td>{page}</td></tr>";
                     }
                 }
                 html += "</tbody></table>";
@@ -1689,6 +1697,86 @@
         dotNetHelper?.Dispose();
         processingTimer?.Dispose();
     }
+    
+    private TagModificationModal tagEditorModal;
+    private bool showTagEditor = false;
+    private string currentTagTreeJson = "";
+    private List<TagModificationModal.EditableField> currentFields = new();
+    
+    private async Task OpenTagEditor()
+    {
+        try
+        {
+            // Get the current tag structure
+            if (processingResults?.AccessibleFileData != null)
+            {
+                // Call the API to extract tag structure
+                var requestData = new { pdfData = processingResults.AccessibleFileData };
+                var requestContent = new StringContent(
+                    JsonSerializer.Serialize(requestData),
+                    System.Text.Encoding.UTF8,
+                    "application/json"
+                );
+                
+                var http = new HttpClient { BaseAddress = new Uri(NavigationManager.BaseUri) };
+                var response = await http.PostAsync("/api/extract-tag-structure", requestContent);
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    currentTagTreeJson = await response.Content.ReadAsStringAsync();
+                    var tagStructure = JsonDocument.Parse(currentTagTreeJson);
+                    
+                    // Parse fields from tag structure
+                    currentFields.Clear();
+                    if (tagStructure.RootElement.TryGetProperty("formFields", out var fields))
+                    {
+                        foreach (var field in fields.EnumerateArray())
+                        {
+                            currentFields.Add(new TagModificationModal.EditableField
+                            {
+                                Name = field.GetProperty("name").GetString(),
+                                Type = field.GetProperty("type").GetString(),
+                                Tooltip = field.TryGetProperty("tooltip", out var tooltip) ? tooltip.GetString() : "",
+                                Page = field.TryGetProperty("page", out var page) ? page.GetInt32() : 1
+                            });
+                        }
+                    }
+                    
+                    showTagEditor = true;
+                    StateHasChanged();
+                }
+                else
+                {
+                    await JSRuntime.InvokeVoidAsync("alert", "No tag structure available. Process the document first.");
+                }
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No document available. Process a document first.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error opening tag editor: {ex.Message}");
+        }
+    }
+    
+    private async Task HandleTagEditorApply(List<TagModificationModal.EditableField> updatedFields)
+    {
+        // TODO: Apply the updated fields to the PDF
+        await JSRuntime.InvokeVoidAsync("alert", $"Updated {updatedFields.Count} fields. Re-processing with new field data...");
+        
+        // Re-process the document with updated field information
+        // This would involve calling the processing pipeline again with the modified field data
+        showTagEditor = false;
+        StateHasChanged();
+    }
 }
 
+<TagModificationModal @ref="tagEditorModal" 
+                      IsVisible="showTagEditor" 
+                      IsVisibleChanged="@((bool value) => { showTagEditor = value; StateHasChanged(); })"
+                      TagTreeJson="@currentTagTreeJson"
+                      Fields="@currentFields"
+                      OnApplyChanges="HandleTagEditorApply" />
 

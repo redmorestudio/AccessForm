@@ -101,6 +101,10 @@ namespace WordToPdfConverter.Models
         public float Confidence { get; set; }
         public bool IsValid { get; set; } = true;
         public string ValidationNotes { get; set; }
+        public string Tooltip { get; set; } = "";
+        public bool RequiredField { get; set; } = false;
+        public List<string> Options { get; set; } = new List<string>();
+        public Dictionary<string, string> ValidationRules { get; set; } = new Dictionary<string, string>();
         public Dictionary<string, object> DebugInfo { get; set; } = new Dictionary<string, object>();
     }
 }

@@ -151,10 +151,10 @@ namespace WordToPdfConverter.Services
                 _logger.LogInformation($"Converting page {pageIndex + 1} to PNG image for vision analysis");
                 
                 // Convert the PDF page to image at high DPI for better OCR
-                // Set higher DPI for better quality (default is 300, we'll use 150 for balance)
+                // Use high DPI for accurate checkbox and field detection
                 PDFtoImage.RenderOptions options = new PDFtoImage.RenderOptions
                 {
-                    Dpi = 150,  // Good balance between quality and file size
+                    Dpi = 200,  // Good balance of quality and speed
                     WithAnnotations = true,  // Include form field annotations
                     WithFormFill = true,     // Include filled form data
                     AntiAliasing = PDFtoImage.PdfAntiAliasing.All  // Better quality
@@ -165,9 +165,9 @@ namespace WordToPdfConverter.Services
                 
                 if (bitmap != null)
                 {
-                    // Convert SkiaSharp SKBitmap to PNG bytes
+                    // Convert SkiaSharp SKBitmap to PNG bytes with high quality
                     using var image = SKImage.FromBitmap(bitmap);
-                    using var data = image.Encode(SKEncodedImageFormat.Png, 90);
+                    using var data = image.Encode(SKEncodedImageFormat.Png, 100);  // Maximum quality
                     
                     var imageBytes = data.ToArray();
                     _logger.LogInformation($"Successfully converted page {pageIndex + 1} to PNG ({imageBytes.Length} bytes)");
@@ -212,8 +212,8 @@ namespace WordToPdfConverter.Services
                 
                 var page = pdfDocument.Pages[pageIndex] as PdfLoadedPage;
                 
-                // Get page dimensions - use a reasonable DPI for quality
-                const float dpi = 150f;
+                // Get page dimensions - use high DPI for quality
+                const float dpi = 200f;  // Match main converter DPI
                 const float dpiScale = dpi / 72f; // PDF uses 72 DPI by default
                 
                 var pageWidth = (int)(page.Size.Width * dpiScale);
@@ -421,7 +421,9 @@ namespace WordToPdfConverter.Services
                                 new
                                 {
                                     type = "text",
-                                    text = @"Analyze this government form image and identify ALL fillable fields. You must detect ALL 33 field types defined in AccessForm specification:
+                                    text = @"CRITICAL: You MUST identify EVERY SINGLE fillable field on this form page, especially ALL checkboxes! Count them carefully!
+
+Analyze this government form image and identify ALL fillable fields. This form likely has 30-40+ fields including many checkboxes. You must detect ALL 33 field types defined in AccessForm specification:
 
 CRITICAL - DETECT ALL THESE FIELD TYPES:
 
@@ -437,11 +439,16 @@ CRITICAL - DETECT ALL THESE FIELD TYPES:
 - Phone: Phone number fields (XXX) XXX-XXXX
 - Address: Street address fields (may be multi-line composite)
 
-3. CHECKBOXES & SELECTIONS (COUNT EVERY ONE):
-- Checkbox: Square boxes □ ☐ [ ] that can be checked
+3. CHECKBOXES & SELECTIONS (DETECT EVERY SINGLE ONE):
+- Checkbox: ANY square boxes □ ☐ [ ] that can be checked - LOOK FOR ALL OF THEM!
+  * Small squares next to text labels
+  * Often appear in groups or lists
+  * May have labels like Yes, No, disability types, service options, etc.
 - Radio: Circle buttons ○ ◯ ( ) for single selection
 - Dropdown: Fields with dropdown arrows ▼ or selection lists
 - Listbox: Multi-select list fields
+
+CHECKBOX DETECTION IS CRITICAL - Forms often have 10-20+ checkboxes!
 
 4. DATE & TIME:
 - Date: Date entry fields (MM/DD/YYYY)
@@ -491,6 +498,9 @@ IMPORTANT POSITIONING:
 - height: Height of the input area
 - For checkboxes: typical size is 2-3% width/height
 - For text fields: height typically 3-5%, width varies
+
+IMPORTANT: Be EXHAUSTIVE! If you see 40 fields, return 40 fields. Do not stop early or summarize!
+Count carefully: text fields, checkboxes (especially in groups), dates, signatures, etc.
 
 Return JSON format:
 {

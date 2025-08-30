@@ -225,8 +225,9 @@
                                            @oninput="@(() => MarkFieldModified(index))" />
                                 </td>
                                 <td>
-                                    <select class="field-type-select" @bind="field.FieldType"
-                                            @onchange="@(() => OnFieldTypeChanged(index))">
+                                    <select class="field-type-select" 
+                                            value="@field.FieldType"
+                                            @onchange="@((e) => { field.FieldType = e.Value?.ToString() ?? "text"; OnFieldTypeChanged(index); })">
                                         @foreach (var type in GetAllFieldTypes())
                                         {
                                             <option value="@type.Value">@type.Display</option>
@@ -263,8 +264,9 @@
                                     </div>
                                 </td>
                                 <td style="text-align: center">
-                                    <input type="checkbox" @bind="field.RequiredField"
-                                           @onchange="@(() => MarkFieldModified(index))" />
+                                    <input type="checkbox" 
+                                           checked="@field.RequiredField"
+                                           @onchange="@((e) => { field.RequiredField = (bool)(e.Value ?? false); MarkFieldModified(index); })" />
                                 </td>
                                 <td>
                                     <span class="field-status @(field.IsValid ? "status-valid" : "status-invalid")">

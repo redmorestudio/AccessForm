@@ -1,0 +1,365 @@
+@using WordToPdfConverter.Models
+@using System.Text.Json
+@inject IJSRuntime JSRuntime
+
+<div class="modal @(IsVisible ? "show d-block" : "")" tabindex="-1" role="dialog" style="background-color: rgba(0,0,0,0.5);">
+    <div class="modal-dialog modal-xl" role="document" style="max-width: 90%; height: 85vh;">
+        <div class="modal-content h-100">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-tags me-2"></i>
+                    Tag Structure & Field Editor
+                </h5>
+                <button type="button" class="btn-close" @onclick="Cancel"></button>
+            </div>
+            <div class="modal-body" style="overflow-y: auto; max-height: calc(85vh - 150px);">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>Tag Tree Structure</h5>
+                        <div class="tag-tree-panel">
+                            <div id="tagTreeDisplay" class="tree-view"></div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>Form Fields (@EditableFields.Count fields)</h5>
+                        <div class="fields-panel">
+                            <table class="table table-sm table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Type</th>
+                                        <th>Width</th>
+                                        <th>Height</th>
+                                        <th>Tooltip</th>
+                                        <th>Page</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var field in EditableFields)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <input type="text" class="form-control form-control-sm" 
+                                                       @bind="field.Name" />
+                                            </td>
+                                            <td>
+                                                <select class="form-select form-select-sm" @bind="field.Type">
+                                                    @foreach (var type in FieldTypes)
+                                                    {
+                                                        <option value="@type.Value">@type.Display</option>
+                                                    }
+                                                </select>
+                                            </td>
+                                            <td>
+                                                <input type="text" class="form-control form-control-sm" 
+                                                       @bind="field.Tooltip" />
+                                            </td>
+                                            <td class="text-center">@field.Page</td>
+                                            <td>
+                                                <button class="btn btn-sm btn-danger" @onclick="() => DeleteField(field)">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bulk-operations mt-3">
+                    <h5>Bulk Operations</h5>
+                    <div class="btn-group">
+                        <button class="btn btn-secondary" @onclick="AutoGenerateTooltips">
+                            <i class="fas fa-magic"></i> Auto-Generate Tooltips
+                        </button>
+                        <button class="btn btn-secondary" @onclick="ValidateAllFields">
+                            <i class="fas fa-check-circle"></i> Validate Fields
+                        </button>
+                        <button class="btn btn-secondary" @onclick="OptimizeFieldTypes">
+                            <i class="fas fa-cogs"></i> Optimize Field Types
+                        </button>
+                    </div>
+                </div>
+                
+                @if (ValidationMessages.Any())
+                {
+                    <div class="alert alert-warning mt-3">
+                        <h6>Validation Issues:</h6>
+                        <ul>
+                            @foreach (var message in ValidationMessages)
+                            {
+                                <li>@message</li>
+                            }
+                        </ul>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <div class="d-flex justify-content-between w-100">
+                    <span class="text-muted">@EditableFields.Count fields total</span>
+                    <div>
+                        <button type="button" class="btn btn-secondary" @onclick="Cancel">Cancel</button>
+                        <button type="button" class="btn btn-primary" @onclick="ApplyChanges">Apply Changes & Continue</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .tag-tree-panel {
+        height: 400px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 10px;
+        background: #f8f9fa;
+    }
+    
+    .fields-panel {
+        height: 400px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+    }
+    
+    .tree-view {
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 12px;
+    }
+    
+    .tree-node {
+        margin-left: 20px;
+    }
+    
+    .tree-node-label {
+        cursor: pointer;
+        padding: 2px 5px;
+    }
+    
+    .tree-node-label:hover {
+        background: #e9ecef;
+        border-radius: 3px;
+    }
+    
+    .field-type-badge {
+        display: inline-block;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 11px;
+        font-weight: bold;
+        margin-left: 5px;
+    }
+    
+    .type-text { background: #17a2b8; color: white; }
+    .type-checkbox { background: #28a745; color: white; }
+    .type-date { background: #ffc107; color: black; }
+    .type-email { background: #6c757d; color: white; }
+    .type-phone { background: #6f42c1; color: white; }
+    .type-signature { background: #dc3545; color: white; }
+    
+    .bulk-operations {
+        border-top: 1px solid #dee2e6;
+        padding-top: 15px;
+    }
+</style>
+
+@code {
+    [Parameter] public bool IsVisible { get; set; }
+    [Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
+    [Parameter] public EventCallback<List<EditableField>> OnApplyChanges { get; set; }
+    [Parameter] public string TagTreeJson { get; set; }
+    [Parameter] public List<EditableField> Fields { get; set; } = new List<EditableField>();
+    
+    private List<EditableField> EditableFields = new List<EditableField>();
+    private List<string> ValidationMessages = new List<string>();
+    
+    private List<FieldTypeOption> FieldTypes = new List<FieldTypeOption>
+    {
+        // Basic Input Fields
+        new() { Value = "text", Display = "Text" },
+        new() { Value = "textarea", Display = "Text Area" },
+        
+        // Selection Fields
+        new() { Value = "checkbox", Display = "Checkbox" },
+        new() { Value = "radio", Display = "Radio Button" },
+        new() { Value = "dropdown", Display = "Dropdown" },
+        new() { Value = "listbox", Display = "List Box" },
+        
+        // Date/Time Fields
+        new() { Value = "date", Display = "Date" },
+        new() { Value = "time", Display = "Time" },
+        
+        // Contact Fields
+        new() { Value = "email", Display = "Email" },
+        new() { Value = "phone", Display = "Phone" },
+        new() { Value = "url", Display = "URL" },
+        
+        // Government ID Fields
+        new() { Value = "ssn", Display = "SSN" },
+        new() { Value = "ssn_partial", Display = "SSN (Last 4)" },
+        new() { Value = "ein", Display = "EIN" },
+        new() { Value = "tin", Display = "TIN" },
+        new() { Value = "drivers_license", Display = "Driver's License" },
+        
+        // Signature Fields
+        new() { Value = "signature", Display = "Signature" },
+        new() { Value = "initials", Display = "Initials" },
+        
+        // Numeric Fields
+        new() { Value = "numeric", Display = "Number" },
+        new() { Value = "currency", Display = "Currency" },
+        new() { Value = "percentage", Display = "Percentage" },
+        
+        // Special Fields
+        new() { Value = "file_upload", Display = "File Upload" },
+        new() { Value = "case_number", Display = "Case Number" },
+        new() { Value = "calculated", Display = "Calculated" },
+        
+        // Composite Fields
+        new() { Value = "name", Display = "Name" },
+        new() { Value = "address", Display = "Address" }
+    };
+    
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Fields != null && Fields.Any())
+        {
+            EditableFields = new List<EditableField>(Fields);
+        }
+        
+        if (IsVisible && !string.IsNullOrEmpty(TagTreeJson))
+        {
+            await Task.Delay(100); // Give modal time to render
+            await DisplayTagTree();
+        }
+    }
+    
+    private async Task DisplayTagTree()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("displayTagTree", "tagTreeDisplay", TagTreeJson);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error displaying tag tree: {ex.Message}");
+        }
+    }
+    
+    private void DeleteField(EditableField field)
+    {
+        EditableFields.Remove(field);
+        StateHasChanged();
+    }
+    
+    private void AutoGenerateTooltips()
+    {
+        foreach (var field in EditableFields)
+        {
+            field.Tooltip = AccessFormServer.Services.FieldTooltipGenerator.GenerateTooltip(field.Type, field.Name);
+        }
+        StateHasChanged();
+    }
+    
+    private void ValidateAllFields()
+    {
+        ValidationMessages.Clear();
+        
+        foreach (var field in EditableFields)
+        {
+            // Check for duplicate field names
+            var duplicates = EditableFields.Where(f => f != field && f.Name == field.Name).ToList();
+            if (duplicates.Any())
+            {
+                ValidationMessages.Add($"Duplicate field name: '{field.Name}' on page {field.Page}");
+            }
+            
+            // Check for missing tooltips
+            if (string.IsNullOrWhiteSpace(field.Tooltip))
+            {
+                ValidationMessages.Add($"Field '{field.Name}' is missing a tooltip");
+            }
+            
+            // Type-specific validation
+            switch (field.Type)
+            {
+                case "email":
+                    if (!field.Name.ToLower().Contains("email") && !field.Name.ToLower().Contains("e-mail"))
+                    {
+                        ValidationMessages.Add($"Field '{field.Name}' is marked as email but name doesn't suggest email");
+                    }
+                    break;
+                    
+                case "phone":
+                    if (!field.Name.ToLower().Contains("phone") && !field.Name.ToLower().Contains("tel"))
+                    {
+                        ValidationMessages.Add($"Field '{field.Name}' is marked as phone but name doesn't suggest phone");
+                    }
+                    break;
+                    
+                case "date":
+                    if (!field.Name.ToLower().Contains("date") && !field.Name.ToLower().Contains("dob"))
+                    {
+                        ValidationMessages.Add($"Field '{field.Name}' is marked as date but name doesn't suggest date");
+                    }
+                    break;
+            }
+        }
+        
+        if (!ValidationMessages.Any())
+        {
+            ValidationMessages.Add("✓ All fields passed validation!");
+        }
+        
+        StateHasChanged();
+    }
+    
+    private void OptimizeFieldTypes()
+    {
+        foreach (var field in EditableFields)
+        {
+            var detectedType = WordToPdfConverter.Services.FieldTypeDetector.DetectFieldType(field.Name, null, field.Type);
+            if (detectedType != field.Type)
+            {
+                var compatibleType = AccessFormServer.Services.FieldTypeCompatibilityChecker.GetCompatibleType(field.Type, detectedType);
+                if (compatibleType != field.Type)
+                {
+                    field.Type = compatibleType;
+                }
+            }
+        }
+        StateHasChanged();
+    }
+    
+    private async Task Cancel()
+    {
+        IsVisible = false;
+        await IsVisibleChanged.InvokeAsync(false);
+    }
+    
+    private async Task ApplyChanges()
+    {
+        await OnApplyChanges.InvokeAsync(EditableFields);
+        IsVisible = false;
+        await IsVisibleChanged.InvokeAsync(false);
+    }
+    
+    public class EditableField
+    {
+        public string Name { get; set; }
+        public string Type { get; set; }
+        public string Tooltip { get; set; }
+        public int Page { get; set; }
+    }
+    
+    public class FieldTypeOption
+    {
+        public string Value { get; set; }
+        public string Display { get; set; }
+    }
+}
