@@ -15,6 +15,25 @@ using Microsoft.Extensions.Caching.Memory;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure Kestrel to accept larger request bodies
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.Limits.MaxRequestBodySize = 200 * 1024 * 1024; // 200MB
+});
+
+// Configure form options for larger requests
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+{
+    options.ValueLengthLimit = int.MaxValue;
+    options.MultipartBodyLengthLimit = int.MaxValue;
+    options.MemoryBufferThreshold = int.MaxValue;
+});
+
+// Configure logging to file
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddProvider(new SimpleFileLoggerProvider("/Users/sethredmore/Documents/Redmore Studio/AccessForm/WordToPdfConverter/Logs/accessform.log"));
+
 // Add services
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor(options =>
@@ -63,6 +82,9 @@ builder.Services.AddHttpClient();
 // Add PassportPDF services
 builder.Services.AddScoped<PassportPdfService>();
 
+// Add PDF/UA compliance service
+builder.Services.AddScoped<PdfUAComplianceService>();
+
 // Add NLP services  
 builder.Services.AddScoped<NLPLabelGenerator>();
 
@@ -70,6 +92,43 @@ var app = builder.Build();
 
 // Register Syncfusion license AFTER builder.Build() for .NET 9.0 Blazor Server
 Syncfusion.Licensing.SyncfusionLicenseProvider.RegisterLicense("ORg4AjUWIQA/Gnt2XFhhQlJHfV5AQmBIYVp/TGpJfl96cVxMZVVBJAtUQF1hTH5bd01iXHxXcX1UQWlVWkZ/;NRAiBiAaIQQuGjN/V09+XU9HdVRDX3xKf0x/TGpQb19xflBPallYVBYiSV9jS3tTfkRrWHpdeXVcR2lZVE90Vg==;Mzk5NjU0N0AzMjM5MmUzMDJlMzAzYjMyMzkzYmx1RzNnTloxcHRnWHNiT2xUc0pXbmpaT1NLc2NpdXNUdXdXcWVUT00xMmc9");
+
+// Add comprehensive request/response logging
+app.Use(async (context, next) =>
+{
+    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+    var requestId = Guid.NewGuid().ToString("N").Substring(0, 8);
+    
+    // Skip logging for static files and SignalR
+    if (context.Request.Path.StartsWithSegments("/_blazor") || 
+        context.Request.Path.StartsWithSegments("/_framework") ||
+        context.Request.Path.StartsWithSegments("/css") ||
+        context.Request.Path.StartsWithSegments("/js"))
+    {
+        await next();
+        return;
+    }
+    
+    // Log request
+    logger.LogInformation($"[{requestId}] ===== REQUEST: {context.Request.Method} {context.Request.Path} =====");
+    logger.LogInformation($"[{requestId}] ContentType: {context.Request.ContentType}, Length: {context.Request.ContentLength}");
+    
+    var startTime = DateTime.UtcNow;
+    
+    try
+    {
+        await next();
+        
+        var elapsed = DateTime.UtcNow - startTime;
+        logger.LogInformation($"[{requestId}] ===== RESPONSE: {context.Response.StatusCode} in {elapsed.TotalMilliseconds:F1}ms =====");
+    }
+    catch (Exception ex)
+    {
+        var elapsed = DateTime.UtcNow - startTime;
+        logger.LogError(ex, $"[{requestId}] ERROR after {elapsed.TotalMilliseconds:F1}ms");
+        throw;
+    }
+});
 
 // Configure pipeline
 if (!app.Environment.IsDevelopment())
@@ -309,8 +368,7 @@ app.MapPost("/api/convert", async (HttpRequest request, AccessibilityService acc
             Console.WriteLine($"✅ PDF conversion successful!");
             Console.WriteLine($"PDF has {pdfDoc.Pages.Count} pages");
         
-        // Enable document structure for accessibility
-        pdfDoc.AutoTag = true;
+        // Note: AutoTag can only be set during creation (renderer.Settings.AutoTag), not on loaded documents
         
         // Set required document language
         pdfDoc.DocumentInformation.Language = "en-US";
@@ -814,6 +872,11 @@ app.MapPost("/api/convert-with-ai", async (
             normalPdfBytes = fileBytes;
         }
         
+        // Store the CLEAN Syncfusion PDF for markdown conversion - BEFORE any field manipulation
+        debugCache.StoreLastProcessedPdf(normalPdfBytes, 
+            isWord ? Path.GetFileNameWithoutExtension(file.FileName) + "_syncfusion.pdf" : file.FileName);
+        logger.LogInformation("Stored clean Syncfusion PDF for markdown conversion");
+        
         // Extract text for AI analysis
         logger.LogInformation("Extracting text for AI analysis");
         string extractedText = "";
@@ -962,29 +1025,87 @@ app.MapPost("/api/convert-with-ai", async (
         remediatedPdfBytes = remediatedOutputStream.ToArray();
         remediatedDoc.Close(true);
         
-        // Step 5: Convert to PDF/A-2u using PassportPDF for full compliance
+        // Step 5: Skip PassportPDF and clean field names directly
+        // This preserves tag structure while removing type suffixes
         try
         {
-            logger.LogInformation("Converting to PDF/A-2u with PassportPDF for full accessibility compliance");
-            var pdfABytes = await passportPdfService.ConvertToPdfAAsync(remediatedPdfBytes, file.FileName);
+            logger.LogInformation("Skipping PassportPDF - cleaning field names directly for better structure preservation");
             
-            // Validate the PDF/A conversion
-            var validationResult = await passportPdfService.ValidatePdfAAsync(pdfABytes);
-            if (validationResult.IsValid)
+            // Save to temp file for Python processing
+            var tempPdfPath = Path.Combine(Path.GetTempPath(), $"temp_{Guid.NewGuid()}.pdf");
+            await File.WriteAllBytesAsync(tempPdfPath, remediatedPdfBytes);
+            
+            // Run Python field surgeon to clean field names
+            var process = new System.Diagnostics.Process
             {
-                logger.LogInformation($"PDF/A validation successful: {validationResult.ConformanceLevel}");
-                remediatedPdfBytes = pdfABytes; // Use the PDF/A version
+                StartInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "python3",
+                    Arguments = $"pdf_field_surgeon.py \"{tempPdfPath}\"",
+                    WorkingDirectory = Directory.GetCurrentDirectory(),
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
+            
+            process.Start();
+            if (process.WaitForExit(5000))
+            {
+                var output = await process.StandardOutput.ReadToEndAsync();
+                var error = await process.StandardError.ReadToEndAsync();
+                
+                if (process.ExitCode == 0)
+                {
+                    try
+                    {
+                        var result = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(output);
+                        if (result.TryGetProperty("success", out var successProp) && successProp.GetBoolean())
+                        {
+                            if (result.TryGetProperty("output_path", out var pathProp))
+                            {
+                                var outputPath = pathProp.GetString();
+                                if (!string.IsNullOrEmpty(outputPath) && File.Exists(outputPath))
+                                {
+                                    remediatedPdfBytes = await File.ReadAllBytesAsync(outputPath);
+                                    
+                                    if (result.TryGetProperty("modified_fields", out var modifiedProp))
+                                    {
+                                        var modifiedCount = modifiedProp.GetArrayLength();
+                                        logger.LogInformation($"Successfully cleaned {modifiedCount} field names");
+                                    }
+                                    
+                                    // Clean up temp file
+                                    try { File.Delete(outputPath); } catch { }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception parseEx)
+                    {
+                        logger.LogWarning($"Failed to parse field cleaner output: {parseEx.Message}");
+                    }
+                }
+                else if (!string.IsNullOrEmpty(error))
+                {
+                    logger.LogWarning($"Field cleaner stderr: {error}");
+                }
             }
             else
             {
-                logger.LogWarning($"PDF/A validation failed: {validationResult.ErrorMessage}");
-                // Continue with non-PDF/A version
+                process.Kill();
+                logger.LogWarning("Field cleaner timed out");
             }
+            
+            // Clean up temp file
+            try { File.Delete(tempPdfPath); } catch { }
+            
+            logger.LogInformation("Field remediation complete - ready for final PDF/UA save in Acrobat");
         }
-        catch (Exception ex)
+        catch (Exception cleanEx)
         {
-            logger.LogWarning($"PassportPDF conversion failed, continuing with standard PDF: {ex.Message}");
-            // Continue with the remediated PDF even if PassportPDF fails
+            logger.LogWarning($"Field name cleaning failed, continuing with original: {cleanEx.Message}");
         }
         
         // Create debug response with all information
@@ -1055,23 +1176,1006 @@ app.MapPost("/api/convert-with-ai", async (
 .WithName("ConvertWithAI")
 .DisableAntiforgery();
 
+// Convert with updated fields from field editor
+app.MapPost("/api/convert-with-updated-fields", async (HttpRequest request, IServiceProvider serviceProvider) =>
+{
+    try
+    {
+        var form = await request.ReadFormAsync();
+        var file = form.Files["file"];
+        var detectFields = form["detectFields"].ToString() == "true";
+        var updatedFieldsJson = form["updatedFields"].ToString();
+        
+        if (file == null || file.Length == 0)
+        {
+            return Results.BadRequest("No file uploaded");
+        }
+        
+        // Read Word file
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms);
+        var wordBytes = ms.ToArray();
+        
+        // Parse updated fields
+        var updatedFields = new List<FieldDetectionResult>();
+        if (!string.IsNullOrEmpty(updatedFieldsJson))
+        {
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
+            updatedFields = JsonSerializer.Deserialize<List<FieldDetectionResult>>(updatedFieldsJson, options) ?? new List<FieldDetectionResult>();
+        }
+        
+        // Create PDF with the updated fields directly
+        var configService = serviceProvider.GetRequiredService<ConfigurableFieldDetectionService>();
+        
+        // First convert Word to clean PDF
+        byte[] pdfBytes;
+        using (var inputStream = new MemoryStream(wordBytes))
+        using (var wordDoc = new WordDocument(inputStream, FormatType.Docx))
+        using (var renderer = new DocIORenderer())
+        {
+            renderer.Settings.PreserveFormFields = false;
+            renderer.Settings.AutoTag = true;
+            using var pdfDocument = renderer.ConvertToPDF(wordDoc);
+            using var outputStream = new MemoryStream();
+            pdfDocument.Save(outputStream);
+            pdfBytes = outputStream.ToArray();
+        }
+        
+        // Now add the updated fields to the PDF
+        using (var pdfStream = new MemoryStream(pdfBytes))
+        using (var pdfDoc = new PdfLoadedDocument(pdfStream))
+        {
+            // Clear existing fields
+            if (pdfDoc.Form?.Fields != null && pdfDoc.Form.Fields.Count > 0)
+            {
+                pdfDoc.Form.Fields.Clear();
+            }
+            
+            // Add updated fields
+            foreach (var field in updatedFields.Where(f => f.IsValid))
+            {
+                var page = pdfDoc.Pages[field.PageNumber - 1];
+                float pageHeight = page.Size.Height;
+                
+                // Use appropriate coordinate system
+                float pdfY = field.Y;
+                if (field.Source != "Syncfusion" && !field.Source.StartsWith("Syncfusion"))
+                {
+                    pdfY = pageHeight - field.Y - field.Height;
+                }
+                pdfY += 5; // Adjust Y position
+                
+                var bounds = new RectangleF(field.X, pdfY, field.Width, field.Height);
+                
+                // Add field based on type
+                switch (field.FieldType.ToLower())
+                {
+                    case "checkbox":
+                        var checkField = new PdfCheckBoxField(page, field.FieldName ?? field.ShortId);
+                        checkField.Bounds = bounds;
+                        checkField.ToolTip = field.Tooltip;
+                        pdfDoc.Form.Fields.Add(checkField);
+                        break;
+                        
+                    default:
+                        var textField = new PdfTextBoxField(page, field.FieldName ?? field.ShortId);
+                        textField.Bounds = bounds;
+                        textField.ToolTip = field.Tooltip;
+                        pdfDoc.Form.Fields.Add(textField);
+                        break;
+                }
+            }
+            
+            // Save the updated PDF
+            using var resultStream = new MemoryStream();
+            pdfDoc.Save(resultStream);
+            pdfBytes = resultStream.ToArray();
+        }
+        
+        // Save to disk
+        var uploadsDir = Path.Combine(Directory.GetCurrentDirectory(), "uploads");
+        Directory.CreateDirectory(uploadsDir);
+        var outputPath = Path.Combine(uploadsDir, $"updated_{DateTime.Now:yyyyMMdd_HHmmss}.pdf");
+        await File.WriteAllBytesAsync(outputPath, pdfBytes);
+        
+        return Results.Json(new
+        {
+            Success = true,
+            PdfBase64 = Convert.ToBase64String(pdfBytes),
+            Fields = updatedFields,
+            FieldCount = updatedFields.Count,
+            OutputPath = outputPath
+        });
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Error in convert-with-updated-fields: {ex}");
+        return Results.Problem($"Error: {ex.Message}");
+    }
+})
+.DisableAntiforgery();
+
+// Export PDF as Markdown - GET endpoint to view last processed PDF
+app.MapGet("/api/pdf-to-markdown", (ILoggerFactory loggerFactory, DebugCacheService debugCache) =>
+{
+    var logger = loggerFactory.CreateLogger<Program>();
+    
+    try
+    {
+        // Get the last processed PDF from debug cache
+        var lastPdfData = debugCache.GetLastProcessedPdf();
+        
+        if (lastPdfData == null)
+        {
+            return Results.NotFound("No PDF has been processed yet. Please upload and process a document first.");
+        }
+        
+        // Convert the PDF to markdown
+        var markdownLogger = loggerFactory.CreateLogger<PdfToMarkdownConverter>();
+        var markdownConverter = new PdfToMarkdownConverter(markdownLogger);
+        var markdown = markdownConverter.ConvertToMarkdown(lastPdfData.PdfBytes);
+        
+        logger.LogInformation($"Converted {lastPdfData.FileName} to markdown: {markdown.Length} characters");
+        
+        return Results.Ok(new { 
+            markdown = markdown, 
+            fileName = lastPdfData.FileName,
+            processedAt = lastPdfData.ProcessedAt
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error converting PDF to markdown");
+        return Results.Problem($"Error: {ex.Message}");
+    }
+});
+
+// Update PDF with edited field definitions - uses PassportPDF for PDF/UA compliance
+app.MapPost("/api/update-pdf-fields", async (HttpRequest request, ILogger<Program> logger, PassportPdfService passportPdfService, DebugCacheService debugCache) =>
+{
+    try
+    {
+        if (!request.Form.Files.Any())
+        {
+            return Results.BadRequest("No PDF file uploaded");
+        }
+
+        var file = request.Form.Files[0];
+        var fieldsJson = request.Form["fields"];
+        
+        if (string.IsNullOrEmpty(fieldsJson))
+        {
+            return Results.BadRequest("No field definitions provided");
+        }
+
+        // Parse the field definitions
+        var updatedFields = System.Text.Json.JsonSerializer.Deserialize<List<FieldUpdateRequest>>(fieldsJson);
+        
+        if (updatedFields == null || !updatedFields.Any())
+        {
+            return Results.BadRequest("Invalid field definitions");
+        }
+
+        logger.LogInformation($"Updating PDF with {updatedFields.Count} field changes");
+
+        // Save the uploaded PDF to a temp file for Python processing
+        var tempInputPath = Path.Combine(Path.GetTempPath(), $"input_{Guid.NewGuid()}.pdf");
+        using (var inputFileStream = file.OpenReadStream())
+        {
+            using var tempFileStream = File.Create(tempInputPath);
+            await inputFileStream.CopyToAsync(tempFileStream);
+        }
+
+        using var pdfStream = file.OpenReadStream();
+        using var pdfDoc = new PdfLoadedDocument(pdfStream);
+        
+        // Check if form exists
+        if (pdfDoc.Form == null)
+        {
+            logger.LogWarning("PDF has no form fields");
+            return Results.BadRequest("PDF has no form fields to update");
+        }
+
+        // Track fields that were successfully updated
+        var updatedCount = 0;
+
+        // We need to recreate fields with new names since Syncfusion doesn't allow renaming
+        // First, collect field information and remove old fields
+        var fieldsToRecreate = new List<(FieldUpdateRequest update, RectangleF bounds, int pageIndex)>();
+        
+        // First, log all existing fields
+        logger.LogInformation($"Existing PDF fields:");
+        foreach (PdfField field in pdfDoc.Form.Fields)
+        {
+            logger.LogInformation($"  - Field: '{field.Name}'");
+        }
+        
+        foreach (var fieldUpdate in updatedFields)
+        {
+            logger.LogInformation($"Processing field update: '{fieldUpdate.OriginalName}' -> '{fieldUpdate.NewName}'");
+            
+            // Find the field to update
+            PdfField fieldToRemove = null;
+            RectangleF fieldBounds = new RectangleF();
+            int pageIndex = 0;
+            
+            foreach (PdfField field in pdfDoc.Form.Fields)
+            {
+                logger.LogDebug($"Comparing '{field.Name}' with '{fieldUpdate.OriginalName}'");
+                
+                // Check for exact match or match with type suffix
+                bool nameMatches = field.Name == fieldUpdate.OriginalName ||
+                                  field.Name.StartsWith($"{fieldUpdate.OriginalName}[") ||
+                                  field.Name == $"{fieldUpdate.OriginalName}[{fieldUpdate.FieldType}]";
+                
+                if (nameMatches)
+                {
+                    fieldToRemove = field;
+                    
+                    // Get bounds from the field
+                    if (field is PdfLoadedTextBoxField textField)
+                    {
+                        fieldBounds = textField.Bounds;
+                        // Find page index manually
+                        for (int i = 0; i < pdfDoc.Pages.Count; i++)
+                        {
+                            if (pdfDoc.Pages[i] == textField.Page)
+                            {
+                                pageIndex = i;
+                                break;
+                            }
+                        }
+                    }
+                    else if (field is PdfLoadedCheckBoxField checkField)
+                    {
+                        fieldBounds = checkField.Bounds;
+                        // Find page index manually
+                        for (int i = 0; i < pdfDoc.Pages.Count; i++)
+                        {
+                            if (pdfDoc.Pages[i] == checkField.Page)
+                            {
+                                pageIndex = i;
+                                break;
+                            }
+                        }
+                    }
+                    else if (field is PdfLoadedRadioButtonListField radioField)
+                    {
+                        if (radioField.Items.Count > 0)
+                        {
+                            fieldBounds = radioField.Items[0].Bounds;
+                            // Find page index manually
+                            for (int i = 0; i < pdfDoc.Pages.Count; i++)
+                            {
+                                if (pdfDoc.Pages[i] == radioField.Items[0].Page)
+                                {
+                                    pageIndex = i;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    else if (field is PdfLoadedComboBoxField comboField)
+                    {
+                        fieldBounds = comboField.Bounds;
+                        // Find page index manually
+                        for (int i = 0; i < pdfDoc.Pages.Count; i++)
+                        {
+                            if (pdfDoc.Pages[i] == comboField.Page)
+                            {
+                                pageIndex = i;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    break;
+                }
+            }
+            
+            if (fieldToRemove != null)
+            {
+                // Store info for recreation
+                fieldsToRecreate.Add((fieldUpdate, fieldBounds, pageIndex));
+                
+                // Remove the old field
+                pdfDoc.Form.Fields.Remove(fieldToRemove);
+                logger.LogInformation($"Removed old field: {fieldUpdate.OriginalName}");
+            }
+            else
+            {
+                logger.LogWarning($"Field not found: {fieldUpdate.OriginalName}");
+            }
+        }
+        
+        // Now recreate fields with new names
+        foreach (var (update, bounds, pageIndex) in fieldsToRecreate)
+        {
+            var page = pdfDoc.Pages[pageIndex];
+            
+            // Adjust bounds for checkboxes to be square (20x20)
+            var fieldBounds = bounds;
+            if (update.FieldType?.ToLower() == "checkbox")
+            {
+                fieldBounds = new RectangleF(bounds.X, bounds.Y, 20, 20);
+            }
+            
+            // Create new field based on type
+            PdfField newField = null;
+            
+            switch (update.FieldType?.ToLower())
+            {
+                case "checkbox":
+                    var checkbox = new PdfCheckBoxField(page, update.NewName ?? update.OriginalName);
+                    checkbox.Bounds = fieldBounds;
+                    checkbox.ToolTip = update.Tooltip ?? $"Check if {update.NewName} applies";
+                    checkbox.Required = update.IsRequired ?? false;
+                    checkbox.BorderColor = new PdfColor(0, 0, 0);
+                    checkbox.BackColor = new PdfColor(255, 255, 255);
+                    newField = checkbox;
+                    break;
+                    
+                case "radio":
+                case "radiobutton":
+                    var radio = new PdfRadioButtonListField(page, update.NewName ?? update.OriginalName);
+                    radio.ToolTip = update.Tooltip ?? $"Select {update.NewName}";
+                    radio.Required = update.IsRequired ?? false;
+                    var radioItem = new PdfRadioButtonListItem(update.NewName);
+                    radioItem.Bounds = fieldBounds;
+                    radio.Items.Add(radioItem);
+                    newField = radio;
+                    break;
+                    
+                case "dropdown":
+                case "combobox":
+                    var dropdown = new PdfComboBoxField(page, update.NewName ?? update.OriginalName);
+                    dropdown.Bounds = fieldBounds;
+                    dropdown.ToolTip = update.Tooltip ?? $"Select {update.NewName} from list";
+                    dropdown.Required = update.IsRequired ?? false;
+                    newField = dropdown;
+                    break;
+                    
+                default: // Text field
+                    var textBox = new PdfTextBoxField(page, update.NewName ?? update.OriginalName);
+                    textBox.Bounds = fieldBounds;
+                    textBox.ToolTip = update.Tooltip ?? $"Enter {update.NewName}";
+                    textBox.Required = update.IsRequired ?? false;
+                    textBox.BorderColor = new PdfColor(0, 0, 0);
+                    textBox.BackColor = new PdfColor(255, 255, 255);
+                    newField = textBox;
+                    break;
+            }
+            
+            if (newField != null)
+            {
+                pdfDoc.Form.Fields.Add(newField);
+                updatedCount++;
+                logger.LogInformation($"Created new field: {update.NewName} (type: {update.FieldType})");
+            }
+        }
+
+        // Save the updated PDF with Syncfusion first
+        using var outputStream = new MemoryStream();
+        pdfDoc.Save(outputStream);
+        outputStream.Position = 0;
+        
+        var pdfBytes = outputStream.ToArray();
+        
+        // Use pypdf to ensure field names are properly updated at the PDF level
+        // This prevents PassportPDF from reverting our changes
+        try
+        {
+            logger.LogInformation("Using pypdf to ensure field names persist through PDF/A conversion");
+            
+            // Save PDF to temp file for pypdf processing
+            var tempPdfPath = Path.Combine(Path.GetTempPath(), $"temp_{Guid.NewGuid()}.pdf");
+            await File.WriteAllBytesAsync(tempPdfPath, pdfBytes);
+            
+            // Create JSON for field updates
+            var fieldUpdatesJson = System.Text.Json.JsonSerializer.Serialize(
+                updatedFields.Select(f => new 
+                {
+                    originalName = f.OriginalName,
+                    newName = f.NewName,
+                    fieldType = f.FieldType,
+                    tooltip = f.Tooltip
+                })
+            );
+            
+            // Run pypdf field updater
+            var process = new System.Diagnostics.Process
+            {
+                StartInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "python3",
+                    Arguments = $"pdf_field_updater.py \"{tempPdfPath}\" '{fieldUpdatesJson}'",
+                    WorkingDirectory = Directory.GetCurrentDirectory(),
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
+            
+            process.Start();
+            if (!process.WaitForExit(10000)) // 10 second timeout
+            {
+                process.Kill();
+                logger.LogWarning("pypdf field updater timed out");
+            }
+            else
+            {
+                var output = await process.StandardOutput.ReadToEndAsync();
+                var error = await process.StandardError.ReadToEndAsync();
+                
+                if (!string.IsNullOrEmpty(error))
+                {
+                    logger.LogWarning($"pypdf stderr: {error}");
+                }
+                
+                if (process.ExitCode == 0)
+                {
+                    try
+                    {
+                        var result = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(output);
+                        if (result.TryGetProperty("success", out var successProp) && successProp.GetBoolean())
+                        {
+                            if (result.TryGetProperty("output_path", out var pathProp))
+                            {
+                                var outputPath = pathProp.GetString();
+                                if (!string.IsNullOrEmpty(outputPath) && File.Exists(outputPath))
+                                {
+                                    pdfBytes = await File.ReadAllBytesAsync(outputPath);
+                                    logger.LogInformation("Successfully updated field names with pypdf");
+                                    
+                                    // Clean up temp files
+                                    try { File.Delete(outputPath); } catch { }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception parseEx)
+                    {
+                        logger.LogWarning($"Failed to parse pypdf output: {parseEx.Message}");
+                    }
+                }
+            }
+            
+            // Clean up temp file
+            try { File.Delete(tempPdfPath); } catch { }
+        }
+        catch (Exception pypdfEx)
+        {
+            logger.LogWarning($"pypdf field update failed, continuing with Syncfusion output: {pypdfEx.Message}");
+        }
+        
+        // Now use Python to clean field names and add metadata
+        // This completely bypasses Syncfusion's field handling which adds unwanted suffixes
+        byte[] finalPdfBytes = pdfBytes;
+        
+        try
+        {
+            logger.LogInformation("Using Python pdf_field_surgeon with pikepdf to surgically clean field names");
+            
+            // Save current PDF to temp file
+            var tempPdfPath = Path.Combine(Path.GetTempPath(), $"temp_{Guid.NewGuid()}.pdf");
+            await File.WriteAllBytesAsync(tempPdfPath, pdfBytes);
+            
+            // Run Python field surgeon to clean field names surgically
+            var process = new System.Diagnostics.Process
+            {
+                StartInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "python3",
+                    Arguments = $"pdf_field_surgeon.py \"{tempPdfPath}\"",
+                    WorkingDirectory = Directory.GetCurrentDirectory(),
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
+            
+            process.Start();
+            if (!process.WaitForExit(10000)) // 10 second timeout
+            {
+                process.Kill();
+                logger.LogWarning("Python field editor timed out");
+            }
+            else
+            {
+                var output = await process.StandardOutput.ReadToEndAsync();
+                var error = await process.StandardError.ReadToEndAsync();
+                
+                if (!string.IsNullOrEmpty(error))
+                {
+                    logger.LogWarning($"Python stderr: {error}");
+                }
+                
+                if (process.ExitCode == 0)
+                {
+                    try
+                    {
+                        var result = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(output);
+                        if (result.TryGetProperty("success", out var successProp) && successProp.GetBoolean())
+                        {
+                            if (result.TryGetProperty("output_path", out var pathProp))
+                            {
+                                var outputPath = pathProp.GetString();
+                                if (!string.IsNullOrEmpty(outputPath) && File.Exists(outputPath))
+                                {
+                                    finalPdfBytes = await File.ReadAllBytesAsync(outputPath);
+                                    
+                                    if (result.TryGetProperty("modified_fields", out var modifiedProp))
+                                    {
+                                        var modifiedCount = modifiedProp.GetArrayLength();
+                                        logger.LogInformation($"Python successfully cleaned {modifiedCount} field names and added accessibility metadata");
+                                    }
+                                    
+                                    // Clean up temp file
+                                    try { File.Delete(outputPath); } catch { }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception parseEx)
+                    {
+                        logger.LogWarning($"Failed to parse Python output: {parseEx.Message}");
+                    }
+                }
+            }
+            
+            // Clean up temp file
+            try { File.Delete(tempPdfPath); } catch { }
+        }
+        catch (Exception pythonEx)
+        {
+            logger.LogWarning($"Python field editor failed, using Syncfusion output: {pythonEx.Message}");
+        }
+        
+        logger.LogInformation("Field-edited PDF processed with field name preservation");
+        
+        // Store for markdown endpoint
+        debugCache.StoreLastProcessedPdf(finalPdfBytes, file.FileName.Replace(".pdf", "_updated.pdf"));
+        
+        var base64Pdf = Convert.ToBase64String(finalPdfBytes);
+        
+        logger.LogInformation($"PDF updated successfully - modified {updatedCount} fields");
+        
+        return Results.Ok(new 
+        { 
+            success = true,
+            pdfData = base64Pdf,
+            fileName = file.FileName.Replace(".pdf", "_updated.pdf"),
+            message = $"Updated {updatedCount} fields, PDF/UA compliant"
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error updating PDF fields");
+        return Results.Problem($"Error updating PDF: {ex.Message}");
+    }
+});
+
+app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Program> logger) =>
+{
+    try
+    {
+        var form = await request.ReadFormAsync();
+        var file = form.Files["file"];
+        
+        if (file == null)
+        {
+            return Results.BadRequest("No file provided");
+        }
+
+        using var memoryStream = new MemoryStream();
+        await file.CopyToAsync(memoryStream);
+        var pdfBytes = memoryStream.ToArray();
+
+        var fields = new List<object>();
+        
+        using (var pdfStream = new MemoryStream(pdfBytes))
+        using (var pdfDoc = new PdfLoadedDocument(pdfStream))
+        {
+            if (pdfDoc.Form?.Fields != null)
+            {
+                logger.LogInformation($"Found {pdfDoc.Form.Fields.Count} form fields in PDF");
+                
+                foreach (PdfLoadedField field in pdfDoc.Form.Fields)
+                {
+                    string fieldType = "text";
+                    float x = 0, y = 0, width = 100, height = 20;
+                    int page = 1;
+                    string tooltip = "";
+                    PdfPageBase fieldPage = null;
+                    
+                    // Determine field type and get bounds
+                    if (field is PdfLoadedTextBoxField textField)
+                    {
+                        fieldType = "text";
+                        x = textField.Bounds.X;
+                        y = textField.Bounds.Y;
+                        width = textField.Bounds.Width;
+                        height = textField.Bounds.Height;
+                        tooltip = textField.ToolTip ?? "";
+                        
+                        // Find which page this field is on
+                        fieldPage = textField.Page;
+                        for (int i = 0; i < pdfDoc.Pages.Count; i++)
+                        {
+                            if (textField.Page == pdfDoc.Pages[i])
+                            {
+                                page = i + 1;
+                                break;
+                            }
+                        }
+                    }
+                    else if (field is PdfLoadedCheckBoxField checkField)
+                    {
+                        fieldType = "checkbox";
+                        x = checkField.Bounds.X;
+                        y = checkField.Bounds.Y;
+                        width = checkField.Bounds.Width;
+                        height = checkField.Bounds.Height;
+                        tooltip = checkField.ToolTip ?? "";
+                        
+                        for (int i = 0; i < pdfDoc.Pages.Count; i++)
+                        {
+                            if (checkField.Page == pdfDoc.Pages[i])
+                            {
+                                page = i + 1;
+                                break;
+                            }
+                        }
+                    }
+                    else if (field is PdfLoadedRadioButtonListField radioField)
+                    {
+                        fieldType = "radio";
+                        // Radio buttons can have multiple items
+                        if (radioField.Items?.Count > 0)
+                        {
+                            var firstItem = radioField.Items[0];
+                            x = firstItem.Bounds.X;
+                            y = firstItem.Bounds.Y;
+                            width = firstItem.Bounds.Width;
+                            height = firstItem.Bounds.Height;
+                        }
+                        tooltip = radioField.ToolTip ?? "";
+                    }
+                    else if (field is PdfLoadedSignatureField sigField)
+                    {
+                        fieldType = "signature";
+                        x = sigField.Bounds.X;
+                        y = sigField.Bounds.Y;
+                        width = sigField.Bounds.Width;
+                        height = sigField.Bounds.Height;
+                        tooltip = "Signature field";
+                        
+                        for (int i = 0; i < pdfDoc.Pages.Count; i++)
+                        {
+                            if (sigField.Page == pdfDoc.Pages[i])
+                            {
+                                page = i + 1;
+                                break;
+                            }
+                        }
+                    }
+                    else if (field is PdfLoadedComboBoxField comboField)
+                    {
+                        fieldType = "dropdown";
+                        x = comboField.Bounds.X;
+                        y = comboField.Bounds.Y;
+                        width = comboField.Bounds.Width;
+                        height = comboField.Bounds.Height;
+                        tooltip = comboField.ToolTip ?? "";
+                        
+                        for (int i = 0; i < pdfDoc.Pages.Count; i++)
+                        {
+                            if (comboField.Page == pdfDoc.Pages[i])
+                            {
+                                page = i + 1;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Ensure we have valid bounds
+                    if (width <= 0) width = 150;
+                    if (height <= 0) height = 20;
+                    
+                    fields.Add(new
+                    {
+                        name = field.Name,
+                        type = fieldType,
+                        page = page,
+                        x = x,
+                        y = y,
+                        width = width,
+                        height = height,
+                        tooltip = tooltip
+                    });
+                    
+                    logger.LogInformation($"Found field '{field.Name}' type={fieldType} at ({x:F2},{y:F2}) size={width:F2}x{height:F2} on page {page} (fieldPage={fieldPage?.GetType().Name})");
+                }
+            }
+            
+            logger.LogInformation($"Extracted {fields.Count} fields from PDF");
+        }
+        
+        return Results.Ok(new { fields = fields });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error extracting PDF fields");
+        return Results.StatusCode(500);
+    }
+})
+.DisableAntiforgery();
+
+// PDF/UA Compliance Endpoint - Import existing PDF and ensure compliance
+app.MapPost("/api/pdf-ua-compliance", async (HttpRequest request, PdfUAComplianceService complianceService, ILogger<Program> logger) =>
+{
+    try
+    {
+        if (!request.Form.Files.Any())
+        {
+            return Results.BadRequest("No PDF file uploaded");
+        }
+
+        var file = request.Form.Files[0];
+        
+        // Get options from form
+        var preserveFields = request.Form.ContainsKey("preserveFields") && 
+                            request.Form["preserveFields"] == "true";
+        var autoFix = !request.Form.ContainsKey("autoFix") || 
+                     request.Form["autoFix"] == "true";
+        
+        logger.LogInformation($"Processing PDF/UA compliance check for {file.FileName}");
+        logger.LogInformation($"Options: preserveFields={preserveFields}, autoFix={autoFix}");
+
+        using var stream = file.OpenReadStream();
+        using var memoryStream = new MemoryStream();
+        await stream.CopyToAsync(memoryStream);
+        var pdfBytes = memoryStream.ToArray();
+
+        // Run compliance check and remediation
+        var options = new ComplianceOptions
+        {
+            AutoRemediate = autoFix,
+            ConvertToPdfA = !preserveFields, // Skip PDF/A if preserving fields
+            PreserveFieldNames = preserveFields,
+            DocumentTitle = file.FileName.Replace(".pdf", "")
+        };
+
+        var result = await complianceService.EnsureComplianceAsync(pdfBytes, options);
+
+        if (!result.Success)
+        {
+            return Results.Problem($"Compliance check failed: {result.ErrorMessage}");
+        }
+
+        // Return the compliant PDF
+        var base64Pdf = Convert.ToBase64String(result.OutputPdf ?? pdfBytes);
+        
+        return Results.Ok(new
+        {
+            success = true,
+            pdfData = base64Pdf,
+            fileName = file.FileName.Replace(".pdf", "_compliant.pdf"),
+            analysis = new
+            {
+                initial = result.InitialAnalysis,
+                final = result.FinalAnalysis,
+                isPdfA = result.IsPdfA,
+                score = result.FinalAnalysis?.ComplianceScore ?? 0
+            }
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "PDF/UA compliance check failed");
+        return Results.Problem($"Error: {ex.Message}");
+    }
+})
+.DisableAntiforgery();
+
+// PDF page preview with field boxes drawn on image
+app.MapPost("/api/pdf-page-with-field-boxes", async (HttpRequest request, ILogger<Program> logger) =>
+{
+    try
+    {
+        var form = await request.ReadFormAsync();
+        var file = form.Files["file"];
+        var pageNumberStr = form["pageNumber"].ToString();
+        var fieldsJson = form["fields"].ToString();
+        
+        if (file == null || !int.TryParse(pageNumberStr, out var pageNumber))
+        {
+            return Results.BadRequest("Invalid request");
+        }
+
+        using var memoryStream = new MemoryStream();
+        await file.CopyToAsync(memoryStream);
+        var pdfBytes = memoryStream.ToArray();
+
+        // Convert PDF page to image at 150 DPI
+        var options = new PDFtoImage.RenderOptions
+        {
+            Dpi = 150,
+            WithAnnotations = true,
+            WithFormFill = true
+        };
+        
+        using var originalBitmap = PDFtoImage.Conversion.ToImage(pdfBytes, pageNumber - 1, options: options);
+        
+        // Create a surface to draw on
+        using var surface = SkiaSharp.SKSurface.Create(new SkiaSharp.SKImageInfo(originalBitmap.Width, originalBitmap.Height));
+        var canvas = surface.Canvas;
+        
+        // Draw the original PDF page
+        canvas.DrawBitmap(originalBitmap, 0, 0);
+        
+        // Parse and draw field boxes if provided
+        if (!string.IsNullOrEmpty(fieldsJson))
+        {
+            var fields = System.Text.Json.JsonSerializer.Deserialize<List<System.Text.Json.JsonElement>>(fieldsJson);
+            
+            // Get PDF page dimensions for coordinate conversion
+            using var pdfStream = new MemoryStream(pdfBytes);
+            using var pdfDoc = new PdfLoadedDocument(pdfStream);
+            var page = pdfDoc.Pages[pageNumber - 1];
+            float pageHeight = page.Size.Height;
+            
+            // PDF coordinates are in points (72 DPI), image is at 150 DPI
+            float scale = 150f / 72f;
+            
+            foreach (var field in fields)
+            {
+                if (field.TryGetProperty("page", out var pageElement) && pageElement.GetInt32() == pageNumber)
+                {
+                    // Get field properties - these are already in PDF coordinates (points)
+                    float x = field.GetProperty("x").GetSingle();
+                    float y = field.GetProperty("y").GetSingle();
+                    float width = field.GetProperty("width").GetSingle();
+                    float height = field.GetProperty("height").GetSingle();
+                    string fieldType = field.GetProperty("type").GetString();
+                    string fieldName = field.GetProperty("name").GetString();
+                    
+                    // Log received field data
+                    logger.LogInformation($"Received field '{fieldName}': x={x}, y={y}, w={width}, h={height}, type={fieldType}");
+                    
+                    // Scale to image coordinates (PDF is 72 DPI, image is 150 DPI)
+                    x = x * scale;
+                    y = y * scale;
+                    width = width * scale;
+                    height = height * scale;
+                    
+                    // Convert PDF Y coordinate (bottom-left origin) to image Y (top-left origin)
+                    y = (pageHeight * scale) - y - height;
+                    
+                    // Draw field rectangle with semi-transparent fill
+                    using var fillPaint = new SkiaSharp.SKPaint
+                    {
+                        Style = SkiaSharp.SKPaintStyle.Fill,
+                        IsAntialias = true
+                    };
+                    
+                    // Color based on field type
+                    fillPaint.Color = fieldType?.ToLower() switch
+                    {
+                        "checkbox" => SkiaSharp.SKColors.Blue.WithAlpha(30),
+                        "date" => SkiaSharp.SKColors.Green.WithAlpha(30),
+                        "signature" => SkiaSharp.SKColors.Purple.WithAlpha(30),
+                        "email" => SkiaSharp.SKColors.Orange.WithAlpha(30),
+                        "phone" => SkiaSharp.SKColors.Cyan.WithAlpha(30),
+                        _ => SkiaSharp.SKColors.Red.WithAlpha(30)
+                    };
+                    
+                    canvas.DrawRect(x, y, width, height, fillPaint);
+                    
+                    // Draw border
+                    using var borderPaint = new SkiaSharp.SKPaint
+                    {
+                        Style = SkiaSharp.SKPaintStyle.Stroke,
+                        StrokeWidth = 2,
+                        IsAntialias = true,
+                        Color = fillPaint.Color.WithAlpha(200)
+                    };
+                    
+                    canvas.DrawRect(x, y, width, height, borderPaint);
+                    
+                    // Draw field name label
+                    using var textPaint = new SkiaSharp.SKPaint
+                    {
+                        Color = SkiaSharp.SKColors.Black,
+                        TextSize = 12,
+                        IsAntialias = true,
+                        Typeface = SkiaSharp.SKTypeface.FromFamilyName("Arial", SkiaSharp.SKFontStyle.Bold)
+                    };
+                    
+                    // Draw text background for readability
+                    var textBounds = new SkiaSharp.SKRect();
+                    textPaint.MeasureText(fieldName, ref textBounds);
+                    
+                    using var textBgPaint = new SkiaSharp.SKPaint
+                    {
+                        Style = SkiaSharp.SKPaintStyle.Fill,
+                        Color = SkiaSharp.SKColors.White.WithAlpha(200)
+                    };
+                    
+                    canvas.DrawRect(x, y - textBounds.Height - 4, textBounds.Width + 4, textBounds.Height + 2, textBgPaint);
+                    canvas.DrawText(fieldName, x + 2, y - 2, textPaint);
+                    
+                    // Log what we're drawing
+                    logger.LogInformation($"Drew field '{fieldName}' at ({x}, {y}) with size {width}x{height} on page {pageNumber}");
+                }
+            }
+        }
+        
+        // Encode the final image
+        using var image = surface.Snapshot();
+        using var data = image.Encode(SkiaSharp.SKEncodedImageFormat.Png, 90);
+        var imageBytes = data.ToArray();
+        
+        var base64Image = Convert.ToBase64String(imageBytes);
+        return Results.Ok(new { imageData = base64Image });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error generating PDF page with field boxes");
+        return Results.StatusCode(500);
+    }
+})
+.DisableAntiforgery();
+
 // PDF page preview endpoint for visual field editor
 app.MapPost("/api/pdf-page-preview", async (HttpRequest request, ILogger<Program> logger) =>
 {
     try
     {
-        using var reader = new StreamReader(request.Body);
-        var json = await reader.ReadToEndAsync();
-        var requestData = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json);
+        byte[] pdfBytes = null;
+        int pageNumber = 1;
         
-        if (!requestData.ContainsKey("pdfData"))
+        // Handle both multipart form data and JSON
+        if (request.HasFormContentType)
         {
-            return Results.BadRequest(new { error = "Missing pdfData" });
+            var form = await request.ReadFormAsync();
+            var file = form.Files.FirstOrDefault();
+            
+            if (file == null)
+            {
+                return Results.BadRequest(new { error = "No file provided" });
+            }
+            
+            using var ms = new MemoryStream();
+            await file.CopyToAsync(ms);
+            pdfBytes = ms.ToArray();
+            
+            if (form.TryGetValue("pageNumber", out var pageStr))
+            {
+                int.TryParse(pageStr, out pageNumber);
+            }
         }
-        
-        var pdfBase64 = requestData["pdfData"].GetString();
-        var pageNumber = requestData.ContainsKey("page") ? requestData["page"].GetInt32() : 1;
-        var pdfBytes = Convert.FromBase64String(pdfBase64);
+        else
+        {
+            // Handle JSON request
+            using var reader = new StreamReader(request.Body);
+            var json = await reader.ReadToEndAsync();
+            var requestData = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json);
+            
+            if (!requestData.ContainsKey("pdfData"))
+            {
+                return Results.BadRequest(new { error = "Missing pdfData" });
+            }
+            
+            var pdfBase64 = requestData["pdfData"].GetString();
+            pageNumber = requestData.ContainsKey("page") ? requestData["page"].GetInt32() : 1;
+            pdfBytes = Convert.FromBase64String(pdfBase64);
+        }
         
         // Convert PDF page to image
         using var pdfStream = new MemoryStream(pdfBytes);
@@ -1100,70 +2204,101 @@ app.MapPost("/api/pdf-page-preview", async (HttpRequest request, ILogger<Program
             
             // Get field positions for this page
             var fields = new List<object>();
+            var pageHeight = pdfDoc.Pages[pageNumber - 1].Size.Height;
+            var currentPage = pdfDoc.Pages[pageNumber - 1] as PdfLoadedPage;
+            
             if (pdfDoc.Form != null)
             {
                 foreach (PdfLoadedField field in pdfDoc.Form.Fields)
                 {
-                    // Check if field is on this page
-                    // For text fields, get bounds directly
+                    // Try to determine if field is on current page
+                    bool isOnCurrentPage = false;
+                    float x = 0, y = 0, width = 100, height = 20;
+                    string fieldType = "text";
+                    
                     if (field is PdfLoadedTextBoxField textField)
                     {
-                        fields.Add(new
+                        // Check if this field belongs to current page
+                        if (textField.Page == currentPage || pageNumber == 1) // Default to page 1 if can't determine
                         {
-                            name = field.Name,
-                            x = textField.Bounds.X,
-                            y = textField.Bounds.Y,
-                            width = textField.Bounds.Width,
-                            height = textField.Bounds.Height,
-                            type = "text"
-                        });
+                            isOnCurrentPage = true;
+                            x = textField.Bounds.X;
+                            // Transform Y coordinate from PDF (bottom-up) to screen (top-down)
+                            y = pageHeight - textField.Bounds.Y - textField.Bounds.Height;
+                            width = textField.Bounds.Width;
+                            height = textField.Bounds.Height;
+                            
+                            // Apply reasonable minimum sizes
+                            if (width < 20) width = 200;  // Text fields should be wider
+                            if (height < 15) height = 20;
+                            fieldType = "text";
+                        }
                     }
                     else if (field is PdfLoadedCheckBoxField checkField)
                     {
-                        fields.Add(new
+                        if (checkField.Page == currentPage || pageNumber == 1)
                         {
-                            name = field.Name,
-                            x = checkField.Bounds.X,
-                            y = checkField.Bounds.Y,
-                            width = checkField.Bounds.Width,
-                            height = checkField.Bounds.Height,
-                            type = "checkbox"
-                        });
-                    }
-                    else if (field is PdfLoadedRadioButtonListField radioField)
-                    {
-                        fields.Add(new
-                        {
-                            name = field.Name,
-                            x = 0,  // Radio groups don't have single bounds
-                            y = 0,
-                            width = 50,
-                            height = 20,
-                            type = "radio"
-                        });
+                            isOnCurrentPage = true;
+                            x = checkField.Bounds.X;
+                            y = pageHeight - checkField.Bounds.Y - checkField.Bounds.Height;
+                            width = checkField.Bounds.Width;
+                            height = checkField.Bounds.Height;
+                            
+                            // Checkboxes should be square and reasonable size
+                            if (width < 15 || height < 15)
+                            {
+                                width = 20;
+                                height = 20;
+                            }
+                            fieldType = "checkbox";
+                        }
                     }
                     else if (field is PdfLoadedSignatureField sigField)
                     {
-                        fields.Add(new
+                        if (sigField.Page == currentPage || pageNumber == 1)
                         {
-                            name = field.Name,
-                            x = sigField.Bounds.X,
-                            y = sigField.Bounds.Y,
-                            width = sigField.Bounds.Width,
-                            height = sigField.Bounds.Height,
-                            type = "signature"
-                        });
+                            isOnCurrentPage = true;
+                            x = sigField.Bounds.X;
+                            y = pageHeight - sigField.Bounds.Y - sigField.Bounds.Height;
+                            width = sigField.Bounds.Width;
+                            height = sigField.Bounds.Height;
+                            fieldType = "signature";
+                        }
                     }
-                    else
+                    else if (field is PdfLoadedRadioButtonListField radioField)
+                    {
+                        // Radio fields might have items on different pages
+                        // For now, show on page 1
+                        if (pageNumber == 1)
+                        {
+                            isOnCurrentPage = true;
+                            // Try to get bounds from first item
+                            if (radioField.Items.Count > 0)
+                            {
+                                var firstItem = radioField.Items[0] as PdfLoadedRadioButtonItem;
+                                if (firstItem != null)
+                                {
+                                    x = firstItem.Bounds.X;
+                                    y = pageHeight - firstItem.Bounds.Y - firstItem.Bounds.Height;
+                                    width = firstItem.Bounds.Width;
+                                    height = firstItem.Bounds.Height;
+                                }
+                            }
+                            fieldType = "radio";
+                        }
+                    }
+                    
+                    if (isOnCurrentPage)
                     {
                         fields.Add(new
                         {
                             name = field.Name,
-                            x = 0,
-                            y = 0,
-                            width = 100,
-                            height = 20,
-                            type = "unknown"
+                            x = x,
+                            y = y,
+                            width = width,
+                            height = height,
+                            type = fieldType,
+                            page = pageNumber
                         });
                     }
                 }
@@ -1190,7 +2325,8 @@ app.MapPost("/api/pdf-page-preview", async (HttpRequest request, ILogger<Program
         logger.LogError(ex, "Error generating PDF page preview");
         return Results.Problem(ex.Message);
     }
-});
+})
+.DisableAntiforgery();
 
 // Add endpoint for extracting tag structure
 app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Program> logger) =>
@@ -1295,12 +2431,62 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                         fieldType = "signature";
                     }
                     
+                    // Get field bounds and page
+                    float x = 0, y = 0, width = 100, height = 20;
+                    int page = 1;
+                    float pageHeight = 792; // Default page height (11 inches at 72 DPI)
+                    
+                    // Get the actual page height for coordinate transformation
+                    if (pdfDoc.Pages.Count > 0)
+                    {
+                        pageHeight = pdfDoc.Pages[0].Size.Height;
+                    }
+                    
+                    if (f is PdfLoadedTextBoxField txtField)
+                    {
+                        x = txtField.Bounds.X;
+                        // PDF coordinates are bottom-up, we need top-down for HTML
+                        y = pageHeight - txtField.Bounds.Y - txtField.Bounds.Height;
+                        width = txtField.Bounds.Width;
+                        height = txtField.Bounds.Height;
+                        // Try to get page number (this is approximate)
+                        for (int i = 0; i < pdfDoc.Pages.Count; i++)
+                        {
+                            if (txtField.Page == pdfDoc.Pages[i])
+                            {
+                                page = i + 1;
+                                pageHeight = pdfDoc.Pages[i].Size.Height;
+                                // Recalculate Y with correct page height
+                                y = pageHeight - txtField.Bounds.Y - txtField.Bounds.Height;
+                                break;
+                            }
+                        }
+                    }
+                    else if (f is PdfLoadedCheckBoxField chkField)
+                    {
+                        x = chkField.Bounds.X;
+                        y = pageHeight - chkField.Bounds.Y - chkField.Bounds.Height;
+                        width = chkField.Bounds.Width;
+                        height = chkField.Bounds.Height;
+                    }
+                    else if (f is PdfLoadedSignatureField sigField)
+                    {
+                        x = sigField.Bounds.X;
+                        y = pageHeight - sigField.Bounds.Y - sigField.Bounds.Height;
+                        width = sigField.Bounds.Width;
+                        height = sigField.Bounds.Height;
+                    }
+                    
                     return (object)new
                     {
                         name = displayName,
                         type = fieldType,
                         tooltip = tooltip,
-                        page = 1 // Page index not directly available
+                        page = page,
+                        x = x,
+                        y = y,
+                        width = width,
+                        height = height
                     };
                 }).ToList()) ?? new List<object>(),
                 tagTree = new
@@ -2359,4 +3545,458 @@ app.MapPost("/api/process-pdf", async (
     }
 });
 
+// Simple test endpoint
+app.MapPost("/api/test-json", async (HttpContext context) =>
+{
+    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("=== TEST-JSON ENDPOINT HIT ===");
+    
+    var json = await new StreamReader(context.Request.Body).ReadToEndAsync();
+    logger.LogInformation($"Received JSON length: {json.Length}");
+    
+    return Results.Ok(new { message = "Test successful", length = json.Length });
+});
+
+// Update PDF field sizes and re-render preview (JSON version)
+app.MapPost("/api/update-field-preview-json", HandleUpdateFieldPreview);
+
+async Task<IResult> HandleUpdateFieldPreview(HttpContext context)
+{
+    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("=== UPDATE-FIELD-PREVIEW-JSON ENDPOINT HIT ===");
+    
+    try
+    {
+        // Read and deserialize the request body
+        var json = await new StreamReader(context.Request.Body).ReadToEndAsync();
+        logger.LogInformation($"Received JSON length: {json.Length}");
+        
+        var request = System.Text.Json.JsonSerializer.Deserialize<UpdateFieldPreviewRequest>(json, new System.Text.Json.JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        });
+        
+        if (request == null)
+        {
+            logger.LogError("Failed to deserialize request");
+            return Results.BadRequest(new { error = "Invalid request format" });
+        }
+        
+        logger.LogInformation($"Deserialized: pageNumber={request.PageNumber}, fields count={request.FieldUpdates?.Count}");
+        if (string.IsNullOrEmpty(request.PdfBase64))
+        {
+            logger.LogError("Missing pdfBase64 parameter");
+            return Results.BadRequest(new { error = "Missing pdfBase64 parameter" });
+        }
+        
+        if (request.FieldUpdates == null || !request.FieldUpdates.Any())
+        {
+            logger.LogError("Missing or empty fieldUpdates");
+            return Results.BadRequest(new { error = "Missing or empty fieldUpdates" });
+        }
+        
+        var pdfBytes = Convert.FromBase64String(request.PdfBase64);
+        
+        // Load and modify PDF
+        using var pdfStream = new MemoryStream(pdfBytes);
+        using var pdfDoc = new PdfLoadedDocument(pdfStream);
+        
+        if (request.PageNumber < 1 || request.PageNumber > pdfDoc.Pages.Count)
+        {
+            return Results.BadRequest(new { error = "Invalid page number" });
+        }
+        
+        var pageHeight = pdfDoc.Pages[request.PageNumber - 1].Size.Height;
+        
+        // Update field sizes
+        if (pdfDoc.Form != null)
+        {
+            foreach (var update in request.FieldUpdates)
+            {
+                PdfLoadedField? field = null;
+                foreach (PdfLoadedField f in pdfDoc.Form.Fields)
+                {
+                    if (f.Name == update.Name)
+                    {
+                        field = f;
+                        break;
+                    }
+                }
+                
+                if (field != null)
+                {
+                    // Transform Y coordinate from screen (top-down) to PDF (bottom-up)
+                    var pdfY = pageHeight - update.Y - update.Height;
+                    var newBounds = new Syncfusion.Drawing.RectangleF(update.X, pdfY, update.Width, update.Height);
+                    
+                    if (field is PdfLoadedTextBoxField textField)
+                    {
+                        textField.Bounds = newBounds;
+                    }
+                    else if (field is PdfLoadedCheckBoxField checkField)
+                    {
+                        checkField.Bounds = newBounds;
+                    }
+                    else if (field is PdfLoadedSignatureField sigField)
+                    {
+                        sigField.Bounds = newBounds;
+                    }
+                    // Add other field types as needed
+                    
+                    logger.LogInformation($"Updated field {field.Name} to ({newBounds.X}, {newBounds.Y}, {newBounds.Width}, {newBounds.Height})");
+                }
+            }
+        }
+        
+        // Save modified PDF
+        using var outputStream = new MemoryStream();
+        pdfDoc.Save(outputStream);
+        var modifiedPdfBytes = outputStream.ToArray();
+        
+        // Render the specific page as image using PDFtoImage
+        using var bitmap = PDFtoImage.Conversion.ToImage(modifiedPdfBytes, request.PageNumber - 1);
+        
+        // Convert SKBitmap to byte array
+        using var data = bitmap.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+        var imageBytes = data.ToArray();
+        
+        logger.LogInformation($"Rendered page {request.PageNumber} as image");
+        
+        return Results.Ok(new
+        {
+            imageBase64 = Convert.ToBase64String(imageBytes),
+            pdfBase64 = Convert.ToBase64String(modifiedPdfBytes),
+            width = bitmap.Width,
+            height = bitmap.Height
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Failed to update field preview");
+        return Results.Problem($"Failed to update field preview: {ex.Message}");
+    }
+}
+
+// Update PDF field sizes and re-render preview (original multipart version - appears to have binding issues)
+app.MapPost("/api/update-field-preview", async (HttpRequest request, ILogger<Program> logger) =>
+{
+    try
+    {
+        logger.LogInformation("=== UPDATE-FIELD-PREVIEW ENDPOINT HIT ===");
+        logger.LogInformation($"Content-Type: {request.ContentType}");
+        logger.LogInformation($"Content-Length: {request.ContentLength}");
+        // Check if multipart
+        if (!request.HasFormContentType)
+        {
+            logger.LogError($"Invalid content type: {request.ContentType}. Expected multipart/form-data");
+            return Results.BadRequest(new { error = "Invalid content type. Expected multipart/form-data" });
+        }
+        
+        var form = await request.ReadFormAsync();
+        logger.LogInformation($"Form received with {form.Count} fields");
+        
+        // Log all form fields for debugging
+        foreach (var field in form)
+        {
+            logger.LogInformation($"Form field: {field.Key} = {field.Value.ToString().Substring(0, Math.Min(100, field.Value.ToString().Length))}...");
+        }
+        
+        if (!form.TryGetValue("pdfBase64", out var pdfBase64))
+        {
+            logger.LogError("Missing pdfBase64 parameter");
+            return Results.BadRequest(new { error = "Missing pdfBase64 parameter" });
+        }
+        
+        if (!form.TryGetValue("pageNumber", out var pageNumberStr))
+        {
+            logger.LogError("Missing pageNumber parameter");
+            return Results.BadRequest(new { error = "Missing pageNumber parameter" });
+        }
+        
+        if (!form.TryGetValue("fieldUpdates", out var fieldUpdatesJson))
+        {
+            logger.LogError("Missing fieldUpdates parameter");
+            return Results.BadRequest(new { error = "Missing fieldUpdates parameter" });
+        }
+        
+        logger.LogInformation($"Received: pdfBase64 length={pdfBase64.ToString()?.Length}, pageNumber={pageNumberStr}, fieldUpdates length={fieldUpdatesJson.ToString()?.Length}");
+        
+        if (!int.TryParse(pageNumberStr, out var pageNumber))
+        {
+            return Results.BadRequest(new { error = "Invalid page number" });
+        }
+        
+        var fieldUpdates = System.Text.Json.JsonSerializer.Deserialize<List<FieldUpdate>>(fieldUpdatesJson);
+        if (fieldUpdates == null)
+        {
+            return Results.BadRequest(new { error = "Invalid field updates" });
+        }
+        
+        var pdfBytes = Convert.FromBase64String(pdfBase64);
+        
+        // Load and modify PDF
+        using var pdfStream = new MemoryStream(pdfBytes);
+        using var pdfDoc = new PdfLoadedDocument(pdfStream);
+        
+        if (pageNumber < 1 || pageNumber > pdfDoc.Pages.Count)
+        {
+            return Results.BadRequest(new { error = "Invalid page number" });
+        }
+        
+        var pageHeight = pdfDoc.Pages[pageNumber - 1].Size.Height;
+        
+        // Update field sizes
+        if (pdfDoc.Form != null)
+        {
+            foreach (var update in fieldUpdates)
+            {
+                PdfLoadedField? field = null;
+                foreach (PdfLoadedField f in pdfDoc.Form.Fields)
+                {
+                    if (f.Name == update.Name)
+                    {
+                        field = f;
+                        break;
+                    }
+                }
+                
+                if (field != null)
+                {
+                    // Transform Y coordinate from screen (top-down) to PDF (bottom-up)
+                    var pdfY = pageHeight - update.Y - update.Height;
+                    var newBounds = new Syncfusion.Drawing.RectangleF(update.X, pdfY, update.Width, update.Height);
+                    
+                    if (field is PdfLoadedTextBoxField textField)
+                    {
+                        textField.Bounds = newBounds;
+                    }
+                    else if (field is PdfLoadedCheckBoxField checkField)
+                    {
+                        checkField.Bounds = newBounds;
+                    }
+                    else if (field is PdfLoadedSignatureField sigField)
+                    {
+                        sigField.Bounds = newBounds;
+                    }
+                    else if (field is PdfLoadedRadioButtonListField radioField)
+                    {
+                        // Radio fields are more complex, might need special handling
+                        if (radioField.Items.Count > 0)
+                        {
+                            radioField.Items[0].Bounds = newBounds;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Save modified PDF to memory
+        using var modifiedPdfStream = new MemoryStream();
+        pdfDoc.Save(modifiedPdfStream);
+        var modifiedPdfBytes = modifiedPdfStream.ToArray();
+        
+        // Convert modified PDF page to image
+        var options = new PDFtoImage.RenderOptions
+        {
+            Dpi = 150,
+            WithAnnotations = true,
+            WithFormFill = true
+        };
+        
+        using var bitmap = PDFtoImage.Conversion.ToImage(modifiedPdfBytes, pageNumber - 1, options: options);
+        
+        if (bitmap != null)
+        {
+            using var image = SkiaSharp.SKImage.FromBitmap(bitmap);
+            using var data = image.Encode(SkiaSharp.SKEncodedImageFormat.Png, 85);
+            var imageBytes = data.ToArray();
+            
+            return Results.Ok(new
+            {
+                imageBase64 = Convert.ToBase64String(imageBytes),
+                pdfBase64 = Convert.ToBase64String(modifiedPdfBytes),
+                width = bitmap.Width,
+                height = bitmap.Height
+            });
+        }
+        
+        return Results.Problem("Failed to render PDF page");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Failed to update field preview");
+        return Results.Problem($"Failed to update field preview: {ex.Message}");
+    }
+});
+
+// Log viewer endpoint
+app.MapGet("/api/logs", (ILogger<Program> logger) =>
+{
+    try
+    {
+        var logPath = "/Users/sethredmore/Documents/Redmore Studio/AccessForm/WordToPdfConverter/Logs/accessform.log";
+        
+        if (!System.IO.File.Exists(logPath))
+        {
+            logger.LogWarning($"Log file not found at {logPath}");
+            return Results.NotFound(new { error = "Log file not found" });
+        }
+        
+        // Read last 500 lines of log file
+        var lines = System.IO.File.ReadAllLines(logPath);
+        var recentLines = lines.TakeLast(500).ToArray();
+        
+        return Results.Ok(new
+        {
+            logFile = logPath,
+            totalLines = lines.Length,
+            recentLines = recentLines.Length,
+            logs = recentLines,
+            timestamp = DateTime.UtcNow
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Failed to read log file");
+        return Results.Problem($"Failed to read logs: {ex.Message}");
+    }
+});
+
+// Log viewer HTML page - temporarily disabled due to syntax issues
+// Use /api/logs for JSON output instead
+app.MapGet("/logs-disabled", () => Results.Content(@"
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AccessForm Log Viewer</title>
+    <style>
+        body { font-family: 'Consolas', 'Monaco', monospace; background: #1e1e1e; color: #d4d4d4; margin: 0; padding: 20px; }
+        h1 { color: #569cd6; }
+        .controls { margin-bottom: 20px; }
+        button { background: #007acc; color: white; border: none; padding: 10px 20px; cursor: pointer; margin-right: 10px; }
+        button:hover { background: #005a9e; }
+        .log-container { background: #2d2d30; border: 1px solid #3e3e42; padding: 10px; overflow-y: auto; max-height: 80vh; }
+        .log-line { white-space: pre-wrap; margin: 2px 0; padding: 2px 5px; }
+        .log-line:hover { background: #3e3e42; }
+        .log-info { color: #4ec9b0; }
+        .log-warning { color: #ce9178; }
+        .log-error { color: #f48771; background: #5a1e1e; }
+        .log-debug { color: #808080; }
+        .timestamp { color: #569cd6; }
+        .highlight { background: #515c6a; }
+        input { background: #3e3e42; color: #d4d4d4; border: 1px solid #007acc; padding: 5px; margin-left: 10px; }
+    </style>
+</head>
+<body>
+    <h1>AccessForm Log Viewer</h1>
+    <div class='controls'>
+        <button onclick='loadLogs()'>Refresh</button>
+        <button onclick='clearHighlight()'>Clear Highlight</button>
+        <label>Filter: <input type='text' id='filter' onkeyup='filterLogs()' placeholder='Type to filter...'></label>
+        <label>Auto-refresh: <input type='checkbox' id='autoRefresh' onchange='toggleAutoRefresh()'></label>
+    </div>
+    <div id='stats'></div>
+    <div class='log-container' id='logs'>Loading...</div>
+    
+    <script>
+        let allLogs = [];
+        let autoRefreshInterval = null;
+        
+        async function loadLogs() {
+            try {
+                const response = await fetch('/api/logs');
+                const data = await response.json();
+                allLogs = data.logs || [];
+                
+                document.getElementById('stats').innerHTML = 
+                    `<p>Showing last ${data.recentLines} of ${data.totalLines} lines | Last updated: ${new Date(data.timestamp).toLocaleString()}</p>`;
+                
+                displayLogs(allLogs);
+            } catch (error) {
+                document.getElementById('logs').innerHTML = `<div class='log-error'>Error loading logs: ${error.message}</div>`;
+            }
+        }
+        
+        function displayLogs(logs) {
+            const container = document.getElementById('logs');
+            const filter = document.getElementById('filter').value.toLowerCase();
+            
+            const html = logs
+                .filter(line => !filter || line.toLowerCase().includes(filter))
+                .map(line => {
+                    let className = 'log-line';
+                    if (line.includes('[ERROR]') || line.includes('ERROR')) className += ' log-error';
+                    else if (line.includes('[WARNING]') || line.includes('WARNING')) className += ' log-warning';
+                    else if (line.includes('[DEBUG]') || line.includes('DEBUG')) className += ' log-debug';
+                    else if (line.includes('[INFO]') || line.includes('INFO')) className += ' log-info';
+                    
+                    // Simplified output without complex patterns
+                    
+                    return '<div class=""' + className + '"">' + line.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+                })
+                .join('');
+            
+            container.innerHTML = html || '<div>No logs match filter</div>';
+            
+            // Auto-scroll to bottom
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        function filterLogs() {
+            displayLogs(allLogs);
+        }
+        
+        function clearHighlight() {
+            document.getElementById('filter').value = '';
+            displayLogs(allLogs);
+        }
+        
+        function toggleAutoRefresh() {
+            const checkbox = document.getElementById('autoRefresh');
+            if (checkbox.checked) {
+                autoRefreshInterval = setInterval(loadLogs, 2000);
+            } else {
+                clearInterval(autoRefreshInterval);
+            }
+        }
+        
+        // Load logs on page load
+        loadLogs();
+    </script>
+</body>
+</html>
+", "text/html"));
+
 app.Run();
+
+// Request class for JSON-based update-field-preview endpoint
+public class UpdateFieldPreviewRequest
+{
+    public string? PdfBase64 { get; set; }
+    public int PageNumber { get; set; }
+    public List<FieldUpdate>? FieldUpdates { get; set; }
+}
+
+// Helper class for field updates
+public class FieldUpdate
+{
+    public string Name { get; set; } = "";
+    public float X { get; set; }
+    public float Y { get; set; }
+    public float Width { get; set; }
+    public float Height { get; set; }
+}
+
+// Field update request model for /api/update-pdf-fields endpoint
+public class FieldUpdateRequest
+{
+    public string OriginalName { get; set; } = "";
+    public string NewName { get; set; } = "";
+    public string? FieldType { get; set; }
+    public string? Tooltip { get; set; }
+    public bool? IsRequired { get; set; }
+    public float? X { get; set; }
+    public float? Y { get; set; }
+    public float? Width { get; set; }
+    public float? Height { get; set; }
+}

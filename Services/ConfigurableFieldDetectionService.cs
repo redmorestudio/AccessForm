@@ -61,9 +61,11 @@ namespace WordToPdfConverter.Services
             string fileName, 
             FieldDetectionConfig config)
         {
-            _logger.LogInformation($"Starting configurable conversion for {fileName}");
+            _logger.LogInformation($"===== FIELD DETECTION START: {fileName} =====");
+            _logger.LogInformation($"File size: {wordBytes.Length:N0} bytes");
             _logger.LogInformation($"Config: Syncfusion={config.Services.UseSyncfusion}, Google={config.Services.UseGoogle}, " +
                                   $"ClaudeVision={config.Services.UseClaudeVision}, ClaudeValidation={config.Services.UseClaudeValidation}");
+            _logger.LogInformation($"Timestamp: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
             
             var detectedFields = new List<FieldDetectionResult>();
             byte[] pdfBytes = null;
@@ -259,9 +261,101 @@ namespace WordToPdfConverter.Services
                 }
             }
             
+            // Deduplicate checkboxes that are too close together
+            fields = DeduplicateCheckboxes(fields);
+            
             return (pdfBytes, fields);
         }
 
+        private List<FieldDetectionResult> DeduplicateCheckboxes(List<FieldDetectionResult> fields)
+        {
+            var deduplicatedFields = new List<FieldDetectionResult>();
+            var checkboxGroups = new Dictionary<string, List<FieldDetectionResult>>();
+            
+            // Group checkboxes by their position (within 5px tolerance)
+            foreach (var field in fields)
+            {
+                if (field.FieldType.ToLower() == "checkbox")
+                {
+                    // Create a key based on approximate position
+                    var posKey = $"{field.PageNumber}_{Math.Round(field.X / 10) * 10}_{Math.Round(field.Y / 10) * 10}";
+                    
+                    if (!checkboxGroups.ContainsKey(posKey))
+                        checkboxGroups[posKey] = new List<FieldDetectionResult>();
+                    
+                    checkboxGroups[posKey].Add(field);
+                }
+                else
+                {
+                    // Non-checkbox fields go straight through
+                    deduplicatedFields.Add(field);
+                }
+            }
+            
+            // For each group of checkboxes at the same position, keep only one
+            foreach (var group in checkboxGroups.Values)
+            {
+                if (group.Count > 1)
+                {
+                    // Keep the one with the best name (not generic)
+                    var bestCheckbox = group.OrderBy(f => 
+                    {
+                        // Prioritize non-generic names
+                        if (f.FieldName.Contains("Check") || f.FieldName.Contains("502fba303ae4"))
+                            return 2;
+                        if (string.IsNullOrWhiteSpace(f.FieldName))
+                            return 3;
+                        return 0;
+                    }).ThenBy(f => f.ShortId).First();
+                    
+                    _logger.LogDebug($"Deduplicating {group.Count} checkboxes at position ({bestCheckbox.X}, {bestCheckbox.Y}), keeping '{bestCheckbox.FieldName}'");
+                    deduplicatedFields.Add(bestCheckbox);
+                }
+                else
+                {
+                    deduplicatedFields.Add(group.First());
+                }
+            }
+            
+            // Also check for "text" fields that are actually checkboxes based on size
+            var finalFields = new List<FieldDetectionResult>();
+            foreach (var field in deduplicatedFields)
+            {
+                // If it's a tiny text field (< 20x20), it's probably a misidentified checkbox
+                if (field.FieldType.ToLower() == "text" && 
+                    field.Width < 20 && field.Height < 20)
+                {
+                    // Skip it if there's already a checkbox at this position
+                    var hasCheckboxNearby = finalFields.Any(f => 
+                        f.FieldType.ToLower() == "checkbox" &&
+                        f.PageNumber == field.PageNumber &&
+                        Math.Abs(f.X - field.X) < 10 &&
+                        Math.Abs(f.Y - field.Y) < 10);
+                    
+                    if (hasCheckboxNearby)
+                    {
+                        _logger.LogDebug($"Skipping tiny text field '{field.FieldName}' at ({field.X}, {field.Y}) - likely duplicate of checkbox");
+                        continue;
+                    }
+                }
+                finalFields.Add(field);
+            }
+            
+            // Sort by page then position for consistent ordering
+            finalFields.Sort((a, b) =>
+            {
+                var pageCmp = a.PageNumber.CompareTo(b.PageNumber);
+                if (pageCmp != 0) return pageCmp;
+                var yCmp = a.Y.CompareTo(b.Y);
+                if (yCmp != 0) return yCmp;
+                return a.X.CompareTo(b.X);
+            });
+            
+            _logger.LogInformation($"Deduplicated fields: {fields.Count} → {finalFields.Count} (removed {fields.Count - finalFields.Count} duplicates)");
+            
+            return finalFields;
+        }
+        
         private RectangleF GetLoadedFieldBounds(PdfLoadedField field)
         {
             // Different field types have bounds differently
@@ -526,34 +620,25 @@ namespace WordToPdfConverter.Services
             // Add detected fields
             foreach (var field in fields.Where(f => f.IsValid))
             {
-                var bounds = new RectangleF(field.X, field.Y, field.Width, field.Height);
+                // Syncfusion fields already have PDF coordinates (bottom-left origin)
+                // Only convert if the field is NOT from Syncfusion
+                float pdfY = field.Y;
                 
-                // Special handling for checkboxes - they should be small squares
-                if (field.FieldType.ToLower() == "checkbox")
+                if (field.Source != "Syncfusion" && !field.Source.StartsWith("Syncfusion"))
                 {
-                    // Checkboxes should be small, typically 12x12 to 15x15
-                    const float CHECKBOX_SIZE = 12f;
-                    bounds.Width = CHECKBOX_SIZE;
-                    bounds.Height = CHECKBOX_SIZE;
-                    // Optionally adjust Y position to center in original bounds
-                    // bounds.Y = field.Y + (field.Height - CHECKBOX_SIZE) / 2;
+                    // For non-Syncfusion sources, convert from top-left to bottom-left origin
+                    var page = pdfDoc.Pages[field.PageNumber - 1];
+                    float pageHeight = page.Size.Height;
+                    pdfY = pageHeight - field.Y - field.Height;
                 }
-                else
-                {
-                    // Make text fields more appropriately sized
-                    // Increase width significantly for text input fields
-                    if (bounds.Width < 150)
-                    {
-                        // For fields like name, email, address - make them wider
-                        bounds.Width = Math.Max(150, bounds.Width * 2);
-                    }
-                    
-                    // Ensure minimum height for text fields
-                    if (bounds.Height < 20)
-                    {
-                        bounds.Height = 20;
-                    }
-                }
+                
+                // No adjustment needed - use the calculated position directly
+                // pdfY -= 10;
+                
+                var bounds = new RectangleF(field.X, pdfY, field.Width, field.Height);
+                
+                // Apply smart sizing based on field type
+                bounds = ApplySmartFieldSizing(bounds, field.FieldType, field.FieldName);
                 
                 // Add the field based on type
                 PdfField pdfField = null;
@@ -634,6 +719,212 @@ namespace WordToPdfConverter.Services
             using var outputStream = new MemoryStream();
             pdfDoc.Save(outputStream);
             return outputStream.ToArray();
+        }
+        
+        // Field width constants (in points/pixels)
+        private const float CHECKBOX_SIZE = 20f;
+        private const float NAME_FIELD_WIDTH = 250f;
+        private const float DATE_FIELD_WIDTH = 100f;
+        private const float ADDRESS_FIELD_WIDTH = 250f;
+        private const float CITY_FIELD_WIDTH = 150f;
+        private const float STATE_FIELD_WIDTH = 50f;  // 25 was too small, using 50
+        private const float ZIP_FIELD_WIDTH = 80f;
+        private const float PHONE_FIELD_WIDTH = 120f;
+        private const float EMAIL_FIELD_WIDTH = 200f;
+        private const float SSN_FIELD_WIDTH = 100f;
+        private const float EIN_FIELD_WIDTH = 100f;
+        private const float SIGNATURE_FIELD_WIDTH = 200f;
+        private const float NUMERIC_FIELD_WIDTH = 80f;
+        private const float CURRENCY_FIELD_WIDTH = 100f;
+        private const float PERCENTAGE_FIELD_WIDTH = 60f;
+        private const float DEFAULT_TEXT_WIDTH = 150f;
+        private const float TEXTAREA_WIDTH = 300f;  // Reduced from 350
+        private const float STANDARD_FIELD_HEIGHT = 20f;
+        private const float TEXTAREA_HEIGHT = 40f;  // Reduced from 60 to prevent overflow
+        
+        private RectangleF ApplySmartFieldSizing(RectangleF bounds, string fieldType, string fieldName)
+        {
+            var newBounds = new RectangleF(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+            
+            // Ensure minimum height for all fields except checkboxes
+            if (fieldType.ToLower() != "checkbox" && newBounds.Height < STANDARD_FIELD_HEIGHT)
+            {
+                newBounds.Height = STANDARD_FIELD_HEIGHT;
+            }
+            
+            // Don't move fields horizontally if they're already positioned beyond typical label area
+            // This preserves the form's original layout
+            bool preserveXPosition = newBounds.X > 200;
+            
+            // Apply width based on field type
+            switch (fieldType.ToLower())
+            {
+                case "checkbox":
+                    newBounds.Width = CHECKBOX_SIZE;
+                    newBounds.Height = CHECKBOX_SIZE;
+                    break;
+                    
+                case "name":
+                case "first_name":
+                case "last_name":
+                case "middle_name":
+                case "full_name":
+                    newBounds.Width = NAME_FIELD_WIDTH;
+                    break;
+                    
+                case "date":
+                case "date_of_birth":
+                case "dob":
+                    newBounds.Width = DATE_FIELD_WIDTH;
+                    break;
+                    
+                case "address":
+                case "street_address":
+                case "address_line_1":
+                case "address_line_2":
+                    newBounds.Width = ADDRESS_FIELD_WIDTH;
+                    break;
+                    
+                case "city":
+                    newBounds.Width = CITY_FIELD_WIDTH;
+                    break;
+                    
+                case "state":
+                case "state_abbreviation":
+                    newBounds.Width = STATE_FIELD_WIDTH;
+                    break;
+                    
+                case "zip":
+                case "zipcode":
+                case "postal_code":
+                    newBounds.Width = ZIP_FIELD_WIDTH;
+                    break;
+                    
+                case "phone":
+                case "phone_number":
+                case "mobile":
+                case "telephone":
+                    newBounds.Width = PHONE_FIELD_WIDTH;
+                    break;
+                    
+                case "email":
+                case "email_address":
+                    newBounds.Width = EMAIL_FIELD_WIDTH;
+                    break;
+                    
+                case "ssn":
+                case "social_security_number":
+                    newBounds.Width = SSN_FIELD_WIDTH;
+                    break;
+                    
+                case "ssn_partial":
+                    newBounds.Width = 50f;  // Just last 4 digits
+                    break;
+                    
+                case "ein":
+                case "tax_id":
+                    newBounds.Width = EIN_FIELD_WIDTH;
+                    break;
+                    
+                case "signature":
+                    newBounds.Width = SIGNATURE_FIELD_WIDTH;
+                    newBounds.Height = 30f;  // Signatures need more height
+                    break;
+                    
+                case "numeric":
+                case "number":
+                case "integer":
+                case "age":
+                case "year":
+                    newBounds.Width = NUMERIC_FIELD_WIDTH;
+                    break;
+                    
+                case "currency":
+                case "amount":
+                case "price":
+                case "salary":
+                case "income":
+                    newBounds.Width = CURRENCY_FIELD_WIDTH;
+                    break;
+                    
+                case "percentage":
+                case "percent":
+                    newBounds.Width = PERCENTAGE_FIELD_WIDTH;
+                    break;
+                    
+                case "textarea":
+                case "comments":
+                case "notes":
+                    newBounds.Width = TEXTAREA_WIDTH;
+                    newBounds.Height = TEXTAREA_HEIGHT;
+                    // Only move to right if field is currently in label area
+                    if (!preserveXPosition && newBounds.X < 250)
+                    {
+                        newBounds.X = 250;  // Move to right of label
+                    }
+                    break;
+                    
+                case "description":
+                    // Description fields might be inline or multi-line
+                    // For "Description of Refusal" type fields, make them wider but single line
+                    if (fieldName != null && fieldName.ToLower().Contains("description"))
+                    {
+                        newBounds.Width = TEXTAREA_WIDTH;
+                        newBounds.Height = TEXTAREA_HEIGHT;
+                        // Only move if not already positioned
+                        if (!preserveXPosition && newBounds.X < 250)
+                        {
+                            newBounds.X = 250;
+                        }
+                    }
+                    else
+                    {
+                        newBounds.Width = DEFAULT_TEXT_WIDTH;
+                    }
+                    break;
+                    
+                default:
+                    // For generic text fields, try to infer from field name
+                    if (!string.IsNullOrEmpty(fieldName))
+                    {
+                        var lowerName = fieldName.ToLower();
+                        if (lowerName.Contains("name"))
+                            newBounds.Width = NAME_FIELD_WIDTH;
+                        else if (lowerName.Contains("date"))
+                            newBounds.Width = DATE_FIELD_WIDTH;
+                        else if (lowerName.Contains("address") || lowerName.Contains("street"))
+                            newBounds.Width = ADDRESS_FIELD_WIDTH;
+                        else if (lowerName.Contains("city"))
+                            newBounds.Width = CITY_FIELD_WIDTH;
+                        else if (lowerName.Contains("state"))
+                            newBounds.Width = STATE_FIELD_WIDTH;
+                        else if (lowerName.Contains("zip"))
+                            newBounds.Width = ZIP_FIELD_WIDTH;
+                        else if (lowerName.Contains("phone") || lowerName.Contains("mobile"))
+                            newBounds.Width = PHONE_FIELD_WIDTH;
+                        else if (lowerName.Contains("email"))
+                            newBounds.Width = EMAIL_FIELD_WIDTH;
+                        else if (lowerName.Contains("description") || lowerName.Contains("comment") || lowerName.Contains("reason") || lowerName.Contains("refusal"))
+                        {
+                            newBounds.Width = TEXTAREA_WIDTH;
+                            newBounds.Height = TEXTAREA_HEIGHT;
+                            // Only move if not already positioned
+                            if (!preserveXPosition && newBounds.X < 250)
+                            {
+                                newBounds.X = 250;
+                            }
+                        }
+                        else
+                            newBounds.Width = DEFAULT_TEXT_WIDTH;
+                    }
+                    else
+                    {
+                        newBounds.Width = DEFAULT_TEXT_WIDTH;
+                    }
+                    break;
+            }
+            
+            return newBounds;
         }
         
         private void ApplyFieldTypeFormatting(PdfTextBoxField textField, string fieldType)
@@ -927,44 +1218,126 @@ Document:
                 
                 // Find corresponding Claude fields for this page
                 var cvPageGroup = cvFieldsByPage.FirstOrDefault(g => g.Key == pageNum);
-                var cvFields = cvPageGroup?.OrderBy(f => f.FieldName).ToList() ?? new List<FieldDetectionResult>();
+                var cvFields = cvPageGroup?.ToList() ?? new List<FieldDetectionResult>();
                 
-                // Sort fields by position for better matching
+                // Sort BOTH by position for proper matching
                 var sfFieldsSorted = sfFields.OrderBy(f => f.Y).ThenBy(f => f.X).ToList();
-                var cvFieldsSorted = cvFields.OrderBy(f => f.FieldName).ToList();  // Claude fields ordered by name
+                var cvFieldsSorted = cvFields.OrderBy(f => f.Y).ThenBy(f => f.X).ToList();  // Sort by position, not name!
                 
                 _logger.LogInformation($"Page {pageNum}: {sfFields.Count} Syncfusion fields, {cvFields.Count} Claude labels");
                 
-                // Create a pool of available Claude labels
-                var availableLabels = new Queue<FieldDetectionResult>(cvFieldsSorted);
+                // Match fields - first by name, then by position
                 var usedLabels = new HashSet<string>();
                 
-                // Also create a pool of text-extracted field names
-                var textLabelQueue = textFieldNames != null ? new Queue<string>(textFieldNames) : new Queue<string>();
-                
-                // Process all Syncfusion fields in position order
+                // Process all Syncfusion fields
                 foreach (var sfField in sfFieldsSorted)
                 {
                     FieldDetectionResult bestMatch = null;
                     
-                    // For checkboxes, try to find any unused label
+                    // First, try to match by name exactly
+                    bestMatch = cvFieldsSorted.FirstOrDefault(cv => 
+                        !usedLabels.Contains(cv.FieldName) &&
+                        string.Equals(cv.FieldName, sfField.FieldName, StringComparison.OrdinalIgnoreCase));
+                    
+                    // If no name match, try partial name match
+                    if (bestMatch == null)
+                    {
+                        bestMatch = cvFieldsSorted.FirstOrDefault(cv => 
+                            !usedLabels.Contains(cv.FieldName) &&
+                            (cv.FieldName?.Contains(sfField.FieldName ?? "", StringComparison.OrdinalIgnoreCase) == true ||
+                             sfField.FieldName?.Contains(cv.FieldName ?? "", StringComparison.OrdinalIgnoreCase) == true));
+                    }
+                    
+                    // If still no match, find closest by position
+                    if (bestMatch == null)
+                    {
+                        double minDistance = double.MaxValue;
+                        foreach (var cvField in cvFieldsSorted)
+                        {
+                            if (usedLabels.Contains(cvField.FieldName))
+                                continue;
+                                
+                            double dx = sfField.X - cvField.X;
+                            double dy = sfField.Y - cvField.Y;
+                            double distance = Math.Sqrt(dx * dx + dy * dy);
+                            
+                            if (distance < minDistance)
+                            {
+                                minDistance = distance;
+                                bestMatch = cvField;
+                            }
+                        }
+                    }
+                    
+                    // For checkboxes, use special matching that prioritizes Y-position
                     if (sfField.FieldType.ToLower() == "checkbox")
                     {
-                        // Try to get the next available label for checkboxes
-                        if (availableLabels.Any())
+                        // For checkboxes, find the Claude label that's closest in Y position
+                        // This prevents all checkboxes from getting the same label
+                        FieldDetectionResult checkboxMatch = null;
+                        double minYDistance = double.MaxValue;
+                        
+                        _logger.LogDebug($"Matching checkbox at Y={sfField.Y}, X={sfField.X}");
+                        
+                        // First check if we have any Claude fields with valid coordinates
+                        var hasValidCoordinates = cvFieldsSorted.Any(f => f.Y > 0);
+                        
+                        if (hasValidCoordinates)
                         {
-                            bestMatch = availableLabels.Dequeue();
-                            usedLabels.Add(bestMatch.FieldName);
+                            // Use position-based matching
+                            foreach (var cvField in cvFieldsSorted)
+                            {
+                                // Skip fields with invalid coordinates
+                                if (cvField.Y <= 0)
+                                    continue;
+                                    
+                                // For checkboxes, don't skip used labels - multiple checkboxes can share a label
+                                // But prioritize matching by Y position
+                                double yDistance = Math.Abs(sfField.Y - cvField.Y);
+                                double xDistance = Math.Abs(sfField.X - cvField.X);
+                                
+                                _logger.LogDebug($"  Checking Claude field '{cvField.FieldName}' at Y={cvField.Y}, X={cvField.X}: yDist={yDistance}, xDist={xDistance}");
+                                
+                                // Consider labels that are on the same line (within 50 pixels Y) 
+                                // and to the right of the checkbox (X within reasonable range)
+                                if (yDistance < 50 && yDistance < minYDistance)
+                                {
+                                    minYDistance = yDistance;
+                                    checkboxMatch = cvField;
+                                    _logger.LogDebug($"    -> New best match: '{cvField.FieldName}' with yDist={yDistance}");
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Fall back to order-based matching when coordinates aren't available
+                            _logger.LogDebug("Claude fields have no valid coordinates, using order-based matching");
+                            
+                            // Get checkbox fields and labels that look like checkbox options
+                            var checkboxLabels = cvFieldsSorted.Where(f => 
+                                f.FieldType?.ToLower() == "checkbox" || 
+                                f.FieldName?.Contains("option", StringComparison.OrdinalIgnoreCase) == true ||
+                                f.FieldName?.Contains("check", StringComparison.OrdinalIgnoreCase) == true ||
+                                f.FieldName?.Contains("select", StringComparison.OrdinalIgnoreCase) == true
+                            ).ToList();
+                            
+                            // Match by index in sorted order
+                            var checkboxIndex = sfFieldsSorted.Where(f => f.FieldType.ToLower() == "checkbox").ToList().IndexOf(sfField);
+                            if (checkboxIndex >= 0 && checkboxIndex < checkboxLabels.Count)
+                            {
+                                checkboxMatch = checkboxLabels[checkboxIndex];
+                                _logger.LogDebug($"Matched checkbox by index {checkboxIndex}: '{checkboxMatch.FieldName}'");
+                            }
                         }
                         
-                        if (bestMatch != null)
+                        if (checkboxMatch != null)
                         {
                             // Keep it as checkbox but use Claude's label
                             var enhanced = new FieldDetectionResult
                             {
                                 ShortId = sfField.ShortId,
-                                FieldName = bestMatch.FieldName,     // Claude's label
-                                FieldType = "checkbox",               // ALWAYS keep as checkbox
+                                FieldName = checkboxMatch.FieldName,     // Claude's label matched by Y position
+                                FieldType = "checkbox",                  // ALWAYS keep as checkbox
                                 X = sfField.X,
                                 Y = sfField.Y,
                                 Width = sfField.Width,
@@ -973,20 +1346,17 @@ Document:
                                 Source = "Syncfusion+Claude",
                                 Confidence = sfField.Confidence,
                                 IsValid = sfField.IsValid,
-                                Tooltip = FieldTooltipGenerator.GenerateTooltip("checkbox", bestMatch.FieldName)
+                                Tooltip = FieldTooltipGenerator.GenerateTooltip("checkbox", checkboxMatch.FieldName)
                             };
                             enhancedFields.Add(enhanced);
-                            _logger.LogDebug($"Enhanced checkbox {sfField.ShortId}: label → '{bestMatch.FieldName}'");
+                            _logger.LogDebug($"Enhanced checkbox {sfField.ShortId} at Y={sfField.Y}: label → '{checkboxMatch.FieldName}'");
+                            
+                            // Don't mark as used for checkboxes - allow reuse
                         }
                         else
                         {
-                            // Try to get a label from text extraction
-                            string labelToUse = null;
-                            if (textLabelQueue.Any())
-                            {
-                                labelToUse = textLabelQueue.Dequeue();
-                                _logger.LogDebug($"Using text-extracted label for checkbox: {labelToUse}");
-                            }
+                            // No match found, keep original
+                            string labelToUse = sfField.FieldName;
                             
                             if (!string.IsNullOrEmpty(labelToUse))
                             {
@@ -1010,10 +1380,9 @@ Document:
                     }
                     else
                     {
-                        // For text fields, try to get a matching label
-                        if (availableLabels.Any())
+                        // For text fields, use the matched field
+                        if (bestMatch != null)
                         {
-                            bestMatch = availableLabels.Dequeue();
                             usedLabels.Add(bestMatch.FieldName);
                         }
                         

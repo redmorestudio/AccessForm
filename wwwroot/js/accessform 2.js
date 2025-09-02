@@ -128,8 +128,20 @@ window.accessForm = {
                     let endpoint;
                     let config = null;
                     if (window.accessForm && window.accessForm.isAiModeEnabled && window.accessForm.isAiModeEnabled()) {
-                        // Use AI endpoint for both Word and PDF in AI mode
-                        endpoint = '/api/convert-with-ai';
+                        // Use configurable endpoint for Word docs in AI mode
+                        endpoint = isWord ? '/api/convert-with-config' : '/api/convert-with-ai';
+                        // Get configuration from UI if using configurable endpoint
+                        if (endpoint === '/api/convert-with-config') {
+                            config = {
+                                useSyncfusion: document.querySelector('#useSyncfusion')?.checked ?? true,
+                                useGoogle: document.querySelector('#useGoogle')?.checked ?? false,
+                                useClaudeVision: document.querySelector('#useClaudeVision')?.checked ?? false,
+                                useClaudeValidation: document.querySelector('#useClaudeValidation')?.checked ?? false,
+                                mode: document.querySelector('input[name="processingMode"]:checked')?.value ?? 'Sequential',
+                                debugMode: document.querySelector('#debugMode')?.checked ?? true,
+                                showFieldIds: document.querySelector('#showFieldIds')?.checked ?? true
+                            };
+                        }
                     } else {
                         // Use standard endpoints
                         endpoint = isWord ? '/api/convert' : '/api/remediate-pdf';
@@ -306,148 +318,34 @@ window.accessForm = {
                     try {
                         console.log('Using PassportPDF for processing');
                         
-                        // Show processing indicator with progress tracking
+                        // Show processing indicator
                         const overlay = document.createElement('div');
                         overlay.id = 'processing-overlay';
                         overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
                         overlay.innerHTML = `
-                            <div style="background:white;padding:30px;border-radius:10px;text-align:center;min-width:550px;max-width:650px">
+                            <div style="background:white;padding:30px;border-radius:10px;text-align:center;min-width:400px">
                                 <div class="spinner-border text-success" style="width:3rem;height:3rem" role="status">
                                     <span class="visually-hidden">Processing...</span>
                                 </div>
-                                <h4 class="mt-3">Processing with AI Pipeline</h4>
-                                <div class="alert alert-info mt-3">
-                                    <p class="mb-2">🎆 <strong>Full PDF/UA Compliance Pipeline</strong></p>
-                                    <div class="text-start mt-3" style="font-family: 'Courier New', monospace; font-size: 13px;">
-                                        <div class="mb-2">
-                                            <span id="syncfusion-status">⏳</span> Syncfusion Field Detection: <span id="syncfusion-time" class="text-muted">Starting...</span>
-                                        </div>
-                                        <div class="mb-2">
-                                            <span id="claude-status">⏳</span> Claude Vision Analysis: <span id="claude-time" class="text-muted">Waiting...</span>
-                                        </div>
-                                        <div class="mb-2">
-                                            <span id="passport-status">⏳</span> PassportPDF Compliance: <span id="passport-time" class="text-muted">Not started</span>
-                                        </div>
-                                    </div>
-                                    <div class="mt-3 border-top pt-2">
-                                        <small class="text-muted">Total elapsed: <span id="total-time">0:00</span> | Est. remaining: <span id="est-remaining">Calculating...</span></small>
-                                    </div>
+                                <h4 class="mt-3">Processing with PassportPDF</h4>
+                                <div class="alert alert-success mt-3">
+                                    <p class="mb-2">🎆 <strong>PassportPDF + Anthropic Claude</strong></p>
+                                    <p class="mb-1">Creating fully PDF/UA compliant document...</p>
+                                    <p class="text-muted small">This ensures maximum accessibility compliance</p>
                                 </div>
                             </div>
                         `;
                         document.body.appendChild(overlay);
                         
-                        // Start progress tracking
-                        const startTime = Date.now();
-                        let syncfusionStart = Date.now();
-                        let claudeStart = null;
-                        let passportStart = null;
-                        
-                        // Update timer
-                        const timerInterval = setInterval(() => {
-                            const elapsed = Date.now() - startTime;
-                            const totalSeconds = Math.floor(elapsed / 1000);
-                            const minutes = Math.floor(totalSeconds / 60);
-                            const seconds = totalSeconds % 60;
-                            const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-                            
-                            const totalTimeEl = document.getElementById('total-time');
-                            if (totalTimeEl) totalTimeEl.textContent = timeStr;
-                            
-                            // Simulate progress stages (these would be updated by actual server events in production)
-                            if (elapsed > 2000 && !claudeStart) {
-                                // Syncfusion done after 2 seconds
-                                document.getElementById('syncfusion-status').textContent = '✅';
-                                const syncTime = Math.floor((Date.now() - syncfusionStart) / 1000);
-                                document.getElementById('syncfusion-time').textContent = `Done (${syncTime}s)`;
-                                
-                                // Start Claude
-                                claudeStart = Date.now();
-                                document.getElementById('claude-status').textContent = '🔄';
-                                document.getElementById('claude-time').textContent = 'Processing...';
-                            }
-                            
-                            // Update Claude progress
-                            if (claudeStart && !passportStart) {
-                                const claudeElapsed = Math.floor((Date.now() - claudeStart) / 1000);
-                                const claudeEstimate = 8; // Estimated 8 seconds for Claude
-                                const claudeRemaining = Math.max(0, claudeEstimate - claudeElapsed);
-                                if (claudeElapsed < claudeEstimate) {
-                                    document.getElementById('claude-time').textContent = `${claudeElapsed}s elapsed, ~${claudeRemaining}s to go`;
-                                }
-                            }
-                            
-                            if (claudeStart && elapsed > 10000 && !passportStart) {
-                                // Claude done after 8 seconds
-                                document.getElementById('claude-status').textContent = '✅';
-                                const claudeTime = Math.floor((Date.now() - claudeStart) / 1000);
-                                document.getElementById('claude-time').textContent = `Done (${claudeTime}s)`;
-                                
-                                // Start PassportPDF
-                                passportStart = Date.now();
-                                document.getElementById('passport-status').textContent = '🔄';
-                                document.getElementById('passport-time').textContent = 'Converting to PDF/A...';
-                            }
-                            
-                            // Update PassportPDF progress
-                            if (passportStart) {
-                                const passportElapsed = Math.floor((Date.now() - passportStart) / 1000);
-                                const passportEstimate = 5; // Estimated 5 seconds for PassportPDF
-                                const passportRemaining = Math.max(0, passportEstimate - passportElapsed);
-                                if (passportElapsed < passportEstimate) {
-                                    document.getElementById('passport-time').textContent = `Converting to PDF/A... ${passportElapsed}s`;
-                                } else {
-                                    document.getElementById('passport-status').textContent = '✅';
-                                    document.getElementById('passport-time').textContent = `Done (${passportElapsed}s)`;
-                                    document.getElementById('est-remaining').textContent = 'Completing...';
-                                }
-                            }
-                            
-                            // Update estimated remaining
-                            if (!passportStart) {
-                                const remaining = Math.max(0, 15 - totalSeconds);
-                                document.getElementById('est-remaining').textContent = `~${remaining}s`;
-                            }
-                        }, 100);
-                        
-                        // Store interval ID for cleanup
-                        overlay.timerInterval = timerInterval;
-                        
                         const file = files[0];
-                        const endpoint = '/api/convert-with-ai';  // This already includes PassportPDF
+                        const endpoint = '/api/process-with-passportpdf-auto';
                         
                         const result = await window.accessForm.uploadOriginalFile(endpoint, file);
                         
-                        // Mark all stages as complete when response received
-                        if (document.getElementById('syncfusion-status')) {
-                            document.getElementById('syncfusion-status').textContent = '✅';
-                            document.getElementById('syncfusion-time').textContent = 'Done';
-                        }
-                        if (document.getElementById('claude-status')) {
-                            document.getElementById('claude-status').textContent = '✅';
-                            document.getElementById('claude-time').textContent = 'Done';
-                        }
-                        if (document.getElementById('passport-status')) {
-                            document.getElementById('passport-status').textContent = '✅';
-                            document.getElementById('passport-time').textContent = 'Done';
-                        }
-                        if (document.getElementById('est-remaining')) {
-                            document.getElementById('est-remaining').textContent = 'Complete';
-                        }
-                        
-                        // Small delay to show completion status
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                        
-                        // Remove processing overlay and clear timer
+                        // Remove processing overlay
                         const overlayToRemove = document.getElementById('processing-overlay');
                         if (overlayToRemove) {
-                            if (overlayToRemove.timerInterval) {
-                                clearInterval(overlayToRemove.timerInterval);
-                            }
                             overlayToRemove.remove();
-                        }
-                        if (timerInterval) {
-                            clearInterval(timerInterval);
                         }
                         
                         if (result) {
@@ -570,8 +468,20 @@ window.accessForm = {
                         let endpoint;
                         let config = null;
                         if (window.accessForm && window.accessForm.isAiModeEnabled && window.accessForm.isAiModeEnabled()) {
-                            // Use AI endpoint for both Word and PDF in AI mode
-                            endpoint = '/api/convert-with-ai';
+                            // Use configurable endpoint for Word docs in AI mode
+                            endpoint = isWord ? '/api/convert-with-config' : '/api/convert-with-ai';
+                            // Get configuration from UI if using configurable endpoint
+                            if (endpoint === '/api/convert-with-config') {
+                                config = {
+                                    useSyncfusion: document.querySelector('#useSyncfusion')?.checked ?? true,
+                                    useGoogle: document.querySelector('#useGoogle')?.checked ?? false,
+                                    useClaudeVision: document.querySelector('#useClaudeVision')?.checked ?? false,
+                                    useClaudeValidation: document.querySelector('#useClaudeValidation')?.checked ?? false,
+                                    mode: document.querySelector('input[name="processingMode"]:checked')?.value ?? 'Sequential',
+                                    debugMode: document.querySelector('#debugMode')?.checked ?? true,
+                                    showFieldIds: document.querySelector('#showFieldIds')?.checked ?? true
+                                };
+                            }
                         } else {
                             // Use standard endpoints
                             endpoint = isWord ? '/api/convert' : '/api/remediate-pdf';
@@ -710,128 +620,3 @@ document.addEventListener('DOMContentLoaded', function () {
         console.warn('Browser does not fully support drag and drop file uploads');
     }
 });
-
-// Display tag tree in the modal
-window.displayTagTree = function(elementId, tagTreeJson) {
-    try {
-        const element = document.getElementById(elementId);
-        if (!element) {
-            console.error('Element not found:', elementId);
-            return;
-        }
-        
-        const tagData = JSON.parse(tagTreeJson);
-        
-        // Build HTML for tree display
-        let html = '<div class="tree-view">';
-        
-        function renderNode(node, level = 0) {
-            const indent = '  '.repeat(level);
-            let nodeHtml = `<div class="tree-node" style="margin-left: ${level * 20}px;">`;
-            
-            if (node.type) {
-                nodeHtml += `<span class="tree-node-label">`;
-                nodeHtml += `<strong>${node.type}</strong>`;
-                
-                if (node.title) {
-                    nodeHtml += `: ${node.title}`;
-                }
-                
-                if (node.name) {
-                    nodeHtml += ` - ${node.name}`;
-                }
-                
-                nodeHtml += '</span>';
-            }
-            
-            nodeHtml += '</div>';
-            
-            if (node.children && node.children.length > 0) {
-                node.children.forEach(child => {
-                    nodeHtml += renderNode(child, level + 1);
-                });
-            }
-            
-            return nodeHtml;
-        }
-        
-        if (tagData.tagTree) {
-            html += renderNode(tagData.tagTree);
-        } else {
-            html += '<p class="text-muted">No tag structure available</p>';
-        }
-        
-        if (tagData.formFields && tagData.formFields.length > 0) {
-            html += '<div class="mt-3"><strong>Form Fields:</strong></div>';
-            tagData.formFields.forEach(field => {
-                html += `<div class="tree-node" style="margin-left: 20px;">`;
-                html += `<span class="field-type-badge type-${field.type}">${field.type}</span> `;
-                html += `${field.name}`;
-                if (field.tooltip) {
-                    html += ` <small class="text-muted">(${field.tooltip})</small>`;
-                }
-                html += '</div>';
-            });
-        }
-        
-        html += '</div>';
-        element.innerHTML = html;
-        
-    } catch (error) {
-        console.error('Error displaying tag tree:', error);
-        document.getElementById(elementId).innerHTML = '<p class="text-danger">Error displaying tag tree</p>';
-    }
-};
-
-// Field drag and resize handlers for TagModificationModal
-window.startFieldDrag = function(dotNetRef, fieldName) {
-    let startX = 0;
-    let startY = 0;
-    
-    const handleMouseMove = (e) => {
-        const deltaX = e.clientX - startX;
-        const deltaY = e.clientY - startY;
-        dotNetRef.invokeMethodAsync('UpdateFieldPosition', deltaX, deltaY);
-    };
-    
-    const handleMouseUp = () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-        dotNetRef.invokeMethodAsync('EndDragOrResize');
-    };
-    
-    // Get current mouse position
-    if (event) {
-        startX = event.clientX;
-        startY = event.clientY;
-    }
-    
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-};
-
-window.startFieldResize = function(dotNetRef, fieldName) {
-    let startX = 0;
-    let startY = 0;
-    
-    const handleMouseMove = (e) => {
-        const deltaX = e.clientX - startX;
-        const deltaY = e.clientY - startY;
-        dotNetRef.invokeMethodAsync('UpdateFieldSize', deltaX, deltaY);
-    };
-    
-    const handleMouseUp = () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-        dotNetRef.invokeMethodAsync('EndDragOrResize');
-    };
-    
-    // Get current mouse position
-    if (event) {
-        startX = event.clientX;
-        startY = event.clientY;
-    }
-    
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-};

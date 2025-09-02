@@ -41,7 +41,22 @@ namespace AccessFormServer.Services
             
             try
             {
-                _logger.LogInformation($"Creating accessible PDF for {fileName} with {detectedFields?.Count ?? 0} fields");
+                _logger.LogInformation($"===== CREATING ACCESSIBLE PDF: {fileName} =====");
+                _logger.LogInformation($"Word document size: {wordBytes?.Length:N0} bytes");
+                _logger.LogInformation($"Detected fields: {detectedFields?.Count ?? 0}");
+                
+                // Log field details
+                if (detectedFields != null && detectedFields.Any())
+                {
+                    foreach (var field in detectedFields.Take(5))
+                    {
+                        _logger.LogDebug($"  Field: {field.FieldName} [{field.FieldType}] at ({field.X:F1},{field.Y:F1}) size {field.Width:F1}x{field.Height:F1}");
+                    }
+                    if (detectedFields.Count > 5)
+                    {
+                        _logger.LogDebug($"  ... and {detectedFields.Count - 5} more fields");
+                    }
+                }
                 
                 // Convert Word to PDF with proper structure
                 using var inputStream = new MemoryStream(wordBytes);
@@ -116,9 +131,13 @@ namespace AccessFormServer.Services
                     // Adjust field sizes based on type
                     if (field.FieldType?.ToLower() == "checkbox")
                     {
-                        // Checkboxes should be small squares
-                        bounds.Width = 12f;
-                        bounds.Height = 12f;
+                        // Only force checkbox size if it's unreasonably large or small
+                        if (bounds.Width < 10 || bounds.Width > 30 || bounds.Height < 10 || bounds.Height > 30)
+                        {
+                            // Make it a reasonable checkbox size
+                            bounds.Width = 15f;
+                            bounds.Height = 15f;
+                        }
                     }
                     else
                     {

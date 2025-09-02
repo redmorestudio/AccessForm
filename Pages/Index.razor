@@ -13,36 +13,10 @@
             <h1 class="text-center mb-2" style="color: white !important;">AccessForm Document Accessibility</h1>
             <p class="text-center mb-3" style="color: rgba(255, 255, 255, 0.9) !important;">Drop any Word or PDF document to make it accessible</p>
             
-            <!-- AI Mode Toggle -->
-            <div class="text-center mb-4">
-                <div class="form-check form-switch d-inline-block">
-                    <input class="form-check-input" type="checkbox" id="aiModeToggle" @bind="useAiMode" @bind:after="OnAiModeChanged">
-                    <label class="form-check-label" for="aiModeToggle" style="color: white !important;">
-                        <strong style="color: white !important;">🤖 AI-Enhanced Mode</strong>
-                        @if (useAiMode)
-                        {
-                            <span class="badge ms-2" style="background-color: #4a90e2; color: white;">Active</span>
-                        }
-                        else
-                        {
-                            <span class="badge ms-2" style="background-color: #6c757d; color: white;">Off</span>
-                        }
-                    </label>
-                </div>
-                @if (aiStatus != null)
-                {
-                    <div class="alert mt-2" style="background-color: white; border: 1px solid #4a90e2; color: #212529;">
-                        <small style="color: #212529;">@aiStatus</small>
-                    </div>
-                }
-            </div>
-            
-            <!-- Field Detection Options (Only show when AI mode is on) -->
-            @if (useAiMode)
-            {
-                <div class="card mb-4" style="background-color: rgba(255, 255, 255, 0.95);">
-                    <div class="card-body">
-                        <h5 class="card-title mb-3">🔍 Field Detection Options</h5>
+            <!-- Field Detection Options -->
+            <div class="card mb-4" style="background-color: rgba(255, 255, 255, 0.95);">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">🔍 Field Detection Options</h5>
                         
                         <!-- Detection Services -->
                         <div class="row mb-3">
@@ -139,7 +113,6 @@
                         </div>
                     </div>
                 </div>
-            }
             
             <!-- Drag and Drop Zone -->
             <div id="dropZone" class="@GetDropZoneClass()">
@@ -151,11 +124,11 @@
                             <span class="visually-hidden">Processing...</span>
                         </div>
                         <h4>Processing Your Document</h4>
-                        <p class="text-muted small">AI Mode: @useAiMode</p>
+                        <p class="text-muted small">AI Mode: @UseAiMode</p>
                         <button class="btn btn-danger mt-3" @onclick="CancelProcessing">
                             <i class="bi bi-x-circle"></i> Cancel Processing
                         </button>
-                        @if (useAiMode)
+                        @if (UseAiMode)
                         {
                             <div class="alert alert-info mt-3">
                                 <p class="mb-2">🤖 <strong>Anthropic Claude AI Analysis</strong></p>
@@ -187,7 +160,7 @@
                         <button class="btn btn-primary" @onclick="TriggerFileSelect">
                             Browse Files
                         </button>
-                        @if (useAiMode)
+                        @if (UseAiMode)
                         {
                             <div class="mt-3">
                                 <button class="btn btn-success" @onclick="TriggerFileSelectPassport">
@@ -398,10 +371,10 @@
             <!-- Info Cards -->
             <div class="row mt-5">
                 <div class="col-md-4 mb-3">
-                    <div class="info-card @(useAiMode ? "ai-mode" : "")">
+                    <div class="info-card @(UseAiMode ? "ai-mode" : "")">
                         <div class="info-icon">🤖</div>
-                        <h5>@(useAiMode ? "AI-Powered Detection" : "Smart Detection")</h5>
-                        <p class="small text-muted">@(useAiMode ? "Azure Form Recognizer and Llama AI for advanced field detection" : "Automatically detects document type and applies appropriate accessibility enhancements")</p>
+                        <h5>@(UseAiMode ? "AI-Powered Detection" : "Smart Detection")</h5>
+                        <p class="small text-muted">@(UseAiMode ? "Azure Form Recognizer and Llama AI for advanced field detection" : "Automatically detects document type and applies appropriate accessibility enhancements")</p>
                     </div>
                 </div>
                 <div class="col-md-4 mb-3">
@@ -412,10 +385,10 @@
                     </div>
                 </div>
                 <div class="col-md-4 mb-3">
-                    <div class="info-card @(useAiMode ? "ai-mode" : "")">
+                    <div class="info-card @(UseAiMode ? "ai-mode" : "")">
                         <div class="info-icon">⚡</div>
-                        <h5>@(useAiMode ? "Intelligent Analysis" : "Fast Processing")</h5>
-                        <p class="small text-muted">@(useAiMode ? "AI analyzes form structure and suggests optimal accessibility improvements" : "Algorithmic retrofitting provides instant accessibility improvements")</p>
+                        <h5>@(UseAiMode ? "Intelligent Analysis" : "Fast Processing")</h5>
+                        <p class="small text-muted">@(UseAiMode ? "AI analyzes form structure and suggests optimal accessibility improvements" : "Algorithmic retrofitting provides instant accessibility improvements")</p>
                     </div>
                 </div>
             </div>
@@ -712,7 +685,7 @@
     private ProcessingResult? processingResults;
     private DotNetObjectReference<Index>? dotNetHelper;
     private FileData? droppedFileData;
-    private bool useAiMode = true;
+    private bool UseAiMode => useClaudeVision || useClaudeValidation || useGoogle; // AI mode if any AI service is selected
     private string? aiStatus = null;
     private dynamic? currentTagTreeData;
     private string? currentTagTreeFileName;
@@ -832,8 +805,8 @@
             dotNetHelper = DotNetObjectReference.Create(this);
             await JSRuntime.InvokeVoidAsync("initializeDragDrop", dotNetHelper, "dropZone");
             // Initialize JavaScript AI mode state
-            await JSRuntime.InvokeVoidAsync("console.log", $"Initializing AI mode in JS to: {useAiMode}");
-            await JSRuntime.InvokeVoidAsync("accessForm.setAiMode", useAiMode);
+            await JSRuntime.InvokeVoidAsync("console.log", $"Initializing AI mode in JS to: {UseAiMode}");
+            await JSRuntime.InvokeVoidAsync("accessForm.setAiMode", UseAiMode);
             await CheckAiStatus();
         }
     }
@@ -855,8 +828,8 @@
     private async Task OnAiModeChanged()
     {
         // Update JavaScript AI mode state
-        await JSRuntime.InvokeVoidAsync("accessForm.setAiMode", useAiMode);
-        if (useAiMode)
+        await JSRuntime.InvokeVoidAsync("accessForm.setAiMode", UseAiMode);
+        if (UseAiMode)
         {
             aiStatus = "🚀 AI-enhanced processing enabled for smarter field detection and accessibility analysis";
         }
@@ -1035,16 +1008,16 @@
         await JSRuntime.InvokeVoidAsync("console.log", $"isProcessing set to: {isProcessing}");
         
         // Start timer if AI mode
-        if (useAiMode)
+        if (UseAiMode)
         {
-            await JSRuntime.InvokeVoidAsync("console.log", "Starting AI timer - useAiMode is true");
+            await JSRuntime.InvokeVoidAsync("console.log", "Starting AI timer - UseAiMode is true");
             processingMessage = "Initializing AI analysis...";
             StartProcessingTimer();
             StateHasChanged();
         }
         else
         {
-            await JSRuntime.InvokeVoidAsync("console.log", "Not starting timer - useAiMode is false");
+            await JSRuntime.InvokeVoidAsync("console.log", "Not starting timer - UseAiMode is false");
             processingMessage = "Processing document...";
             StateHasChanged();
         }
@@ -1055,7 +1028,7 @@
             bool isWord = IsWordFile(selectedFile.Name);
             string endpoint;
             
-            if (useAiMode)
+            if (UseAiMode)
             {
                 // Always use the configurable endpoint for Word docs with AI processing
                 if (isWord)
@@ -1116,7 +1089,7 @@
                 var result = await JSRuntime.InvokeAsync<string>("accessForm.uploadFileDirectly", 
                     endpoint, droppedFileData.Name, droppedFileData.Data, 
                     IsWordFile(droppedFileData.Name) ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : "application/pdf",
-                    useAiMode, config);
+                    UseAiMode, config);
                 
                 if (!string.IsNullOrEmpty(result))
                 {
@@ -1737,7 +1710,11 @@
                                 Name = field.GetProperty("name").GetString(),
                                 Type = field.GetProperty("type").GetString(),
                                 Tooltip = field.TryGetProperty("tooltip", out var tooltip) ? tooltip.GetString() : "",
-                                Page = field.TryGetProperty("page", out var page) ? page.GetInt32() : 1
+                                Page = field.TryGetProperty("page", out var page) ? page.GetInt32() : 1,
+                                X = field.TryGetProperty("x", out var x) ? (float)x.GetDouble() : 100,
+                                Y = field.TryGetProperty("y", out var y) ? (float)y.GetDouble() : 100,
+                                Width = field.TryGetProperty("width", out var width) ? (float)width.GetDouble() : 150,
+                                Height = field.TryGetProperty("height", out var height) ? (float)height.GetDouble() : 20
                             });
                         }
                     }
@@ -1763,14 +1740,102 @@
     
     private async Task HandleTagEditorApply(List<TagModificationModal.EditableField> updatedFields)
     {
-        // TODO: Apply the updated fields to the PDF
-        await JSRuntime.InvokeVoidAsync("alert", $"Updated {updatedFields.Count} fields. Re-processing with new field data...");
-        
-        // Re-process the document with updated field information
-        // This would involve calling the processing pipeline again with the modified field data
-        showTagEditor = false;
-        StateHasChanged();
+        try
+        {
+            isProcessing = true;
+            processingMessage = "Applying field changes to PDF...";
+            StateHasChanged();
+            
+            if (processingResults != null && !string.IsNullOrEmpty(processingResults.AccessibleFileData))
+            {
+                // Convert base64 PDF to bytes
+                var pdfBytes = Convert.FromBase64String(processingResults.AccessibleFileData);
+                
+                // Create form data with updated fields
+                using var httpClient = new HttpClient { BaseAddress = new Uri(NavigationManager.BaseUri) };
+                var formData = new MultipartFormDataContent();
+                formData.Add(new ByteArrayContent(pdfBytes), "pdf", "current.pdf");
+                
+                // Convert updated fields to the format expected by the API
+                // We need to map from the current field names to the new names
+                var fieldUpdates = updatedFields.Select(f => new
+                {
+                    OriginalName = f.OriginalName ?? f.Name, // Use OriginalName if available, otherwise current Name
+                    NewName = f.Name,
+                    FieldType = f.Type,
+                    Tooltip = f.Tooltip,
+                    IsRequired = f.IsRequired,
+                    X = f.X,
+                    Y = f.Y,
+                    Width = f.Width,
+                    Height = f.Height
+                }).ToList();
+                
+                var fieldsJson = System.Text.Json.JsonSerializer.Serialize(fieldUpdates);
+                formData.Add(new StringContent(fieldsJson), "fields");
+                
+                // Call API to update PDF fields
+                var response = await httpClient.PostAsync("/api/update-pdf-fields", formData);
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    var resultJson = await response.Content.ReadAsStringAsync();
+                    var result = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(resultJson);
+                    
+                    if (result != null && result.ContainsKey("pdfData"))
+                    {
+                        // Update the accessible PDF with the new one
+                        var updatedPdfData = result["pdfData"].ToString();
+                        processingResults.AccessibleFileData = updatedPdfData;
+                        
+                        // Also update the currentFields with the new names/types
+                        foreach (var update in fieldUpdates)
+                        {
+                            var fieldToUpdate = currentFields.FirstOrDefault(f => f.Name == update.OriginalName);
+                            if (fieldToUpdate != null)
+                            {
+                                fieldToUpdate.Name = update.NewName;
+                                fieldToUpdate.Type = update.FieldType;
+                                fieldToUpdate.Tooltip = update.Tooltip;
+                                // Update OriginalName for future edits
+                                fieldToUpdate.OriginalName = update.NewName;
+                            }
+                        }
+                        
+                        // Auto-download the updated PDF
+                        await DownloadFile(updatedPdfData, 
+                            processingResults.AccessibleFileName.Replace(".pdf", "_updated.pdf"));
+                        
+                        await JSRuntime.InvokeVoidAsync("alert", 
+                            $"Successfully updated {updatedFields.Count} fields! The updated PDF has been downloaded.");
+                        
+                        // Refresh the preview
+                        StateHasChanged();
+                    }
+                }
+                else
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    await JSRuntime.InvokeVoidAsync("alert", $"Error updating PDF: {error}");
+                }
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No PDF available to update. Please process a document first.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error applying field changes: {ex.Message}");
+        }
+        finally
+        {
+            isProcessing = false;
+            showTagEditor = false;
+            StateHasChanged();
+        }
     }
+    
 }
 
 <TagModificationModal @ref="tagEditorModal" 
@@ -1778,5 +1843,6 @@
                       IsVisibleChanged="@((bool value) => { showTagEditor = value; StateHasChanged(); })"
                       TagTreeJson="@currentTagTreeJson"
                       Fields="@currentFields"
-                      OnApplyChanges="HandleTagEditorApply" />
+                      OnApplyChanges="HandleTagEditorApply"
+                      PdfBytes="@(processingResults?.AccessibleFileData != null ? Convert.FromBase64String(processingResults.AccessibleFileData) : null)" />
 
