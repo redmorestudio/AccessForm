@@ -175,6 +175,9 @@ namespace WordToPdfConverter.Services
                     _logger.LogDebug($"Python stderr: {error}");
                 }
 
+                _logger.LogDebug($"Python process exited with code {process.ExitCode}");
+                _logger.LogDebug($"Python stdout: {output}");
+                
                 if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
                 {
                     try
@@ -188,11 +191,19 @@ namespace WordToPdfConverter.Services
                         {
                             return result;
                         }
+                        else
+                        {
+                            _logger.LogError("Deserialized result was null");
+                        }
                     }
                     catch (JsonException ex)
                     {
-                        _logger.LogError(ex, $"Failed to parse Python output: {output}");
+                        _logger.LogError(ex, $"Failed to parse Python output as JSON. Output: {output}");
                     }
+                }
+                else if (process.ExitCode != 0)
+                {
+                    _logger.LogError($"Python script failed with exit code {process.ExitCode}. Error: {error}");
                 }
 
                 return new PythonResult

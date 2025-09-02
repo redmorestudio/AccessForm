@@ -1774,8 +1774,8 @@
                 var fieldsJson = System.Text.Json.JsonSerializer.Serialize(fieldUpdates);
                 formData.Add(new StringContent(fieldsJson), "fieldUpdates");
                 
-                // Call the V3 API that uses iText for proper field deletion and recreation
-                var response = await httpClient.PostAsync("/api/update-pdf-fields-v3", formData);
+                // Call the V4 API that does complete PDF rebuild to eliminate ghost fields
+                var response = await httpClient.PostAsync("/api/update-pdf-fields-v4", formData);
                 
                 if (response.IsSuccessStatusCode)
                 {
