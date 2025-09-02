@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Syncfusion.Pdf;
 using Syncfusion.Pdf.Interactive;
@@ -29,6 +31,16 @@ namespace AccessFormServer.Services
         {
             try
             {
+                // First, try using Marker for better text extraction
+                var markerMarkdown = TryConvertWithMarker(pdfBytes);
+                if (!string.IsNullOrEmpty(markerMarkdown))
+                {
+                    _logger.LogInformation("Successfully converted PDF using Marker");
+                    return markerMarkdown;
+                }
+                
+                // Fallback to Syncfusion if Marker fails
+                _logger.LogInformation("Falling back to Syncfusion PDF extraction");
                 var markdown = new StringBuilder();
                 
                 using (var stream = new MemoryStream(pdfBytes))
@@ -282,6 +294,149 @@ namespace AccessFormServer.Services
                 PdfLoadedSignatureField => "Signature",
                 _ => "Unknown"
             };
+        }
+        
+        private string TryConvertWithMarker(byte[] pdfBytes)
+        {
+            try
+            {
+                // Save PDF to temp file
+                var tempPdfPath = Path.Combine(Path.GetTempPath(), $"temp_{Guid.NewGuid()}.pdf");
+                File.WriteAllBytes(tempPdfPath, pdfBytes);
+                
+                try
+                {
+                    // Run marker_wrapper.py
+                    var startInfo = new ProcessStartInfo
+                    {
+                        FileName = "python3",
+                        Arguments = $"marker_wrapper.py \"{tempPdfPath}\"",
+                        WorkingDirectory = Directory.GetCurrentDirectory(),
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+                    
+                    using var process = Process.Start(startInfo);
+                    if (process == null)
+                    {
+                        _logger.LogWarning("Failed to start Marker process");
+                        return null;
+                    }
+                    
+                    // Set a timeout of 30 seconds
+                    if (!process.WaitForExit(30000))
+                    {
+                        process.Kill();
+                        _logger.LogWarning("Marker process timed out");
+                        return null;
+                    }
+                    
+                    var output = process.StandardOutput.ReadToEnd();
+                    var error = process.StandardError.ReadToEnd();
+                    
+                    if (!string.IsNullOrEmpty(error))
+                    {
+                        _logger.LogWarning($"Marker stderr: {error}");
+                    }
+                    
+                    if (process.ExitCode != 0)
+                    {
+                        _logger.LogWarning($"Marker failed with exit code {process.ExitCode}");
+                        return null;
+                    }
+                    
+                    // Parse JSON response
+                    try
+                    {
+                        var result = JsonSerializer.Deserialize<MarkerResult>(output);
+                        if (result?.success == true && !string.IsNullOrEmpty(result.markdown))
+                        {
+                            // Log metadata if available
+                            if (result.metadata != null)
+                            {
+                                _logger.LogInformation($"Marker metadata: {JsonSerializer.Serialize(result.metadata)}");
+                                
+                                // Check if we have form field information
+                                if (result.metadata.ContainsKey("form_fields"))
+                                {
+                                    _logger.LogInformation($"Marker detected form fields: {JsonSerializer.Serialize(result.metadata["form_fields"])}");
+                                }
+                                
+                                // Check for block-level positional information
+                                if (result.metadata.ContainsKey("pages"))
+                                {
+                                    _logger.LogInformation($"Marker found {result.metadata["page_count"]} pages with block information");
+                                }
+                            }
+                            
+                            // Enhance the markdown with form field indicators
+                            return EnhanceMarkdownWithFormMarkers(result.markdown);
+                        }
+                    }
+                    catch (JsonException ex)
+                    {
+                        _logger.LogWarning($"Failed to parse Marker output: {ex.Message}");
+                    }
+                }
+                finally
+                {
+                    // Clean up temp file
+                    if (File.Exists(tempPdfPath))
+                    {
+                        File.Delete(tempPdfPath);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Marker conversion failed: {ex.Message}");
+            }
+            
+            return null;
+        }
+        
+        private string EnhanceMarkdownWithFormMarkers(string markdown)
+        {
+            // Add markers to help identify form fields
+            var enhanced = new StringBuilder();
+            enhanced.AppendLine("# PDF Form Document (Marker Enhanced)");
+            enhanced.AppendLine();
+            
+            var lines = markdown.Split('\n');
+            foreach (var line in lines)
+            {
+                var trimmed = line.Trim();
+                
+                // Detect form field patterns and highlight them
+                if (trimmed.EndsWith(":") && !trimmed.StartsWith("http"))
+                {
+                    enhanced.AppendLine($"**[FIELD]** {line}");
+                }
+                else if (trimmed.Contains("___") || trimmed.Contains("..."))
+                {
+                    enhanced.AppendLine($"**[INPUT]** {line}");
+                }
+                else if (ContainsCheckbox(trimmed))
+                {
+                    enhanced.AppendLine($"**[CHECKBOX]** {line}");
+                }
+                else
+                {
+                    enhanced.AppendLine(line);
+                }
+            }
+            
+            return enhanced.ToString();
+        }
+        
+        private class MarkerResult
+        {
+            public bool success { get; set; }
+            public string markdown { get; set; }
+            public Dictionary<string, object> metadata { get; set; }
+            public string error { get; set; }
         }
     }
 }

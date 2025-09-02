@@ -1,10 +1,14 @@
 @using WordToPdfConverter.Models
 @using System.Text.Json
+@using System.Linq
+@using Syncfusion.Pdf
+@using Syncfusion.Pdf.Parsing
+@using Syncfusion.Pdf.Interactive
 @inject IJSRuntime JSRuntime
 
 <div class="modal @(IsVisible ? "show d-block" : "")" tabindex="-1" role="dialog" style="background-color: rgba(0,0,0,0.5);">
-    <div class="modal-dialog modal-xl" role="document" style="max-width: 90%; height: 85vh;">
-        <div class="modal-content h-100">
+    <div class="modal-dialog modal-fullscreen-lg-down" role="document" style="max-width: 95%; height: 95vh;">
+        <div class="modal-content h-100" style="display: flex; flex-direction: column;">
             <div class="modal-header">
                 <h5 class="modal-title">
                     <i class="fas fa-tags me-2"></i>
@@ -15,36 +19,129 @@
             <div class="modal-body" style="overflow-y: auto; max-height: calc(85vh - 150px);">
                 <div class="row">
                     <div class="col-md-6">
-                        <h5>Tag Tree Structure</h5>
-                        <div class="tag-tree-panel">
-                            <div id="tagTreeDisplay" class="tree-view"></div>
+                        <h5>PDF Preview - Page @CurrentPage</h5>
+                        <div class="pdf-preview-controls mb-2">
+                            <button class="btn btn-sm btn-secondary" @onclick="PreviousPage" disabled="@(CurrentPage <= 1)">
+                                <i class="fas fa-chevron-left"></i> Previous
+                            </button>
+                            <span class="mx-2">Page @CurrentPage of @TotalPages</span>
+                            <button class="btn btn-sm btn-secondary" @onclick="NextPage" disabled="@(CurrentPage >= TotalPages)">
+                                Next <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </div>
+                        <div class="pdf-preview-panel" @ref="previewPanel">
+                            <div class="pdf-page-container">
+                                @if (!string.IsNullOrEmpty(CurrentPageImage))
+                                {
+                                    <img src="@($"data:image/png;base64,{CurrentPageImage}")" 
+                                         class="pdf-page-image" 
+                                         @ref="pageImage" />
+                                    
+                                    <!-- Field boxes are drawn directly on the server-generated image -->
+                                }
+                                else
+                                {
+                                    <div class="text-center p-5">
+                                        <div class="spinner-border" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
                         </div>
                     </div>
                     <div class="col-md-6">
-                        <h5>Form Fields (@EditableFields.Count fields)</h5>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5>Form Fields (@EditableFields.Count fields)</h5>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-secondary @(sortBy == "original" ? "active" : "")" 
+                                        @onclick="@(() => SortFields("original"))">
+                                    <i class="fas fa-sort-numeric-down"></i> Original Order
+                                </button>
+                                <button class="btn btn-outline-secondary @(sortBy == "name" ? "active" : "")" 
+                                        @onclick="@(() => SortFields("name"))">
+                                    <i class="fas fa-sort-alpha-down"></i> Name
+                                </button>
+                                <button class="btn btn-outline-secondary @(sortBy == "type" ? "active" : "")" 
+                                        @onclick="@(() => SortFields("type"))">
+                                    <i class="fas fa-tags"></i> Type
+                                </button>
+                                <button class="btn btn-outline-secondary @(sortBy == "page" ? "active" : "")" 
+                                        @onclick="@(() => SortFields("page"))">
+                                    <i class="fas fa-file"></i> Page
+                                </button>
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <button class="btn btn-sm btn-primary" @onclick="UpdatePdfPreview">
+                                <i class="fas fa-sync-alt"></i> Update Preview
+                            </button>
+                            @if (ShowFieldBoxes)
+                            {
+                                <button class="btn btn-sm btn-secondary ms-2" @onclick="HideFieldBoxes">
+                                    <i class="fas fa-eye-slash"></i> Hide Boxes
+                                </button>
+                            }
+                            <button class="btn btn-sm btn-warning ms-2" @onclick="AddNewField">
+                                <i class="fas fa-plus"></i> Add Field
+                            </button>
+                            <span class="text-muted ms-2">
+                                <small>@(ShowFieldBoxes ? "Boxes shown - edit and update" : "Click Update to show field boxes")</small>
+                            </span>
+                        </div>
                         <div class="fields-panel">
-                            <table class="table table-sm table-striped">
-                                <thead>
+                            <table class="table table-sm table-hover">
+                                <thead class="table-light sticky-top">
                                     <tr>
-                                        <th>Name</th>
-                                        <th>Type</th>
-                                        <th>Width</th>
-                                        <th>Height</th>
+                                        <th style="width: 30px">#</th>
+                                        <th @onclick="@(() => SortFields("name"))" class="sortable-header">
+                                            Field Name 
+                                            @if (sortBy == "name") 
+                                            {
+                                                <i class="fas fa-sort-@(sortAscending ? "up" : "down")"></i>
+                                            }
+                                        </th>
+                                        <th @onclick="@(() => SortFields("type"))" class="sortable-header" style="width: 120px">
+                                            Type
+                                            @if (sortBy == "type") 
+                                            {
+                                                <i class="fas fa-sort-@(sortAscending ? "up" : "down")"></i>
+                                            }
+                                        </th>
+                                        <th style="width: 80px">Width</th>
+                                        <th style="width: 80px">Height</th>
                                         <th>Tooltip</th>
-                                        <th>Page</th>
-                                        <th>Actions</th>
+                                        <th @onclick="@(() => SortFields("page"))" class="sortable-header" style="width: 60px">
+                                            Page
+                                            @if (sortBy == "page") 
+                                            {
+                                                <i class="fas fa-sort-@(sortAscending ? "up" : "down")"></i>
+                                            }
+                                        </th>
+                                        <th style="width: 60px">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var field in EditableFields)
+                                    @{int rowIndex = 0;}
+                                    @foreach (var field in GetSortedFields())
                                     {
-                                        <tr>
+                                        rowIndex++;
+                                        var isSelected = SelectedField == field;
+                                        <tr class="@(isSelected ? "table-primary" : "")" 
+                                            @onclick="() => SelectField(field)"
+                                            style="cursor: pointer;">
+                                            <td class="text-muted">@field.OriginalIndex</td>
                                             <td>
-                                                <input type="text" class="form-control form-control-sm" 
-                                                       @bind="field.Name" />
+                                                <input type="text" class="form-control form-control-sm @(isSelected ? "border-primary" : "")" 
+                                                       @bind="field.Name" 
+                                                       @onfocus="() => SelectField(field)"
+                                                       @onclick:stopPropagation="true" />
                                             </td>
                                             <td>
-                                                <select class="form-select form-select-sm" @bind="field.Type">
+                                                <select class="form-select form-select-sm @(isSelected ? "border-primary" : "")" 
+                                                        @bind="field.Type"
+                                                        @onfocus="() => SelectField(field)"
+                                                        @onclick:stopPropagation="true">
                                                     @foreach (var type in FieldTypes)
                                                     {
                                                         <option value="@type.Value">@type.Display</option>
@@ -52,12 +149,34 @@
                                                 </select>
                                             </td>
                                             <td>
-                                                <input type="text" class="form-control form-control-sm" 
-                                                       @bind="field.Tooltip" />
+                                                <input type="number" class="form-control form-control-sm @(isSelected ? "border-primary" : "")" 
+                                                       @bind="field.Width" 
+                                                       @bind:event="oninput"
+                                                       @onkeypress="@(async (e) => await HandleFieldKeyPress(e))"
+                                                       step="1" min="10" max="500"
+                                                       @onfocus="() => SelectField(field)"
+                                                       @onclick:stopPropagation="true" />
+                                            </td>
+                                            <td>
+                                                <input type="number" class="form-control form-control-sm @(isSelected ? "border-primary" : "")" 
+                                                       @bind="field.Height" 
+                                                       @bind:event="oninput"
+                                                       @onkeypress="@(async (e) => await HandleFieldKeyPress(e))"
+                                                       step="1" min="10" max="100"
+                                                       @onfocus="() => SelectField(field)"
+                                                       @onclick:stopPropagation="true" />
+                                            </td>
+                                            <td>
+                                                <input type="text" class="form-control form-control-sm @(isSelected ? "border-primary" : "")" 
+                                                       @bind="field.Tooltip"
+                                                       @onfocus="() => SelectField(field)"
+                                                       @onclick:stopPropagation="true" />
                                             </td>
                                             <td class="text-center">@field.Page</td>
                                             <td>
-                                                <button class="btn btn-sm btn-danger" @onclick="() => DeleteField(field)">
+                                                <button class="btn btn-sm btn-danger" 
+                                                        @onclick="() => DeleteField(field)"
+                                                        @onclick:stopPropagation="true">
                                                     <i class="fas fa-trash"></i>
                                                 </button>
                                             </td>
@@ -66,12 +185,97 @@
                                 </tbody>
                             </table>
                         </div>
+                        
+                        @if (SelectedField != null)
+                        {
+                            <div class="expanded-editor mt-3 p-3 border rounded bg-light">
+                                <h6 class="mb-3">
+                                    <i class="fas fa-edit me-2"></i>
+                                    Editing Field: <strong>@SelectedField.Name</strong>
+                                </h6>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-2">
+                                            <label class="form-label small">Field Name</label>
+                                            <input type="text" class="form-control" @bind="SelectedField.Name" />
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-2">
+                                            <label class="form-label small">Field Type</label>
+                                            <select class="form-select" @bind="SelectedField.Type">
+                                                @foreach (var type in FieldTypes)
+                                                {
+                                                    <option value="@type.Value">@type.Display</option>
+                                                }
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-12">
+                                        <div class="mb-2">
+                                            <label class="form-label small">Tooltip / Help Text</label>
+                                            <textarea class="form-control" rows="2" @bind="SelectedField.Tooltip"></textarea>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="mb-2">
+                                            <label class="form-label small">X Position</label>
+                                            <input type="number" class="form-control" 
+                                                   @bind="SelectedField.X" 
+                                                   @bind:event="oninput"
+                                                   step="1" />
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="mb-2">
+                                            <label class="form-label small">Y Position</label>
+                                            <input type="number" class="form-control" 
+                                                   @bind="SelectedField.Y" 
+                                                   @bind:event="oninput"
+                                                   step="1" />
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="mb-2">
+                                            <label class="form-label small">Width</label>
+                                            <input type="number" class="form-control" 
+                                                   value="@SelectedField.Width"
+                                                   @oninput="async (e) => { SelectedField.Width = float.Parse(e.Value?.ToString() ?? SelectedField.Width.ToString()); StateHasChanged(); }"
+                                                   step="5" min="10" max="500" />
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="mb-2">
+                                            <label class="form-label small">Height</label>
+                                            <input type="number" class="form-control" 
+                                                   value="@SelectedField.Height"
+                                                   @oninput="async (e) => { SelectedField.Height = float.Parse(e.Value?.ToString() ?? SelectedField.Height.ToString()); StateHasChanged(); }"
+                                                   step="2" min="10" max="100" />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mt-2">
+                                    <button class="btn btn-sm btn-success me-2" @onclick="UpdatePdfPreview">
+                                        <i class="fas fa-sync"></i> Update Field Preview
+                                    </button>
+                                    <button class="btn btn-sm btn-primary me-2" @onclick="() => NavigateToField(-1)">
+                                        <i class="fas fa-arrow-left"></i> Previous Field
+                                    </button>
+                                    <button class="btn btn-sm btn-primary" @onclick="() => NavigateToField(1)">
+                                        Next Field <i class="fas fa-arrow-right"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        }
                     </div>
                 </div>
                 
                 <div class="bulk-operations mt-3">
                     <h5>Bulk Operations</h5>
-                    <div class="btn-group">
+                    <div class="d-flex flex-wrap gap-2 mb-2">
+                        <button class="btn btn-warning" @onclick="ResetToOriginalFields">
+                            <i class="fas fa-undo"></i> Reset to Original Fields
+                        </button>
                         <button class="btn btn-secondary" @onclick="AutoGenerateTooltips">
                             <i class="fas fa-magic"></i> Auto-Generate Tooltips
                         </button>
@@ -111,13 +315,108 @@
 </div>
 
 <style>
-    .tag-tree-panel {
-        height: 400px;
-        overflow-y: auto;
+    .pdf-preview-panel {
+        height: 500px;
+        overflow: auto;
         border: 1px solid #dee2e6;
         border-radius: 4px;
-        padding: 10px;
-        background: #f8f9fa;
+        background: #f5f5f5;
+        position: relative;
+    }
+    
+    .pdf-page-container {
+        position: relative;
+        display: inline-block;
+        margin: 10px;
+    }
+    
+    .pdf-page-image {
+        max-width: 100%;
+        height: auto;
+        border: 1px solid #ccc;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .field-overlay {
+        position: absolute;
+        border: 2px solid;
+        background: rgba(255, 255, 255, 0.1);
+        cursor: move;
+        transition: opacity 0.2s;
+        user-select: none;
+    }
+    
+    .field-overlay:hover {
+        opacity: 0.8;
+        z-index: 100;
+    }
+    
+    .field-overlay.selected {
+        z-index: 200;
+        box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.3);
+    }
+    
+    .field-overlay.field-text {
+        border-color: #17a2b8;
+        background: rgba(23, 162, 184, 0.15);
+    }
+    
+    .field-overlay.field-checkbox {
+        border-color: #28a745;
+        background: rgba(40, 167, 69, 0.15);
+    }
+    
+    .field-overlay.field-date {
+        border-color: #ffc107;
+        background: rgba(255, 193, 7, 0.15);
+    }
+    
+    .field-overlay.field-signature {
+        border-color: #dc3545;
+        background: rgba(220, 53, 69, 0.15);
+    }
+    
+    .field-overlay.field-email {
+        border-color: #6c757d;
+        background: rgba(108, 117, 125, 0.15);
+    }
+    
+    .field-overlay.field-phone {
+        border-color: #6f42c1;
+        background: rgba(111, 66, 193, 0.15);
+    }
+    
+    .field-label {
+        position: absolute;
+        top: -20px;
+        left: 0;
+        font-size: 11px;
+        background: white;
+        padding: 2px 4px;
+        border-radius: 2px;
+        white-space: nowrap;
+        pointer-events: none;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    }
+    
+    .resize-handle {
+        position: absolute;
+        width: 8px;
+        height: 8px;
+        background: white;
+        border: 1px solid #333;
+        display: none;
+    }
+    
+    .field-overlay:hover .resize-handle,
+    .field-overlay.selected .resize-handle {
+        display: block;
+    }
+    
+    .resize-handle-se {
+        right: -4px;
+        bottom: -4px;
+        cursor: nwse-resize;
     }
     
     .fields-panel {
@@ -125,46 +424,52 @@
         overflow-y: auto;
         border: 1px solid #dee2e6;
         border-radius: 4px;
+        background: white;
     }
     
-    .tree-view {
-        font-family: 'Consolas', 'Monaco', monospace;
-        font-size: 12px;
-    }
-    
-    .tree-node {
-        margin-left: 20px;
-    }
-    
-    .tree-node-label {
+    .sortable-header {
         cursor: pointer;
-        padding: 2px 5px;
+        user-select: none;
+        position: relative;
     }
     
-    .tree-node-label:hover {
+    .sortable-header:hover {
         background: #e9ecef;
-        border-radius: 3px;
     }
     
-    .field-type-badge {
-        display: inline-block;
-        padding: 2px 6px;
-        border-radius: 3px;
-        font-size: 11px;
-        font-weight: bold;
-        margin-left: 5px;
+    .expanded-editor {
+        animation: slideDown 0.3s ease-out;
     }
     
-    .type-text { background: #17a2b8; color: white; }
-    .type-checkbox { background: #28a745; color: white; }
-    .type-date { background: #ffc107; color: black; }
-    .type-email { background: #6c757d; color: white; }
-    .type-phone { background: #6f42c1; color: white; }
-    .type-signature { background: #dc3545; color: white; }
+    @@keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .table-hover tbody tr:hover {
+        background-color: rgba(0, 123, 255, 0.05);
+    }
+    
+    .table-primary {
+        background-color: rgba(0, 123, 255, 0.15) !important;
+    }
     
     .bulk-operations {
         border-top: 1px solid #dee2e6;
         padding-top: 15px;
+    }
+    
+    .pdf-preview-controls {
+        text-align: center;
+        padding: 10px;
+        background: white;
+        border-bottom: 1px solid #dee2e6;
     }
 </style>
 
@@ -174,9 +479,35 @@
     [Parameter] public EventCallback<List<EditableField>> OnApplyChanges { get; set; }
     [Parameter] public string TagTreeJson { get; set; }
     [Parameter] public List<EditableField> Fields { get; set; } = new List<EditableField>();
+    [Parameter] public byte[] PdfBytes { get; set; }
     
     private List<EditableField> EditableFields = new List<EditableField>();
     private List<string> ValidationMessages = new List<string>();
+    private ElementReference previewPanel;
+    private ElementReference pageImage;
+    
+    // PDF Preview fields
+    private int CurrentPage = 1;
+    private int TotalPages = 1;
+    private string CurrentPageImage = "";
+    private List<EditableField> CurrentPageFields = new List<EditableField>();
+    private double ImageScale = 1.0;
+    
+    // Drag and resize state
+    private EditableField SelectedField = null;
+    private bool IsDragging = false;
+    private bool IsResizing = false;
+    private double DragStartX = 0;
+    private double DragStartY = 0;
+    private double FieldStartX = 0;
+    private double FieldStartY = 0;
+    private double FieldStartWidth = 0;
+    private double FieldStartHeight = 0;
+    
+    // Sorting state
+    private string sortBy = "original";
+    private bool sortAscending = true;
+    private List<EditableField> originalOrder = new List<EditableField>();
     
     private List<FieldTypeOption> FieldTypes = new List<FieldTypeOption>
     {
@@ -230,31 +561,452 @@
         if (Fields != null && Fields.Any())
         {
             EditableFields = new List<EditableField>(Fields);
+            // Store original order with index
+            for (int i = 0; i < EditableFields.Count; i++)
+            {
+                EditableFields[i].OriginalIndex = i + 1;
+            }
+            originalOrder = new List<EditableField>(EditableFields);
         }
         
-        if (IsVisible && !string.IsNullOrEmpty(TagTreeJson))
+        if (IsVisible)
         {
-            await Task.Delay(100); // Give modal time to render
-            await DisplayTagTree();
+            // Load PDF preview when modal is shown
+            if (PdfBytes != null && PdfBytes.Length > 0)
+            {
+                await LoadPdfPreview();
+            }
         }
     }
     
-    private async Task DisplayTagTree()
+    private async Task LoadPdfPreview()
     {
         try
         {
-            await JSRuntime.InvokeVoidAsync("displayTagTree", "tagTreeDisplay", TagTreeJson);
+            // Get total page count from PDF
+            using (var stream = new System.IO.MemoryStream(PdfBytes))
+            using (var pdfDoc = new Syncfusion.Pdf.Parsing.PdfLoadedDocument(stream))
+            {
+                TotalPages = pdfDoc.Pages.Count;
+            }
+            
+            // Load first page
+            await LoadPage(1);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error displaying tag tree: {ex.Message}");
+            Console.WriteLine($"Error loading PDF preview: {ex.Message}");
         }
+    }
+    
+    
+    private async Task HandleFieldKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await UpdatePdfPreview();
+        }
+    }
+    
+    private bool ShowFieldBoxes { get; set; } = false;
+    
+    private async Task UpdatePdfPreview()
+    {
+        await JSRuntime.InvokeVoidAsync("console.log", "=== UPDATE PDF PREVIEW CLICKED ===");
+        await JSRuntime.InvokeVoidAsync("console.log", "Regenerating preview with current field dimensions...");
+        
+        if (PdfBytes == null) 
+        {
+            await JSRuntime.InvokeVoidAsync("console.log", "No PDF to preview");
+            return;
+        }
+        
+        try
+        {
+            // Always show field boxes when updating (that's the point of the button)
+            ShowFieldBoxes = true;
+            
+            // Log current field data for debugging
+            foreach (var field in EditableFields.Where(f => f.Page == CurrentPage))
+            {
+                await JSRuntime.InvokeVoidAsync("console.log", 
+                    $"Field: {field.Name}, Type: {field.Type}, Width: {field.Width}, Height: {field.Height}, X: {field.X}, Y: {field.Y}");
+            }
+            
+            // Always regenerate with current field dimensions
+            await LoadPageWithFieldBoxes(CurrentPage);
+            
+            StateHasChanged();
+            await JSRuntime.InvokeVoidAsync("console.log", "Preview regenerated with updated field dimensions");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", $"Error updating preview: {ex.Message}");
+        }
+    }
+    
+    private async Task HideFieldBoxes()
+    {
+        ShowFieldBoxes = false;
+        await LoadPage(CurrentPage);
+        StateHasChanged();
+    }
+    
+    private async Task LoadPageWithFieldBoxes(int pageNumber)
+    {
+        try
+        {
+            CurrentPage = pageNumber;
+            
+            using var client = new HttpClient();
+            var content = new MultipartFormDataContent();
+            content.Add(new ByteArrayContent(PdfBytes), "file", "document.pdf");
+            content.Add(new StringContent(pageNumber.ToString()), "pageNumber");
+            
+            // Send current field data to draw boxes
+            var fieldsForJson = EditableFields.Select(f => new
+            {
+                name = f.Name,
+                type = f.Type,
+                page = f.Page,
+                x = f.X,
+                y = f.Y,
+                width = f.Width,
+                height = f.Height
+            }).ToList();
+            
+            var fieldsJson = System.Text.Json.JsonSerializer.Serialize(fieldsForJson);
+            
+            // Log what we're sending to the server
+            await JSRuntime.InvokeVoidAsync("console.log", "Sending fields to server:", fieldsJson);
+            
+            content.Add(new StringContent(fieldsJson), "fields");
+            
+            var response = await client.PostAsync("http://localhost:5008/api/pdf-page-with-field-boxes", content);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadAsStringAsync();
+                var json = System.Text.Json.JsonDocument.Parse(result);
+                
+                CurrentPageImage = json.RootElement.GetProperty("imageData").GetString();
+                
+                // Update fields for current page
+                CurrentPageFields = EditableFields.Where(f => f.Page == pageNumber).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", $"Error loading page with field boxes: {ex.Message}");
+        }
+        
+        StateHasChanged();
+    }
+    
+    private async Task LoadPage(int pageNumber)
+    {
+        try
+        {
+            CurrentPage = pageNumber;
+            
+            // Call API to get page image
+            using var client = new HttpClient();
+            var content = new MultipartFormDataContent();
+            content.Add(new ByteArrayContent(PdfBytes), "file", "document.pdf");
+            content.Add(new StringContent(pageNumber.ToString()), "pageNumber");
+            
+            var response = await client.PostAsync("http://localhost:5008/api/pdf-page-preview", content);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadAsStringAsync();
+                var json = System.Text.Json.JsonDocument.Parse(result);
+                
+                CurrentPageImage = json.RootElement.GetProperty("imageData").GetString();
+                
+                // Get page dimensions and calculate scale
+                double pdfPageWidth = 612; // Default US Letter width in points
+                double pdfPageHeight = 792; // Default US Letter height in points
+                
+                if (json.RootElement.TryGetProperty("pageWidth", out var widthElement))
+                {
+                    pdfPageWidth = widthElement.GetDouble();
+                }
+                if (json.RootElement.TryGetProperty("pageHeight", out var heightElement))
+                {
+                    pdfPageHeight = heightElement.GetDouble();
+                }
+                
+                // The image is rendered at 150 DPI, PDF coordinates are at 72 DPI
+                // So we need to scale coordinates by 150/72 = 2.083
+                ImageScale = 150.0 / 72.0;
+                
+                // Get fields from API response if available
+                if (json.RootElement.TryGetProperty("fields", out var fieldsElement))
+                {
+                    CurrentPageFields.Clear();
+                    foreach (var fieldJson in fieldsElement.EnumerateArray())
+                    {
+                        // Check if this field exists in our editable fields
+                        var fieldName = fieldJson.GetProperty("name").GetString();
+                        var editableField = EditableFields.FirstOrDefault(f => f.Name == fieldName && f.Page == pageNumber);
+                        
+                        if (editableField != null && fieldJson.TryGetProperty("x", out var x))
+                        {
+                            // Update positions from server
+                            editableField.X = (float)x.GetDouble();
+                            editableField.Y = (float)fieldJson.GetProperty("y").GetDouble();
+                            editableField.Width = (float)fieldJson.GetProperty("width").GetDouble();
+                            editableField.Height = (float)fieldJson.GetProperty("height").GetDouble();
+                            
+                            // Apply minimum sizes if fields are too small
+                            if (editableField.Width < 50) editableField.Width = 150;
+                            if (editableField.Height < 15) editableField.Height = 20;
+                            
+                            Console.WriteLine($"Field {fieldName}: X={editableField.X}, Y={editableField.Y}, W={editableField.Width}, H={editableField.Height}");
+                        }
+                    }
+                }
+                
+                // Update fields for current page
+                CurrentPageFields = EditableFields.Where(f => f.Page == pageNumber).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading page {pageNumber}: {ex.Message}");
+        }
+        
+        StateHasChanged();
+    }
+    
+    private async Task PreviousPage()
+    {
+        if (CurrentPage > 1)
+        {
+            if (ShowFieldBoxes)
+            {
+                await LoadPageWithFieldBoxes(CurrentPage - 1);
+            }
+            else
+            {
+                await LoadPage(CurrentPage - 1);
+            }
+        }
+    }
+    
+    private async Task NextPage()
+    {
+        if (CurrentPage < TotalPages)
+        {
+            if (ShowFieldBoxes)
+            {
+                await LoadPageWithFieldBoxes(CurrentPage + 1);
+            }
+            else
+            {
+                await LoadPage(CurrentPage + 1);
+            }
+        }
+    }
+    
+    private string GetFieldClass(string fieldType)
+    {
+        return fieldType?.ToLower() switch
+        {
+            "checkbox" => "field-checkbox",
+            "date" => "field-date",
+            "signature" => "field-signature",
+            "email" => "field-email",
+            "phone" => "field-phone",
+            _ => "field-text"
+        };
+    }
+    
+    private void SelectField(EditableField field)
+    {
+        SelectedField = field;
+        StateHasChanged();
+    }
+    
+    private async Task StartDrag(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, EditableField field)
+    {
+        IsDragging = true;
+        SelectedField = field;
+        DragStartX = e.ClientX;
+        DragStartY = e.ClientY;
+        FieldStartX = field.X;
+        FieldStartY = field.Y;
+        
+        // Register mouse move and up handlers via JavaScript
+        await JSRuntime.InvokeVoidAsync("startFieldDrag", 
+            DotNetObjectReference.Create(this), field.Name);
+    }
+    
+    private async Task StartResize(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, EditableField field)
+    {
+        IsResizing = true;
+        SelectedField = field;
+        DragStartX = e.ClientX;
+        DragStartY = e.ClientY;
+        FieldStartWidth = field.Width;
+        FieldStartHeight = field.Height;
+        
+        // Register mouse move and up handlers via JavaScript
+        await JSRuntime.InvokeVoidAsync("startFieldResize", 
+            DotNetObjectReference.Create(this), field.Name);
+    }
+    
+    [JSInvokable]
+    public void UpdateFieldPosition(double deltaX, double deltaY)
+    {
+        if (IsDragging && SelectedField != null)
+        {
+            SelectedField.X = (float)(FieldStartX + deltaX / ImageScale);
+            SelectedField.Y = (float)(FieldStartY + deltaY / ImageScale);
+            
+            // Ensure field stays within bounds
+            SelectedField.X = Math.Max(0, SelectedField.X);
+            SelectedField.Y = Math.Max(0, SelectedField.Y);
+            
+            StateHasChanged();
+        }
+    }
+    
+    [JSInvokable]
+    public void UpdateFieldSize(double deltaX, double deltaY)
+    {
+        if (IsResizing && SelectedField != null)
+        {
+            SelectedField.Width = (float)(FieldStartWidth + deltaX / ImageScale);
+            SelectedField.Height = (float)(FieldStartHeight + deltaY / ImageScale);
+            
+            // Minimum size constraints
+            SelectedField.Width = Math.Max(20, SelectedField.Width);
+            SelectedField.Height = Math.Max(10, SelectedField.Height);
+            
+            StateHasChanged();
+        }
+    }
+    
+    [JSInvokable]
+    public async Task EndDragOrResize()
+    {
+        IsDragging = false;
+        IsResizing = false;
+        
+        // Update the PDF preview with the new field positions/sizes
+        await UpdatePdfPreview();
+        
+        StateHasChanged();
     }
     
     private void DeleteField(EditableField field)
     {
         EditableFields.Remove(field);
+        if (SelectedField == field)
+        {
+            SelectedField = null;
+        }
         StateHasChanged();
+    }
+    
+    private void AddNewField()
+    {
+        var fieldName = $"NewField_{EditableFields.Count + 1}";
+        var newField = new EditableField
+        {
+            Name = fieldName,
+            OriginalName = fieldName, // New fields have same original name
+            Type = "text",
+            Tooltip = "",
+            IsRequired = false,
+            Page = CurrentPage,
+            X = 100,
+            Y = 100,
+            Width = 150,
+            Height = 20,
+            OriginalIndex = EditableFields.Count + 1
+        };
+        
+        EditableFields.Add(newField);
+        SelectedField = newField;
+        
+        // If field boxes are shown, refresh to show the new field
+        if (ShowFieldBoxes)
+        {
+            _ = LoadPageWithFieldBoxes(CurrentPage);
+        }
+        
+        StateHasChanged();
+    }
+    
+    private List<EditableField> GetSortedFields()
+    {
+        IEnumerable<EditableField> sorted = EditableFields;
+        
+        switch (sortBy)
+        {
+            case "name":
+                sorted = sortAscending 
+                    ? EditableFields.OrderBy(f => f.Name) 
+                    : EditableFields.OrderByDescending(f => f.Name);
+                break;
+            case "type":
+                sorted = sortAscending 
+                    ? EditableFields.OrderBy(f => f.Type) 
+                    : EditableFields.OrderByDescending(f => f.Type);
+                break;
+            case "page":
+                sorted = sortAscending 
+                    ? EditableFields.OrderBy(f => f.Page).ThenBy(f => f.Y).ThenBy(f => f.X)
+                    : EditableFields.OrderByDescending(f => f.Page).ThenBy(f => f.Y).ThenBy(f => f.X);
+                break;
+            case "original":
+            default:
+                sorted = sortAscending 
+                    ? EditableFields.OrderBy(f => f.OriginalIndex) 
+                    : EditableFields.OrderByDescending(f => f.OriginalIndex);
+                break;
+        }
+        
+        return sorted.ToList();
+    }
+    
+    private void SortFields(string column)
+    {
+        if (sortBy == column)
+        {
+            sortAscending = !sortAscending;
+        }
+        else
+        {
+            sortBy = column;
+            sortAscending = true;
+        }
+        StateHasChanged();
+    }
+    
+    private void NavigateToField(int direction)
+    {
+        if (SelectedField == null) return;
+        
+        var sortedFields = GetSortedFields();
+        var currentIndex = sortedFields.IndexOf(SelectedField);
+        var newIndex = currentIndex + direction;
+        
+        if (newIndex >= 0 && newIndex < sortedFields.Count)
+        {
+            SelectedField = sortedFields[newIndex];
+            
+            // If on different page, load that page
+            if (SelectedField.Page != CurrentPage)
+            {
+                _ = LoadPage(SelectedField.Page);
+            }
+            
+            StateHasChanged();
+        }
     }
     
     private void AutoGenerateTooltips()
@@ -336,6 +1088,153 @@
         StateHasChanged();
     }
     
+    private async Task RefreshFieldsFromPdf_OLD()
+    {
+        try
+        {
+            ValidationMessages.Clear();
+            
+            if (PdfBytes == null || PdfBytes.Length == 0)
+            {
+                ValidationMessages.Add("No PDF loaded");
+                StateHasChanged();
+                return;
+            }
+            
+            // Extract actual form fields from the PDF
+            using var client = new HttpClient();
+            var content = new MultipartFormDataContent();
+            content.Add(new ByteArrayContent(PdfBytes), "file", "document.pdf");
+            
+            var response = await client.PostAsync("http://localhost:5008/api/extract-pdf-fields", content);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync();
+                var fields = System.Text.Json.JsonDocument.Parse(json);
+                
+                // Create a map of current visual positions
+                var currentPositions = EditableFields.ToDictionary(f => f.Name, f => new { f.X, f.Y, f.Width, f.Height });
+                
+                if (fields.RootElement.TryGetProperty("fields", out var fieldsArray))
+                {
+                    var pdfFields = new List<EditableField>();
+                    
+                    foreach (var field in fieldsArray.EnumerateArray())
+                    {
+                        var fieldName = field.GetProperty("name").GetString();
+                        var newField = new EditableField
+                        {
+                            Name = fieldName,
+                            OriginalName = fieldName, // Store original name
+                            Type = field.GetProperty("type").GetString(),
+                            Page = field.GetProperty("page").GetInt32(),
+                            X = (float)field.GetProperty("x").GetDouble(),
+                            Y = (float)field.GetProperty("y").GetDouble(),
+                            Width = (float)field.GetProperty("width").GetDouble(),
+                            Height = (float)field.GetProperty("height").GetDouble(),
+                            Tooltip = field.TryGetProperty("tooltip", out var tt) ? tt.GetString() : "",
+                            IsRequired = field.TryGetProperty("isRequired", out var req) ? req.GetBoolean() : false
+                        };
+                        
+                        // If we have a visual position for a similar field, use that instead
+                        if (currentPositions.ContainsKey(fieldName))
+                        {
+                            var pos = currentPositions[fieldName];
+                            newField.X = pos.X;
+                            newField.Y = pos.Y;
+                            newField.Width = pos.Width;
+                            newField.Height = pos.Height;
+                        }
+                        
+                        pdfFields.Add(newField);
+                    }
+                    
+                    // Keep existing fields that aren't in the PDF (visual-only fields)
+                    var pdfFieldNames = new HashSet<string>(pdfFields.Select(f => f.Name));
+                    var visualOnlyFields = EditableFields.Where(f => !pdfFieldNames.Contains(f.Name)).ToList();
+                    
+                    // Replace the field list
+                    EditableFields.Clear();
+                    EditableFields.AddRange(pdfFields);
+                    
+                    // Optionally add back visual-only fields
+                    // EditableFields.AddRange(visualOnlyFields);
+                    
+                    ValidationMessages.Add($"Loaded {pdfFields.Count} PDF fields, kept visual positions where available");
+                    await JSRuntime.InvokeVoidAsync("console.log", $"Refreshed {EditableFields.Count} fields from PDF");
+                    
+                    // Refresh the preview if showing field boxes
+                    if (ShowFieldBoxes)
+                    {
+                        await LoadPageWithFieldBoxes(CurrentPage);
+                    }
+                }
+                else
+                {
+                    ValidationMessages.Add("No form fields found in PDF");
+                }
+            }
+            else
+            {
+                ValidationMessages.Add($"Failed to extract fields: {response.StatusCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ValidationMessages.Add($"Error refreshing fields: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("console.error", $"Error refreshing fields: {ex.Message}");
+        }
+        
+        StateHasChanged();
+    }
+    
+    private async Task ResetToOriginalFields()
+    {
+        try
+        {
+            ValidationMessages.Clear();
+            
+            // Reset to the original fields that were passed in
+            if (originalOrder != null && originalOrder.Any())
+            {
+                EditableFields.Clear();
+                EditableFields.AddRange(originalOrder.Select(f => new EditableField
+                {
+                    Name = f.Name,
+                    OriginalName = f.OriginalName ?? f.Name,
+                    Type = f.Type,
+                    Tooltip = f.Tooltip,
+                    IsRequired = f.IsRequired,
+                    Page = f.Page,
+                    X = f.X,
+                    Y = f.Y,
+                    Width = f.Width,
+                    Height = f.Height,
+                    OriginalIndex = f.OriginalIndex
+                }));
+                
+                ValidationMessages.Add($"Reset to {EditableFields.Count} original fields");
+                
+                // Refresh the preview
+                if (ShowFieldBoxes)
+                {
+                    await LoadPageWithFieldBoxes(CurrentPage);
+                }
+            }
+            else
+            {
+                ValidationMessages.Add("No original fields to reset to");
+            }
+        }
+        catch (Exception ex)
+        {
+            ValidationMessages.Add($"Error resetting fields: {ex.Message}");
+        }
+        
+        StateHasChanged();
+    }
+    
     private async Task Cancel()
     {
         IsVisible = false;
@@ -352,9 +1251,16 @@
     public class EditableField
     {
         public string Name { get; set; }
+        public string OriginalName { get; set; } // Track the original name for updates
         public string Type { get; set; }
         public string Tooltip { get; set; }
+        public bool IsRequired { get; set; }
         public int Page { get; set; }
+        public float X { get; set; }
+        public float Y { get; set; }
+        public float Width { get; set; } = 100;
+        public float Height { get; set; } = 20;
+        public int OriginalIndex { get; set; }
     }
     
     public class FieldTypeOption

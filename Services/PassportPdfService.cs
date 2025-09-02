@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
@@ -6,6 +7,10 @@ using Microsoft.Extensions.Logging;
 using PassportPDF.Api;
 using PassportPDF.Client;
 using PassportPDF.Model;
+using Syncfusion.Drawing;
+using Syncfusion.Pdf;
+using Syncfusion.Pdf.Interactive;
+using Syncfusion.Pdf.Parsing;
 using WordToPdfConverter.Models;
 
 namespace AccessFormServer.Services
@@ -117,6 +122,188 @@ namespace AccessFormServer.Services
                 _logger.LogError(ex, "PassportPDF conversion error");
                 throw;
             }
+        }
+        
+        /// <summary>
+        /// Converts to PDF/A while preserving field names by extracting and re-adding fields
+        /// </summary>
+        public async Task<byte[]> ConvertToPdfAPreservingFieldsAsync(byte[] pdfBytes, string fileName)
+        {
+            try
+            {
+                _logger.LogInformation($"Starting PDF/A conversion with field preservation for {fileName}");
+                
+                // Step 1: Extract field metadata from original PDF
+                var fieldMetadata = new List<FieldMetadata>();
+                
+                using (var stream = new MemoryStream(pdfBytes))
+                using (var pdfDoc = new PdfLoadedDocument(stream))
+                {
+                    if (pdfDoc.Form != null)
+                    {
+                        foreach (PdfLoadedField field in pdfDoc.Form.Fields)
+                        {
+                            var metadata = new FieldMetadata
+                            {
+                                Name = field.Name,
+                                ToolTip = field.ToolTip,
+                                Required = field.Required
+                            };
+                            
+                            // Get bounds and page based on field type
+                            if (field is PdfLoadedTextBoxField textField)
+                            {
+                                metadata.FieldType = "text";
+                                metadata.Bounds = textField.Bounds;
+                                metadata.PageIndex = GetPageIndex(pdfDoc, textField.Page);
+                            }
+                            else if (field is PdfLoadedCheckBoxField checkField)
+                            {
+                                metadata.FieldType = "checkbox";
+                                metadata.Bounds = checkField.Bounds;
+                                metadata.PageIndex = GetPageIndex(pdfDoc, checkField.Page);
+                            }
+                            else if (field is PdfLoadedRadioButtonListField radioField)
+                            {
+                                metadata.FieldType = "radio";
+                                if (radioField.Items.Count > 0)
+                                {
+                                    metadata.Bounds = radioField.Items[0].Bounds;
+                                    metadata.PageIndex = GetPageIndex(pdfDoc, radioField.Items[0].Page);
+                                }
+                            }
+                            else if (field is PdfLoadedSignatureField sigField)
+                            {
+                                metadata.FieldType = "signature";
+                                metadata.Bounds = sigField.Bounds;
+                                metadata.PageIndex = GetPageIndex(pdfDoc, sigField.Page);
+                            }
+                            
+                            fieldMetadata.Add(metadata);
+                            _logger.LogDebug($"Extracted field: {metadata.Name} ({metadata.FieldType}) on page {metadata.PageIndex}");
+                        }
+                        
+                        _logger.LogInformation($"Extracted {fieldMetadata.Count} fields from original PDF");
+                    }
+                }
+                
+                // Step 2: Remove all fields from PDF before conversion
+                byte[] fieldlessPdf;
+                using (var stream = new MemoryStream(pdfBytes))
+                using (var pdfDoc = new PdfLoadedDocument(stream))
+                {
+                    // Remove all form fields
+                    if (pdfDoc.Form != null)
+                    {
+                        pdfDoc.Form.Fields.Clear();
+                        _logger.LogInformation("Removed all fields from PDF");
+                    }
+                    
+                    using (var outputStream = new MemoryStream())
+                    {
+                        pdfDoc.Save(outputStream);
+                        fieldlessPdf = outputStream.ToArray();
+                    }
+                }
+                
+                // Step 3: Convert fieldless PDF to PDF/A
+                var pdfABytes = await ConvertToPdfAAsync(fieldlessPdf, fileName);
+                _logger.LogInformation("Converted to PDF/A-2u");
+                
+                // Step 4: Re-add fields with preserved names to PDF/A document
+                if (fieldMetadata.Count > 0)
+                {
+                    using (var stream = new MemoryStream(pdfABytes))
+                    using (var pdfDoc = new PdfLoadedDocument(stream))
+                    {
+                        // Ensure form exists
+                        if (pdfDoc.Form == null)
+                        {
+                            pdfDoc.CreateForm();
+                        }
+                        
+                        // Re-add each field with preserved metadata
+                        foreach (var metadata in fieldMetadata)
+                        {
+                            if (metadata.PageIndex < 0 || metadata.PageIndex >= pdfDoc.Pages.Count)
+                                continue;
+                                
+                            var page = pdfDoc.Pages[metadata.PageIndex];
+                            
+                            switch (metadata.FieldType)
+                            {
+                                case "checkbox":
+                                    var checkbox = new PdfCheckBoxField(page, metadata.Name);
+                                    checkbox.Bounds = metadata.Bounds;
+                                    checkbox.ToolTip = metadata.ToolTip;
+                                    checkbox.Required = metadata.Required;
+                                    pdfDoc.Form.Fields.Add(checkbox);
+                                    break;
+                                    
+                                case "radio":
+                                    var radio = new PdfRadioButtonListField(page, metadata.Name);
+                                    radio.ToolTip = metadata.ToolTip;
+                                    radio.Required = metadata.Required;
+                                    var radioItem = new PdfRadioButtonListItem("Option");
+                                    radioItem.Bounds = metadata.Bounds;
+                                    radio.Items.Add(radioItem);
+                                    pdfDoc.Form.Fields.Add(radio);
+                                    break;
+                                    
+                                case "signature":
+                                    var signature = new PdfSignatureField(page, metadata.Name);
+                                    signature.Bounds = metadata.Bounds;
+                                    pdfDoc.Form.Fields.Add(signature);
+                                    break;
+                                    
+                                default: // text
+                                    var textField = new PdfTextBoxField(page, metadata.Name);
+                                    textField.Bounds = metadata.Bounds;
+                                    textField.ToolTip = metadata.ToolTip;
+                                    textField.Required = metadata.Required;
+                                    pdfDoc.Form.Fields.Add(textField);
+                                    break;
+                            }
+                        }
+                        
+                        _logger.LogInformation($"Re-added {fieldMetadata.Count} fields to PDF/A document");
+                        
+                        using (var outputStream = new MemoryStream())
+                        {
+                            pdfDoc.Save(outputStream);
+                            return outputStream.ToArray();
+                        }
+                    }
+                }
+                
+                return pdfABytes;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in PDF/A conversion with field preservation");
+                // Fallback: return original
+                return pdfBytes;
+            }
+        }
+        
+        private int GetPageIndex(PdfLoadedDocument doc, PdfPageBase page)
+        {
+            for (int i = 0; i < doc.Pages.Count; i++)
+            {
+                if (doc.Pages[i] == page)
+                    return i;
+            }
+            return 0;
+        }
+        
+        private class FieldMetadata
+        {
+            public string Name { get; set; } = "";
+            public string FieldType { get; set; } = "";
+            public RectangleF Bounds { get; set; }
+            public int PageIndex { get; set; }
+            public string ToolTip { get; set; } = "";
+            public bool Required { get; set; }
         }
         
         /// <summary>

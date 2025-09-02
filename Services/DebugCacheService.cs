@@ -8,6 +8,7 @@ namespace AccessFormServer.Services
     {
         private readonly ConcurrentDictionary<string, DebugData> _cache = new();
         private readonly TimeSpan _cacheExpiration = TimeSpan.FromMinutes(30);
+        private ProcessedPdfData? _lastProcessedPdf;
 
         // Simplified method - only Anthropic, no Azure
         public string StoreDebugData(object debugInfo)
@@ -63,6 +64,29 @@ namespace AccessFormServer.Services
                 _cache.TryRemove(key, out _);
             }
         }
+        
+        // Store the last processed PDF for markdown conversion
+        public void StoreLastProcessedPdf(byte[] pdfBytes, string fileName)
+        {
+            _lastProcessedPdf = new ProcessedPdfData
+            {
+                PdfBytes = pdfBytes,
+                FileName = fileName,
+                ProcessedAt = DateTime.UtcNow
+            };
+        }
+        
+        public ProcessedPdfData? GetLastProcessedPdf()
+        {
+            return _lastProcessedPdf;
+        }
+    }
+    
+    public class ProcessedPdfData
+    {
+        public byte[] PdfBytes { get; set; } = Array.Empty<byte>();
+        public string FileName { get; set; } = "";
+        public DateTime ProcessedAt { get; set; }
     }
 
     public class DebugData
