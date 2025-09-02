@@ -1774,18 +1774,19 @@
                 var fieldsJson = System.Text.Json.JsonSerializer.Serialize(fieldUpdates);
                 formData.Add(new StringContent(fieldsJson), "fields");
                 
-                // Call API to update PDF fields
-                var response = await httpClient.PostAsync("/api/update-pdf-fields", formData);
+                // Call the V2 API that properly handles tag tree updates
+                var response = await httpClient.PostAsync("/api/update-pdf-fields-v2", formData);
                 
                 if (response.IsSuccessStatusCode)
                 {
                     var resultJson = await response.Content.ReadAsStringAsync();
                     var result = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(resultJson);
                     
-                    if (result != null && result.ContainsKey("pdfData"))
+                    // V2 endpoint returns "pdf" instead of "pdfData"
+                    if (result != null && (result.ContainsKey("pdf") || result.ContainsKey("pdfData")))
                     {
                         // Update the accessible PDF with the new one
-                        var updatedPdfData = result["pdfData"].ToString();
+                        var updatedPdfData = result.ContainsKey("pdf") ? result["pdf"].ToString() : result["pdfData"].ToString();
                         processingResults.AccessibleFileData = updatedPdfData;
                         
                         // Also update the currentFields with the new names/types

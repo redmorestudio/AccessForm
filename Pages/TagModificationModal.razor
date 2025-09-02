@@ -560,11 +560,26 @@
     {
         if (Fields != null && Fields.Any())
         {
-            EditableFields = new List<EditableField>(Fields);
-            // Store original order with index
-            for (int i = 0; i < EditableFields.Count; i++)
+            EditableFields = new List<EditableField>();
+            // Create new EditableField instances with proper OriginalName tracking
+            for (int i = 0; i < Fields.Count; i++)
             {
-                EditableFields[i].OriginalIndex = i + 1;
+                var field = Fields[i];
+                var editableField = new EditableField
+                {
+                    Name = field.Name,
+                    OriginalName = field.OriginalName ?? field.Name, // IMPORTANT: Set OriginalName on first load
+                    Type = field.Type,
+                    Tooltip = field.Tooltip,
+                    IsRequired = field.IsRequired,
+                    Page = field.Page,
+                    X = field.X,
+                    Y = field.Y,
+                    Width = field.Width,
+                    Height = field.Height,
+                    OriginalIndex = i + 1
+                };
+                EditableFields.Add(editableField);
             }
             originalOrder = new List<EditableField>(EditableFields);
         }

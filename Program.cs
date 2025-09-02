@@ -1365,6 +1365,12 @@ app.MapPost("/api/update-pdf-fields-v2", async (HttpRequest request, ILogger<Pro
             return Results.BadRequest("Invalid field definitions");
         }
 
+        // Log the field updates for debugging
+        foreach (var update in fieldUpdates)
+        {
+            logger.LogInformation($"[V2] Field update: '{update.OriginalName}' -> '{update.NewName}' (type: {update.FieldType})");
+        }
+
         logger.LogInformation($"[V2] Updating PDF with {fieldUpdates.Count} field changes (compliance: {ensureCompliance})");
 
         // Read the PDF bytes
