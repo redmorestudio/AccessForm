@@ -1772,10 +1772,10 @@
                 }).ToList();
                 
                 var fieldsJson = System.Text.Json.JsonSerializer.Serialize(fieldUpdates);
-                formData.Add(new StringContent(fieldsJson), "fields");
+                formData.Add(new StringContent(fieldsJson), "fieldUpdates");
                 
-                // Call the V2 API that properly handles tag tree updates
-                var response = await httpClient.PostAsync("/api/update-pdf-fields-v2", formData);
+                // Call the V3 API that uses iText for proper field deletion and recreation
+                var response = await httpClient.PostAsync("/api/update-pdf-fields-v3", formData);
                 
                 if (response.IsSuccessStatusCode)
                 {
@@ -1789,17 +1789,54 @@
                         var updatedPdfData = result.ContainsKey("pdf") ? result["pdf"].ToString() : result["pdfData"].ToString();
                         processingResults.AccessibleFileData = updatedPdfData;
                         
-                        // Also update the currentFields with the new names/types
-                        foreach (var update in fieldUpdates)
+                        // Check if we have corrected field data from the server
+                        if (result.ContainsKey("correctedFields"))
                         {
-                            var fieldToUpdate = currentFields.FirstOrDefault(f => f.Name == update.OriginalName);
-                            if (fieldToUpdate != null)
+                            // Use the corrected dimensions from the server
+                            var correctedFieldsElement = (System.Text.Json.JsonElement)result["correctedFields"];
+                            var correctedFields = correctedFieldsElement.EnumerateArray().ToList();
+                            
+                            foreach (var correctedField in correctedFields)
                             {
-                                fieldToUpdate.Name = update.NewName;
-                                fieldToUpdate.Type = update.FieldType;
-                                fieldToUpdate.Tooltip = update.Tooltip;
-                                // Update OriginalName for future edits
-                                fieldToUpdate.OriginalName = update.NewName;
+                                var originalName = correctedField.GetProperty("originalName").GetString();
+                                var fieldToUpdate = currentFields.FirstOrDefault(f => f.Name == originalName);
+                                if (fieldToUpdate != null)
+                                {
+                                    fieldToUpdate.Name = correctedField.GetProperty("name").GetString();
+                                    fieldToUpdate.Type = correctedField.GetProperty("type").GetString();
+                                    fieldToUpdate.Tooltip = correctedField.TryGetProperty("tooltip", out var tooltip) ? tooltip.GetString() : "";
+                                    fieldToUpdate.X = correctedField.TryGetProperty("x", out var x) ? (float)x.GetDouble() : fieldToUpdate.X;
+                                    fieldToUpdate.Y = correctedField.TryGetProperty("y", out var y) ? (float)y.GetDouble() : fieldToUpdate.Y;
+                                    fieldToUpdate.Width = correctedField.TryGetProperty("width", out var width) ? (float)width.GetDouble() : fieldToUpdate.Width;
+                                    fieldToUpdate.Height = correctedField.TryGetProperty("height", out var height) ? (float)height.GetDouble() : fieldToUpdate.Height;
+                                    // Update OriginalName for future edits
+                                    fieldToUpdate.OriginalName = fieldToUpdate.Name;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Fallback to old behavior if server doesn't send corrected fields
+                            foreach (var update in fieldUpdates)
+                            {
+                                var fieldToUpdate = currentFields.FirstOrDefault(f => f.Name == update.OriginalName);
+                                if (fieldToUpdate != null)
+                                {
+                                    fieldToUpdate.Name = update.NewName;
+                                    fieldToUpdate.Type = update.FieldType;
+                                    
+                                    // Apply checkbox dimension correction
+                                    if ((update.FieldType?.ToLower() == "checkbox" || update.FieldType?.ToLower() == "radio") 
+                                        && fieldToUpdate.Width > fieldToUpdate.Height * 2)
+                                    {
+                                        // Correct checkbox dimensions to be square
+                                        fieldToUpdate.Width = Math.Min(fieldToUpdate.Height, 20);
+                                        fieldToUpdate.Height = Math.Min(fieldToUpdate.Height, 20);
+                                    }
+                                    fieldToUpdate.Tooltip = update.Tooltip;
+                                    // Update OriginalName for future edits
+                                    fieldToUpdate.OriginalName = update.NewName;
+                                }
                             }
                         }
                         
