@@ -91,6 +91,9 @@ builder.Services.AddScoped<PdfFieldTagEditorService>();
 // Add iText field rebuild service for proper PDF/UA compliant field renaming
 builder.Services.AddScoped<ITextFieldRebuildService>();
 
+// Add complete PDF rebuild service to eliminate ghost fields
+builder.Services.AddScoped<PdfCompleteRebuildService>();
+
 // Add NLP services  
 builder.Services.AddScoped<NLPLabelGenerator>();
 
@@ -1552,6 +1555,116 @@ app.MapPost("/api/update-pdf-fields-v3", async (HttpRequest request, ILogger<Pro
     catch (Exception ex)
     {
         logger.LogError(ex, "[V3 iText] Field rebuild endpoint failed");
+        return Results.Json(new { error = $"Update failed: {ex.Message}" }, statusCode: 500);
+    }
+});
+
+// V4: Complete PDF rebuild to eliminate ghost fields using Python PyMuPDF
+app.MapPost("/api/update-pdf-fields-v4", async (HttpRequest request, ILogger<Program> logger, PdfCompleteRebuildService completeRebuildService) =>
+{
+    try
+    {
+        var form = await request.ReadFormAsync();
+        var pdfFile = form.Files["pdf"];
+        
+        // Try both parameter names for backward compatibility
+        var fieldUpdatesJson = form["fieldUpdates"];
+        if (string.IsNullOrEmpty(fieldUpdatesJson))
+        {
+            fieldUpdatesJson = form["fields"];
+        }
+        
+        logger.LogInformation($"[V4 Complete Rebuild] Received fieldUpdatesJson: {(string.IsNullOrEmpty(fieldUpdatesJson) ? "NULL" : fieldUpdatesJson.ToString())}");
+        
+        if (pdfFile == null || pdfFile.Length == 0)
+        {
+            return Results.BadRequest(new { error = "No PDF file provided" });
+        }
+        
+        if (string.IsNullOrEmpty(fieldUpdatesJson))
+        {
+            return Results.BadRequest(new { error = "No field updates provided" });
+        }
+        
+        // Read PDF bytes
+        byte[] pdfBytes;
+        using (var ms = new MemoryStream())
+        {
+            await pdfFile.CopyToAsync(ms);
+            pdfBytes = ms.ToArray();
+        }
+        
+        // Parse field updates - compatible with ITextFieldRebuildService format
+        var fieldUpdates = JsonSerializer.Deserialize<List<PdfCompleteRebuildService.FieldUpdate>>(fieldUpdatesJson, 
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<PdfCompleteRebuildService.FieldUpdate>();
+        
+        logger.LogInformation($"[V4 Complete Rebuild] Processing {fieldUpdates.Count} field updates");
+        
+        foreach (var update in fieldUpdates)
+        {
+            logger.LogInformation($"[V4 Complete Rebuild] Field update: '{update.OriginalName}' -> '{update.NewName}' (type: {update.FieldType}, tooltip: {update.Tooltip}, required: {update.IsRequired})");
+        }
+        
+        // Complete rebuild using Python PyMuPDF
+        var result = await completeRebuildService.CompletelyRebuildPdfAsync(pdfBytes, fieldUpdates);
+        
+        if (result.Success && result.PdfBytes != null)
+        {
+            logger.LogInformation($"[V4 Complete Rebuild] Successfully rebuilt PDF with {result.TotalFields} fields, {result.TagElements} tag elements");
+            
+            // Return JSON response matching what the frontend expects
+            var correctedFields = fieldUpdates.Select(f => 
+            {
+                var fieldType = f.FieldType?.ToLower() ?? "text";
+                var width = f.Width ?? 150;
+                var height = f.Height ?? 20;
+                
+                // Apply checkbox dimension correction in response
+                if ((fieldType == "checkbox" || fieldType == "radio") && width > height * 2)
+                {
+                    width = height; // Make it square
+                }
+                
+                return new
+                {
+                    originalName = f.OriginalName,
+                    name = f.NewName,
+                    type = f.FieldType,
+                    tooltip = f.Tooltip,
+                    isRequired = f.IsRequired,
+                    x = f.X,
+                    y = f.Y,
+                    width = width,
+                    height = height
+                };
+            }).ToList();
+            
+            var response = new
+            {
+                success = true,
+                pdf = Convert.ToBase64String(result.PdfBytes),
+                modifiedFields = result.AddedFields,
+                correctedFields = correctedFields,
+                metadata = new 
+                {
+                    totalFields = result.TotalFields,
+                    tagElements = result.TagElements,
+                    method = "Complete Rebuild (PyMuPDF)",
+                    message = result.Message
+                }
+            };
+            
+            return Results.Json(response);
+        }
+        else
+        {
+            logger.LogError($"[V4 Complete Rebuild] Rebuild failed: {result.ErrorMessage}");
+            return Results.Json(new { error = result.ErrorMessage }, statusCode: 500);
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[V4 Complete Rebuild] Endpoint failed");
         return Results.Json(new { error = $"Update failed: {ex.Message}" }, statusCode: 500);
     }
 });

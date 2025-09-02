@@ -21,8 +21,8 @@ except ImportError:
     }))
     sys.exit(1)
 
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+# Set up logging to stderr only (not stdout)
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s', stream=sys.stderr)
 logger = logging.getLogger(__name__)
 
 class PDFCompleteRebuilder:
@@ -191,31 +191,24 @@ class PDFCompleteRebuilder:
             # Step 3: Create a completely clean PDF (no fields, no annotations)
             temp_clean_path = tempfile.mktemp(suffix='_clean.pdf')
             
-            # Create new document with visual content only
-            clean_doc = fitz.open()
-            for page_num in range(len(original_doc)):
-                orig_page = original_doc[page_num]
-                
-                # Create a new blank page with same dimensions
-                new_page = clean_doc.new_page(width=orig_page.rect.width, 
-                                             height=orig_page.rect.height)
-                
-                # Get a pixmap (image) of the original page
-                # This flattens everything into visual content only
-                mat = fitz.Matrix(1, 1)  # No zoom
-                pixmap = orig_page.get_pixmap(matrix=mat)
-                
-                # Insert the pixmap as an image on the new page
-                img_rect = new_page.rect
-                new_page.insert_image(img_rect, pixmap=pixmap)
-                
-                # Clean up pixmap
-                del pixmap
+            # Create new document preserving PDF content but removing form fields
+            # We'll use a temporary save/reload approach to ensure fields are gone
+            temp_doc = fitz.open()
             
-            # PyMuPDF will handle form removal automatically when copying without annotations
+            # Copy all pages without form fields
+            temp_doc.insert_pdf(original_doc, annots=False, links=False)
             
-            clean_doc.save(temp_clean_path, garbage=4, deflate=True, clean=True)
-            clean_doc.close()
+            # Now remove any form fields that might still exist
+            for page in temp_doc:
+                # Delete all widgets (form fields) from each page
+                for widget in list(page.widgets()):
+                    page.delete_widget(widget)
+            
+            # Save to ensure changes are committed
+            temp_doc.save(temp_clean_path, garbage=4, deflate=True, clean=True)
+            temp_doc.close()
+            
+            # Close the original document as we're done with it
             original_doc.close()
             
             logger.info("Created clean PDF without any fields")
@@ -229,6 +222,11 @@ class PDFCompleteRebuilder:
                 # Parse field update format
                 if 'originalName' in field_info:
                     # Convert from update format to field definition
+                    # Handle page number carefully - it might be None
+                    page_num = field_info.get('PageNumber') or field_info.get('pageNumber') or 1
+                    if page_num is None:
+                        page_num = 1
+                    
                     field_def = {
                         'name': field_info.get('newName', field_info['originalName']),
                         'type': field_info.get('fieldType', 'text'),
@@ -236,7 +234,7 @@ class PDFCompleteRebuilder:
                         'y': field_info.get('Y', field_info.get('y', 100)),
                         'width': field_info.get('Width', field_info.get('width', 200)),
                         'height': field_info.get('Height', field_info.get('height', 20)),
-                        'page': field_info.get('PageNumber', field_info.get('pageNumber', 1)) - 1,
+                        'page': page_num - 1,  # Convert to 0-based index
                         'tooltip': field_info.get('Tooltip', field_info.get('tooltip', '')),
                         'required': field_info.get('IsRequired', field_info.get('isRequired', False))
                     }
