@@ -85,6 +85,9 @@ builder.Services.AddScoped<PassportPdfService>();
 // Add PDF/UA compliance service
 builder.Services.AddScoped<PdfUAComplianceService>();
 
+// Add comprehensive PDF field and tag editor service
+builder.Services.AddScoped<PdfFieldTagEditorService>();
+
 // Add NLP services  
 builder.Services.AddScoped<NLPLabelGenerator>();
 
@@ -1060,17 +1063,17 @@ app.MapPost("/api/convert-with-ai", async (
                 {
                     try
                     {
-                        var result = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(output);
-                        if (result.TryGetProperty("success", out var successProp) && successProp.GetBoolean())
+                        var jsonResult = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(output);
+                        if (jsonResult.TryGetProperty("success", out var successProp) && successProp.GetBoolean())
                         {
-                            if (result.TryGetProperty("output_path", out var pathProp))
+                            if (jsonResult.TryGetProperty("output_path", out var pathProp))
                             {
                                 var outputPath = pathProp.GetString();
                                 if (!string.IsNullOrEmpty(outputPath) && File.Exists(outputPath))
                                 {
                                     remediatedPdfBytes = await File.ReadAllBytesAsync(outputPath);
                                     
-                                    if (result.TryGetProperty("modified_fields", out var modifiedProp))
+                                    if (jsonResult.TryGetProperty("modified_fields", out var modifiedProp))
                                     {
                                         var modifiedCount = modifiedProp.GetArrayLength();
                                         logger.LogInformation($"Successfully cleaned {modifiedCount} field names");
@@ -1333,7 +1336,84 @@ app.MapGet("/api/pdf-to-markdown", (ILoggerFactory loggerFactory, DebugCacheServ
     }
 });
 
-// Update PDF with edited field definitions - uses PassportPDF for PDF/UA compliance
+// NEW: Comprehensive field and tag tree update endpoint
+app.MapPost("/api/update-pdf-fields-v2", async (HttpRequest request, ILogger<Program> logger, PdfFieldTagEditorService fieldTagEditor) =>
+{
+    try
+    {
+        if (!request.Form.Files.Any())
+        {
+            return Results.BadRequest("No PDF file uploaded");
+        }
+
+        var file = request.Form.Files[0];
+        var fieldsJson = request.Form["fields"];
+        var ensureCompliance = request.Form.ContainsKey("ensureCompliance") 
+            ? bool.Parse(request.Form["ensureCompliance"]) 
+            : true;
+        
+        if (string.IsNullOrEmpty(fieldsJson))
+        {
+            return Results.BadRequest("No field definitions provided");
+        }
+
+        // Parse the field definitions
+        var fieldUpdates = System.Text.Json.JsonSerializer.Deserialize<List<PdfFieldTagEditorService.FieldUpdate>>(fieldsJson);
+        
+        if (fieldUpdates == null || !fieldUpdates.Any())
+        {
+            return Results.BadRequest("Invalid field definitions");
+        }
+
+        logger.LogInformation($"[V2] Updating PDF with {fieldUpdates.Count} field changes (compliance: {ensureCompliance})");
+
+        // Read the PDF bytes
+        using var pdfStream = file.OpenReadStream();
+        using var memoryStream = new MemoryStream();
+        await pdfStream.CopyToAsync(memoryStream);
+        var pdfBytes = memoryStream.ToArray();
+
+        // Perform comprehensive update
+        var result = await fieldTagEditor.UpdateFieldsAndTagsAsync(
+            pdfBytes, 
+            fieldUpdates, 
+            ensureCompliance);
+
+        if (!result.Success)
+        {
+            logger.LogError($"Field and tag update failed: {result.ErrorMessage}");
+            return Results.BadRequest(new 
+            { 
+                success = false, 
+                error = result.ErrorMessage 
+            });
+        }
+
+        logger.LogInformation($"Successfully updated {result.ModifiedFields.Count} fields and {result.ModifiedTags.Count} tags");
+
+        // Return the updated PDF
+        return Results.Ok(new
+        {
+            success = true,
+            pdf = Convert.ToBase64String(result.PdfBytes!),
+            modifiedFields = result.ModifiedFields,
+            modifiedTags = result.ModifiedTags,
+            metadata = result.Metadata,
+            message = $"Updated {result.ModifiedFields.Count} fields and {result.ModifiedTags.Count} tags"
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[V2] Failed to update PDF fields and tags");
+        return Results.BadRequest(new 
+        { 
+            success = false, 
+            error = $"Update failed: {ex.Message}" 
+        });
+    }
+});
+
+// LEGACY: Update PDF with edited field definitions - uses PassportPDF for PDF/UA compliance
 app.MapPost("/api/update-pdf-fields", async (HttpRequest request, ILogger<Program> logger, PassportPdfService passportPdfService, DebugCacheService debugCache) =>
 {
     try
