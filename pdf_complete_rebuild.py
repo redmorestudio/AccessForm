@@ -192,17 +192,22 @@ class PDFCompleteRebuilder:
             temp_clean_path = tempfile.mktemp(suffix='_clean.pdf')
             
             # Create new document preserving PDF content but removing form fields
-            # We'll use a temporary save/reload approach to ensure fields are gone
+            # Important: We need to preserve the actual page content, not just the structure
             temp_doc = fitz.open()
             
-            # Copy all pages without form fields
-            temp_doc.insert_pdf(original_doc, annots=False, links=False)
+            # Copy the entire document first to preserve content
+            temp_doc.insert_pdf(original_doc)
             
-            # Now remove any form fields that might still exist
+            # Now remove ONLY the form fields (widgets), keeping everything else
             for page in temp_doc:
                 # Delete all widgets (form fields) from each page
                 for widget in list(page.widgets()):
                     page.delete_widget(widget)
+                
+                # Also remove any annotations that might be form-related
+                for annot in list(page.annots()):
+                    if annot.type[0] == fitz.PDF_ANNOT_WIDGET:
+                        page.delete_annot(annot)
             
             # Save to ensure changes are committed
             temp_doc.save(temp_clean_path, garbage=4, deflate=True, clean=True)
