@@ -775,8 +775,23 @@
                             editableField.Height = (float)fieldJson.GetProperty("height").GetDouble();
                             
                             // Apply minimum sizes if fields are too small
-                            if (editableField.Width < 50) editableField.Width = 150;
-                            if (editableField.Height < 15) editableField.Height = 20;
+                            // But handle checkboxes differently - they should be square and small
+                            var fieldType = editableField.Type?.ToLower() ?? "text";
+                            if (fieldType == "checkbox" || fieldType == "radio")
+                            {
+                                // Checkboxes should be square, typically 20x20
+                                if (editableField.Width > editableField.Height * 2 || editableField.Width < 15)
+                                {
+                                    editableField.Width = 20;
+                                    editableField.Height = 20;
+                                }
+                            }
+                            else
+                            {
+                                // For text fields, apply minimum sizes
+                                if (editableField.Width < 50) editableField.Width = 150;
+                                if (editableField.Height < 15) editableField.Height = 20;
+                            }
                             
                             Console.WriteLine($"Field {fieldName}: X={editableField.X}, Y={editableField.Y}, W={editableField.Width}, H={editableField.Height}");
                         }

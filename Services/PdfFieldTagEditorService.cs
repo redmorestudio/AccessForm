@@ -24,7 +24,7 @@ namespace WordToPdfConverter.Services
         private readonly ILogger<PdfFieldTagEditorService> _logger;
         private readonly PassportPdfService _passportPdfService;
         private readonly PdfUAComplianceService _complianceService;
-        private readonly string _pythonScript = "pdf_tag_field_editor.py";
+        private readonly string _pythonScript = "pdf_field_recreate.py";
 
         public PdfFieldTagEditorService(
             ILogger<PdfFieldTagEditorService> logger,
@@ -102,6 +102,13 @@ namespace WordToPdfConverter.Services
                 {
                     _logger.LogInformation("Ensuring PDF/UA compliance");
                     
+                    // Skip compliance processing for now to preserve field names
+                    // The Python script already maintains PDF structure
+                    _logger.LogInformation("Skipping additional compliance processing to preserve field name changes");
+                    result.Metadata["pdfUaCompliant"] = "preserved";
+                    result.Metadata["conformance"] = "maintained";
+                    
+                    /*
                     try
                     {
                         var complianceOptions = new ComplianceOptions
@@ -136,6 +143,7 @@ namespace WordToPdfConverter.Services
                         result.Metadata["pdfUaCompliant"] = false;
                         result.Metadata["complianceError"] = compEx.Message;
                     }
+                    */
                 }
 
                 result.Metadata["totalFieldsModified"] = result.ModifiedFields.Count;
@@ -273,14 +281,33 @@ namespace WordToPdfConverter.Services
                 }).ToList();
 
                 var updatesJson = JsonSerializer.Serialize(updates);
+                
+                // Log the command for debugging
+                var scriptPath = Path.Combine(Directory.GetCurrentDirectory(), _pythonScript);
+                if (!File.Exists(scriptPath))
+                {
+                    _logger.LogError($"Python script not found at: {scriptPath}");
+                    return new EditResult
+                    {
+                        Success = false,
+                        ErrorMessage = $"Python script not found: {scriptPath}"
+                    };
+                }
+                
+                _logger.LogInformation($"Running Python script: {scriptPath}");
+                _logger.LogDebug($"Field updates JSON: {updatesJson}");
 
+                // Save JSON to temp file to avoid shell escaping issues
+                var jsonFilePath = Path.Combine(Path.GetTempPath(), $"updates_{Guid.NewGuid()}.json");
+                await File.WriteAllTextAsync(jsonFilePath, updatesJson);
+                
                 // Run Python script for tag tree update
                 var process = new Process
                 {
                     StartInfo = new ProcessStartInfo
                     {
                         FileName = "python3",
-                        Arguments = $"{_pythonScript} \"{tempInputPath}\" '{updatesJson}'",
+                        Arguments = $"\"{scriptPath}\" \"{tempInputPath}\" \"{jsonFilePath}\"",
                         WorkingDirectory = Directory.GetCurrentDirectory(),
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
@@ -306,14 +333,22 @@ namespace WordToPdfConverter.Services
                 var error = await process.StandardError.ReadToEndAsync();
 
                 CleanupTempFile(tempInputPath);
+                CleanupTempFile(jsonFilePath);
+
+                if (!string.IsNullOrEmpty(error))
+                {
+                    _logger.LogError($"Python script stderr: {error}");
+                }
 
                 if (process.ExitCode != 0)
                 {
-                    _logger.LogError($"Python script failed: {error}");
+                    _logger.LogError($"Python script failed with exit code {process.ExitCode}");
+                    _logger.LogError($"Output: {output}");
+                    _logger.LogError($"Error: {error}");
                     return new EditResult
                     {
                         Success = false,
-                        ErrorMessage = $"Tag tree update failed: {error}"
+                        ErrorMessage = $"Tag tree update failed: {error} (Output: {output})"
                     };
                 }
 

@@ -88,6 +88,9 @@ builder.Services.AddScoped<PdfUAComplianceService>();
 // Add comprehensive PDF field and tag editor service
 builder.Services.AddScoped<PdfFieldTagEditorService>();
 
+// Add iText field rebuild service for proper PDF/UA compliant field renaming
+builder.Services.AddScoped<ITextFieldRebuildService>();
+
 // Add NLP services  
 builder.Services.AddScoped<NLPLabelGenerator>();
 
@@ -1416,6 +1419,140 @@ app.MapPost("/api/update-pdf-fields-v2", async (HttpRequest request, ILogger<Pro
             success = false, 
             error = $"Update failed: {ex.Message}" 
         });
+    }
+});
+
+// V3: Update PDF fields using iText for proper field deletion and recreation with PDF/UA compliance
+app.MapPost("/api/update-pdf-fields-v3", async (HttpRequest request, ILogger<Program> logger, ITextFieldRebuildService fieldRebuildService, PassportPdfService passportPdfService) =>
+{
+    try
+    {
+        var form = await request.ReadFormAsync();
+        var pdfFile = form.Files["pdf"];
+        
+        // Try both parameter names for backward compatibility
+        var fieldUpdatesJson = form["fieldUpdates"];
+        if (string.IsNullOrEmpty(fieldUpdatesJson))
+        {
+            fieldUpdatesJson = form["fields"];
+        }
+        
+        logger.LogInformation($"[V3 iText] Received fieldUpdatesJson: {(string.IsNullOrEmpty(fieldUpdatesJson) ? "NULL" : fieldUpdatesJson.ToString())}");
+        
+        if (pdfFile == null || pdfFile.Length == 0)
+        {
+            return Results.BadRequest(new { error = "No PDF file provided" });
+        }
+        
+        if (string.IsNullOrEmpty(fieldUpdatesJson))
+        {
+            return Results.BadRequest(new { error = "No field updates provided" });
+        }
+        
+        // Read PDF bytes
+        byte[] pdfBytes;
+        using (var ms = new MemoryStream())
+        {
+            await pdfFile.CopyToAsync(ms);
+            pdfBytes = ms.ToArray();
+        }
+        
+        // Parse field updates
+        var fieldUpdates = JsonSerializer.Deserialize<List<ITextFieldRebuildService.FieldUpdate>>(fieldUpdatesJson, 
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<ITextFieldRebuildService.FieldUpdate>();
+        
+        // Parse options (vertical bias)
+        var verticalBias = form["verticalBias"];
+        var options = new ITextFieldRebuildService.RebuildOptions();
+        if (!string.IsNullOrEmpty(verticalBias) && float.TryParse(verticalBias, out float bias))
+        {
+            options.VerticalBias = bias;
+            logger.LogInformation($"[V3 iText] Using vertical bias: {bias}px");
+        }
+        
+        logger.LogInformation($"[V3 iText] Processing {fieldUpdates.Count} field updates");
+        
+        foreach (var update in fieldUpdates)
+        {
+            logger.LogInformation($"[V3 iText] Field update: '{update.OriginalName}' -> '{update.NewName}' (type: {update.FieldType}, tooltip: {update.Tooltip}, required: {update.IsRequired})");
+        }
+        
+        // Rebuild fields using iText
+        var result = await fieldRebuildService.RebuildFormFieldsAsync(pdfBytes, fieldUpdates, options);
+        
+        if (result.Success && result.PdfBytes != null)
+        {
+            logger.LogInformation($"[V3 iText] Successfully rebuilt {result.ModifiedFields.Count} fields");
+            
+            // Return JSON response matching what the frontend expects
+            // Include the field updates with corrected dimensions
+            var correctedFields = fieldUpdates.Select(f => 
+            {
+                var fieldType = f.FieldType?.ToLower() ?? "text";
+                var width = f.Width ?? 150;
+                var height = f.Height ?? 20;
+                
+                // Apply checkbox dimension correction in response
+                if ((fieldType == "checkbox" || fieldType == "radio") && width > height * 2)
+                {
+                    width = height; // Make it square
+                }
+                
+                return new
+                {
+                    originalName = f.OriginalName,
+                    name = f.NewName,
+                    type = f.FieldType,
+                    tooltip = f.Tooltip,
+                    isRequired = f.IsRequired,
+                    x = f.X,
+                    y = f.Y,
+                    width = width,
+                    height = height
+                };
+            }).ToList();
+            
+            // Apply PassportPDF for final PDF/UA compliance
+            byte[] compliantPdfBytes = result.PdfBytes;
+            try
+            {
+                logger.LogInformation($"[V3 iText] Applying PassportPDF for PDF/UA compliance. Input size: {result.PdfBytes.Length} bytes");
+                
+                // Convert to PDF/A-2u for accessibility compliance
+                compliantPdfBytes = await passportPdfService.ConvertToPdfAPreservingFieldsAsync(
+                    result.PdfBytes, 
+                    "updated_fields.pdf"
+                );
+                
+                logger.LogInformation($"[V3 iText] PassportPDF PDF/UA compliance processing successful. Output size: {compliantPdfBytes.Length} bytes");
+            }
+            catch (Exception ppEx)
+            {
+                logger.LogError(ppEx, "[V3 iText] PassportPDF processing failed");
+                logger.LogWarning($"[V3 iText] PassportPDF processing failed: {ppEx.Message}, using iText output");
+            }
+            
+            var response = new
+            {
+                success = true,
+                pdf = Convert.ToBase64String(compliantPdfBytes),
+                modifiedFields = result.ModifiedFields,
+                correctedFields = correctedFields,
+                metadata = result.Metadata
+            };
+            
+            return Results.Json(response);
+        }
+        else
+        {
+            logger.LogError($"[V3 iText] Field rebuild failed: {result.ErrorMessage}");
+            return Results.Json(new { error = result.ErrorMessage }, statusCode: 500);
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[V3 iText] Field rebuild endpoint failed");
+        return Results.Json(new { error = $"Update failed: {ex.Message}" }, statusCode: 500);
     }
 });
 

@@ -7,6 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="itext7" Version="8.0.5" />
+    <PackageReference Include="itext7.bouncy-castle-adapter" Version="8.0.5" />
     <PackageReference Include="PassportPDF" Version="1.0.95" />
     <PackageReference Include="PassportPDF.Tools.Framework" Version="1.0.70" />
     <PackageReference Include="Syncfusion.DocIO.Net.Core" Version="29.2.4" />
