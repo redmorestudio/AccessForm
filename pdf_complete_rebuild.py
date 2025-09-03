@@ -227,6 +227,10 @@ class PDFCompleteRebuilder:
         try:
             logger.info(f"Starting complete PDF rebuild for {len(field_updates)} fields")
             
+            # Debug: Write field updates to debug file
+            with open('/tmp/pdf_rebuild_debug.json', 'w') as f:
+                json.dump(field_updates, f, indent=2)
+            
             # Step 1: Open and analyze original PDF
             original_doc = fitz.open(input_path)
             
@@ -294,16 +298,33 @@ class PDFCompleteRebuilder:
                     if page_num is None or page_num < 1:
                         page_num = 1
                     
+                    # Get coordinates - check both capital and lowercase, handle 0 values properly
+                    x = field_info.get('X') if 'X' in field_info else field_info.get('x')
+                    if x is None:
+                        x = existing_field.get('x', 100)
+                    
+                    y = field_info.get('Y') if 'Y' in field_info else field_info.get('y')
+                    if y is None:
+                        y = existing_field.get('y', 100)
+                    
+                    width = field_info.get('Width') if 'Width' in field_info else field_info.get('width')
+                    if width is None:
+                        width = existing_field.get('width', 200)
+                    
+                    height = field_info.get('Height') if 'Height' in field_info else field_info.get('height')
+                    if height is None:
+                        height = existing_field.get('height', 20)
+                    
                     field_def = {
                         'name': new_name,
-                        'type': field_info.get('fieldType') or existing_field.get('type', 'text'),
-                        'x': field_info.get('X') or field_info.get('x') or existing_field.get('x', 100),
-                        'y': field_info.get('Y') or field_info.get('y') or existing_field.get('y', 100),
-                        'width': field_info.get('Width') or field_info.get('width') or existing_field.get('width', 200),
-                        'height': field_info.get('Height') or field_info.get('height') or existing_field.get('height', 20),
+                        'type': field_info.get('fieldType') or field_info.get('FieldType') or existing_field.get('type', 'text'),
+                        'x': x,
+                        'y': y,
+                        'width': width,
+                        'height': height,
                         'page': page_num - 1,  # Convert to 0-based index
-                        'tooltip': field_info.get('Tooltip', field_info.get('tooltip', '')),
-                        'required': field_info.get('IsRequired', field_info.get('isRequired', False))
+                        'tooltip': field_info.get('Tooltip') or field_info.get('tooltip', ''),
+                        'required': field_info.get('IsRequired') if 'IsRequired' in field_info else field_info.get('isRequired', False)
                     }
                 else:
                     field_def = field_info
