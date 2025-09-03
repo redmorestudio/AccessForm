@@ -1639,10 +1639,35 @@ app.MapPost("/api/update-pdf-fields-v4", async (HttpRequest request, ILogger<Pro
                 };
             }).ToList();
             
+            // Generate preview image for the first page
+            string? previewBase64 = null;
+            try
+            {
+                var previewOptions = new PDFtoImage.RenderOptions
+                {
+                    Dpi = 150,
+                    WithAnnotations = true,
+                    WithFormFill = true
+                };
+                
+                using var previewBitmap = PDFtoImage.Conversion.ToImage(result.PdfBytes, 0, options: previewOptions);
+                if (previewBitmap != null)
+                {
+                    using var image = SkiaSharp.SKImage.FromBitmap(previewBitmap);
+                    using var data = image.Encode(SkiaSharp.SKEncodedImageFormat.Png, 85);
+                    previewBase64 = Convert.ToBase64String(data.ToArray());
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "[V4 Complete Rebuild] Failed to generate preview");
+            }
+            
             var response = new
             {
                 success = true,
                 pdf = Convert.ToBase64String(result.PdfBytes),
+                preview = previewBase64,  // Add preview image
                 modifiedFields = result.AddedFields,
                 correctedFields = correctedFields,
                 metadata = new 
