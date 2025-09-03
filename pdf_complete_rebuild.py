@@ -86,6 +86,11 @@ class PDFCompleteRebuilder:
             width = field_info.get('width', 200)
             height = field_info.get('height', 20)
             
+            # Convert Y coordinate from top-left origin to bottom-left origin
+            # Frontend uses top-left (Y increases downward), PyMuPDF uses bottom-left (Y increases upward)
+            page_height = page.rect.height
+            y_converted = page_height - y - height
+            
             # Adjust for checkbox/radio button dimensions
             if field_type in ['checkbox', 'radio', 'radiobutton']:
                 # Ensure square dimensions for checkboxes
@@ -95,7 +100,7 @@ class PDFCompleteRebuilder:
                 width = min(width, 20)
                 height = min(height, 20)
             
-            rect = fitz.Rect(x, y, x + width, y + height)
+            rect = fitz.Rect(x, y_converted, x + width, y_converted + height)
             
             # Determine widget type
             widget_type_map = {
@@ -181,22 +186,26 @@ class PDFCompleteRebuilder:
         existing_fields = {}
         
         for page_num, page in enumerate(doc):
+            page_height = page.rect.height
             for widget in page.widgets():
                 field_name = widget.field_name
                 if field_name:
                     rect = widget.rect
+                    # Convert from PyMuPDF bottom-left to top-left for consistency with frontend
+                    y_top_left = page_height - rect.y1  # y1 is the bottom of the rect in PyMuPDF
                     existing_fields[field_name] = {
                         'x': rect.x0,
-                        'y': rect.y0,
+                        'y': y_top_left,
                         'width': rect.width,
                         'height': rect.height,
                         'page': page_num,
                         'type': self.get_widget_type_name(widget.field_type),
                         'flags': widget.field_flags,
                         'value': widget.field_value,
-                        'border_width': widget.border_width
+                        'border_width': widget.border_width,
+                        'page_height': page_height  # Store for later conversion if needed
                     }
-                    logger.info(f"Found existing field '{field_name}' at ({rect.x0}, {rect.y0}) with size {rect.width}x{rect.height}")
+                    logger.info(f"Found existing field '{field_name}' at ({rect.x0}, {y_top_left}) with size {rect.width}x{rect.height}")
         
         return existing_fields
     
