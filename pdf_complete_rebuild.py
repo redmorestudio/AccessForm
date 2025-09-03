@@ -12,9 +12,17 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 
+# Debug output to stderr to confirm script is running
+sys.stderr.write("pdf_complete_rebuild.py: Script loaded\n")
+sys.stderr.flush()
+
 try:
     import fitz  # PyMuPDF
-except ImportError:
+    sys.stderr.write("pdf_complete_rebuild.py: PyMuPDF imported successfully\n")
+    sys.stderr.flush()
+except ImportError as e:
+    sys.stderr.write(f"pdf_complete_rebuild.py: PyMuPDF import failed: {e}\n")
+    sys.stderr.flush()
     print(json.dumps({
         "success": False,
         "error": "PyMuPDF not installed. Run: pip install PyMuPDF"
@@ -325,6 +333,10 @@ class PDFCompleteRebuilder:
 
 def main():
     """Main entry point for command-line usage"""
+    # Debug: Log to stderr to see if script is running
+    sys.stderr.write(f"Python script started with {len(sys.argv)} arguments\n")
+    sys.stderr.flush()
+    
     if len(sys.argv) < 3:
         print(json.dumps({
             "success": False,
