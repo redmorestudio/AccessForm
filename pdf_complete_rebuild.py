@@ -315,10 +315,10 @@ class PDFCompleteRebuilder:
             
             return {
                 "success": True,
-                "output_path": output_path,
-                "added_fields": added_fields,
-                "total_fields": total_fields,
-                "tag_elements": self.tag_counter,
+                "outputPath": output_path,
+                "addedFields": added_fields,
+                "totalFields": total_fields,
+                "tagElements": self.tag_counter,
                 "message": f"Complete rebuild successful: {total_fields} fields, {self.tag_counter} tag elements"
             }
             

@@ -25,14 +25,28 @@ namespace WordToPdfConverter.Services
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
             _pythonScriptPath = Path.Combine(baseDir, "pdf_complete_rebuild.py");
             
+            _logger.LogInformation($"Looking for Python script at: {_pythonScriptPath}");
+            
             if (!File.Exists(_pythonScriptPath))
             {
                 // Try alternative paths
                 _pythonScriptPath = Path.Combine(Directory.GetCurrentDirectory(), "pdf_complete_rebuild.py");
+                _logger.LogInformation($"Trying alternative path: {_pythonScriptPath}");
+                
                 if (!File.Exists(_pythonScriptPath))
                 {
-                    _logger.LogWarning($"Python script not found at expected locations");
+                    _logger.LogError($"Python script not found at any expected location!");
+                    _logger.LogError($"BaseDirectory: {baseDir}");
+                    _logger.LogError($"CurrentDirectory: {Directory.GetCurrentDirectory()}");
                 }
+                else
+                {
+                    _logger.LogInformation($"Found Python script at: {_pythonScriptPath}");
+                }
+            }
+            else
+            {
+                _logger.LogInformation($"Found Python script at: {_pythonScriptPath}");
             }
         }
 
@@ -149,6 +163,42 @@ namespace WordToPdfConverter.Services
         {
             try
             {
+                _logger.LogInformation($"Executing Python script:");
+                _logger.LogInformation($"  Script: {_pythonScriptPath}");
+                _logger.LogInformation($"  PDF: {pdfPath}");
+                _logger.LogInformation($"  JSON: {jsonPath}");
+                
+                // Verify files exist
+                if (!File.Exists(_pythonScriptPath))
+                {
+                    _logger.LogError($"Python script not found: {_pythonScriptPath}");
+                    return new PythonResult
+                    {
+                        Success = false,
+                        Error = $"Python script not found: {_pythonScriptPath}"
+                    };
+                }
+                
+                if (!File.Exists(pdfPath))
+                {
+                    _logger.LogError($"PDF file not found: {pdfPath}");
+                    return new PythonResult
+                    {
+                        Success = false,
+                        Error = $"PDF file not found: {pdfPath}"
+                    };
+                }
+                
+                if (!File.Exists(jsonPath))
+                {
+                    _logger.LogError($"JSON file not found: {jsonPath}");
+                    return new PythonResult
+                    {
+                        Success = false,
+                        Error = $"JSON file not found: {jsonPath}"
+                    };
+                }
+                
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = "python3",
@@ -158,6 +208,8 @@ namespace WordToPdfConverter.Services
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
+                
+                _logger.LogInformation($"Executing command: python3 {startInfo.Arguments}");
 
                 using var process = new Process { StartInfo = startInfo };
                 process.Start();
@@ -170,13 +222,14 @@ namespace WordToPdfConverter.Services
                 var output = await outputTask;
                 var error = await errorTask;
 
+                // Always log what we got back for debugging
+                _logger.LogInformation($"Python exit code: {process.ExitCode}");
+                _logger.LogInformation($"Python stdout length: {output?.Length ?? 0}");
+                _logger.LogInformation($"Python stdout: {output}");
                 if (!string.IsNullOrWhiteSpace(error))
                 {
-                    _logger.LogDebug($"Python stderr: {error}");
+                    _logger.LogWarning($"Python stderr: {error}");
                 }
-
-                _logger.LogDebug($"Python process exited with code {process.ExitCode}");
-                _logger.LogDebug($"Python stdout: {output}");
                 
                 if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
                 {
