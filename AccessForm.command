@@ -32,16 +32,16 @@ fi
 
 echo "✅ Server starting..."
 echo ""
-echo "🌐 Opening your browser to: http://localhost:5008"
+echo "🌐 Opening your browser to: http://localhost:5001"
 echo ""
 
 # Try to open the browser automatically
 sleep 2
-open http://localhost:5008 2>/dev/null || true
+open http://localhost:5001 2>/dev/null || true
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Ready! Your browser should open automatically."
-echo "  If not, manually go to: http://localhost:5008"
+echo "  If not, manually go to: http://localhost:5001"
 echo ""
 echo "  To stop: Close this window or press Ctrl+C"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
