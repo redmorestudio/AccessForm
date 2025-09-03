@@ -17,10 +17,17 @@ namespace WordToPdfConverter.Services
     {
         private readonly ILogger<PdfCompleteRebuildService> _logger;
         private readonly string _pythonScriptPath;
+        private readonly AccessFormServer.Services.PassportPdfService? _passportPdfService;
+        private readonly AccessFormServer.Services.AdobeAutotagService? _adobeAutotagService;
 
-        public PdfCompleteRebuildService(ILogger<PdfCompleteRebuildService> logger)
+        public PdfCompleteRebuildService(
+            ILogger<PdfCompleteRebuildService> logger, 
+            AccessFormServer.Services.PassportPdfService? passportPdfService = null,
+            AccessFormServer.Services.AdobeAutotagService? adobeAutotagService = null)
         {
             _logger = logger;
+            _passportPdfService = passportPdfService;
+            _adobeAutotagService = adobeAutotagService;
             // Get the script path relative to the application directory
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
             _pythonScriptPath = Path.Combine(baseDir, "pdf_complete_rebuild.py");
@@ -115,6 +122,25 @@ namespace WordToPdfConverter.Services
                     {
                         // Read the rebuilt PDF
                         var rebuiltPdfBytes = await File.ReadAllBytesAsync(result.OutputPath);
+                        
+                        // Apply Adobe autotag for full accessibility compliance
+                        if (_adobeAutotagService != null && _adobeAutotagService.IsConfigured())
+                        {
+                            try
+                            {
+                                _logger.LogInformation("Applying Adobe autotag for accessibility...");
+                                rebuiltPdfBytes = await _adobeAutotagService.AutotagPdfAsync(rebuiltPdfBytes, generateReport: false);
+                                _logger.LogInformation("Adobe autotag applied successfully");
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "Failed to apply Adobe autotag, continuing with basic PDF");
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogInformation("Adobe autotag service not configured, skipping accessibility tagging");
+                        }
                         
                         // Clean up output file
                         try { File.Delete(result.OutputPath); } catch { }

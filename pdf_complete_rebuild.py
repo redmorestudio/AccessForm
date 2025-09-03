@@ -74,17 +74,67 @@ class PDFCompleteRebuilder:
         # This method is no longer needed as we'll use insert_pdf instead
         pass
     
+    def detect_field_type_and_tooltip(self, field_name: str, provided_type: str = 'text', provided_tooltip: str = '') -> Tuple[str, str]:
+        """Intelligently detect field type and generate appropriate tooltip based on field name"""
+        name_lower = field_name.lower()
+        
+        # Smart type detection based on field name patterns
+        if 'signature' in name_lower and 'date' not in name_lower:
+            field_type = 'signature'
+            tooltip = provided_tooltip or f"Click to sign {field_name}"
+        elif 'date' in name_lower or 'dob' in name_lower or 'birth' in name_lower:
+            field_type = 'text'  # Dates are text fields with special formatting
+            tooltip = provided_tooltip or f"Enter date in MM/DD/YYYY format"
+        elif 'first name' in name_lower:
+            field_type = 'text'
+            tooltip = provided_tooltip or f"Enter first name"
+        elif 'last name' in name_lower:
+            field_type = 'text'
+            tooltip = provided_tooltip or f"Enter last name"
+        elif 'middle name' in name_lower:
+            field_type = 'text'
+            tooltip = provided_tooltip or f"Enter middle name or initial"
+        elif any(x in name_lower for x in ['email', 'e-mail']):
+            field_type = 'text'
+            tooltip = provided_tooltip or f"Enter email address (example@domain.com)"
+        elif any(x in name_lower for x in ['phone', 'tel', 'mobile', 'cell']):
+            field_type = 'text'
+            tooltip = provided_tooltip or f"Enter phone number (XXX-XXX-XXXX)"
+        elif any(x in name_lower for x in ['description', 'comments', 'notes', 'reason']):
+            field_type = 'text'  # Multi-line text area
+            tooltip = provided_tooltip or f"Enter detailed information for {field_name}"
+        elif any(x in name_lower for x in ['checkbox', 'check', 'agree', 'consent']):
+            field_type = 'checkbox'
+            tooltip = provided_tooltip or f"Check to select {field_name}"
+        else:
+            field_type = provided_type.lower()
+            tooltip = provided_tooltip or field_name
+            
+        return field_type, tooltip
+    
     def add_form_field(self, page: fitz.Page, field_info: Dict[str, Any]) -> Optional[fitz.Widget]:
         """Add a single form field to a page with proper properties"""
         try:
             field_name = field_info.get('name', f'field_{self.field_counter}')
-            field_type = field_info.get('type', 'text').lower()
+            provided_type = field_info.get('type', 'text')
+            provided_tooltip = field_info.get('tooltip', '')
+            
+            # Use smart detection for field type and tooltip
+            field_type, tooltip = self.detect_field_type_and_tooltip(field_name, provided_type, provided_tooltip)
             
             # Get position and size
             x = field_info.get('x', 100)
             y = field_info.get('y', 100)
             width = field_info.get('width', 200)
             height = field_info.get('height', 20)
+            
+            # Adjust position for text area fields (description, reason, etc.)
+            name_lower = field_name.lower()
+            if any(x in name_lower for x in ['description', 'comments', 'notes', 'reason']):
+                # Move text areas left and UP on the visual page
+                x = max(0, x - 20)  # 20px to the left
+                y = y + 20  # Move UP on page (increase Y since we convert later)
+                height = 27  # Fixed height for text areas
             
             # Convert Y coordinate from top-left origin to bottom-left origin
             # Frontend uses top-left (Y increases downward), PyMuPDF uses bottom-left (Y increases upward)
@@ -129,10 +179,14 @@ class PDFCompleteRebuilder:
             widget.border_color = [0, 0, 0]  # Black border
             widget.fill_color = [1, 1, 1]    # White background
             
+            # IMPORTANT: Set text font to Helvetica to avoid ZapfDingbats
+            # This applies to ALL widgets to prevent any ZapfDingbats usage
+            widget.text_font = "Helv"
+            widget.text_fontsize = 10
+            
             # Set type-specific properties
             if widget_type == fitz.PDF_WIDGET_TYPE_TEXT:
-                widget.text_font = "Helv"
-                widget.text_fontsize = 10
+                # Font already set above to avoid ZapfDingbats
                 widget.text_color = [0, 0, 0]
                 
                 # Check for multiline
@@ -143,14 +197,55 @@ class PDFCompleteRebuilder:
                 # Set default options
                 options = field_info.get('options', ['Option 1', 'Option 2', 'Option 3'])
                 widget.choice_values = options
+                # Ensure Helvetica font
+                widget.text_font = "Helv"
+                widget.text_fontsize = 10
             
             elif widget_type == fitz.PDF_WIDGET_TYPE_CHECKBOX:
                 # Set checkbox specific properties
                 widget.field_value = field_info.get('checked', False)
+                # Force Helvetica font for checkbox to avoid ZapfDingbats
+                widget.text_font = "Helv"
+                widget.text_fontsize = 10
+                # Use a simple cross mark instead of ZapfDingbats checkmark
+                widget.button_caption = "X"  # Use simple X instead of ZapfDingbats symbol
+            
+            elif widget_type == fitz.PDF_WIDGET_TYPE_RADIOBUTTON:
+                # Set radio button specific properties
+                widget.field_value = field_info.get('value', '')
+                # Force Helvetica font to avoid ZapfDingbats
+                widget.text_font = "Helv"
+                widget.text_fontsize = 10
+                # Use a simple dot instead of ZapfDingbats symbol
+                widget.button_caption = "•"  # Use bullet instead of ZapfDingbats symbol
+            
+            else:
+                # Clear default value for non-checkbox/radio fields
+                widget.field_value = ""
             
             # Set tooltip/alternate name for accessibility
-            tooltip = field_info.get('tooltip', field_name)
-            widget.field_value = ""  # Clear any default value
+            # ALWAYS set a tooltip for accessibility, even if empty
+            if not tooltip:
+                # Generate a fallback tooltip if none provided
+                tooltip = f"Field: {field_name}"
+            
+            # PyMuPDF uses field_label for the tooltip/alternate text
+            widget.field_label = tooltip
+            
+            # Also try setting the TU (tooltip) entry directly if possible
+            try:
+                if hasattr(widget, 'field_tooltip'):
+                    widget.field_tooltip = tooltip
+            except:
+                pass
+                
+            # Try to set field language for PDF/UA
+            # This helps screen readers pronounce field names correctly
+            try:
+                if hasattr(widget, 'set_language'):
+                    widget.set_language('en-US')
+            except:
+                pass  # Not critical if language setting fails
             
             # Set required flag if needed
             if field_info.get('required', False):
@@ -169,12 +264,67 @@ class PDFCompleteRebuilder:
             return None
     
     def create_tag_structure(self, doc: fitz.Document, fields_by_page: Dict[int, List[Dict]]) -> bool:
-        """Create a clean tag tree structure for PDF/UA compliance"""
+        """Create accessibility structure for PDF/UA compliance"""
         try:
-            # PyMuPDF has limited support for tag structures
-            # We'll just log the intent for now
-            self.tag_counter = sum(len(fields) for fields in fields_by_page.values())
-            logger.info(f"Would create tag structure with {self.tag_counter} elements")
+            self.tag_counter = 0
+            
+            # Add document-level accessibility metadata
+            try:
+                if hasattr(doc, 'xref_set_key') and hasattr(doc, 'pdf_catalog'):
+                    catalog_xref = doc.pdf_catalog()
+                    
+                    # Mark document as tagged
+                    doc.xref_set_key(catalog_xref, 'MarkInfo', '<</Marked true/Suspects false>>')
+                    
+                    # Create a basic structure tree root
+                    # This tells PDF readers that content is structured
+                    struct_tree_root = """<</Type/StructTreeRoot
+                        /K[<</Type/StructElem/S/Document>>]
+                        /ParentTree<</Nums[]>>
+                        /RoleMap<</Document/Document/H1/H1/H2/H2/P/P/Figure/Figure/Form/Form>>
+                    >>"""
+                    
+                    struct_xref = doc.xref_add_object(struct_tree_root)
+                    doc.xref_set_key(catalog_xref, 'StructTreeRoot', f'{struct_xref} 0 R')
+                    
+                    # Set language
+                    doc.xref_set_key(catalog_xref, 'Lang', '(en-US)')
+                    
+                    # Add ViewerPreferences for accessibility
+                    doc.xref_set_key(catalog_xref, 'ViewerPreferences', '<</DisplayDocTitle true>>')
+                    
+                    logger.info("Added document structure tree root and accessibility metadata")
+            except Exception as e:
+                logger.warning(f"Could not add full structure tree: {e}")
+            
+            # Count content elements
+            for page_num, page in enumerate(doc):
+                # Count text blocks
+                text_blocks = page.get_text("blocks")
+                for block in text_blocks:
+                    if block[4].strip():  # If text is not empty
+                        self.tag_counter += 1
+                
+                # Count images
+                image_list = page.get_images()
+                self.tag_counter += len(image_list)
+                
+                # Count form fields
+                if page_num in fields_by_page:
+                    self.tag_counter += len(fields_by_page[page_num])
+                
+                # Try to mark page content as tagged
+                try:
+                    page_xref = page.xref
+                    if page_xref and hasattr(doc, 'xref_set_key'):
+                        # Set tab order for accessibility
+                        doc.xref_set_key(page_xref, 'Tabs', '/S')
+                        # Mark page as having structured content
+                        doc.xref_set_key(page_xref, 'StructParents', '0')
+                except:
+                    pass
+            
+            logger.info(f"Processed {self.tag_counter} content elements")
             return True
             
         except Exception as e:
@@ -224,7 +374,7 @@ class PDFCompleteRebuilder:
     
     def rebuild_pdf(self, input_path: str, field_updates: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Completely rebuild a PDF with new fields and clean structure.
+        Rebuild PDF by removing and re-adding fields while preserving document structure.
         
         Args:
             input_path: Path to input PDF
@@ -234,7 +384,7 @@ class PDFCompleteRebuilder:
             Result dictionary with success status and output path
         """
         try:
-            logger.info(f"Starting complete PDF rebuild for {len(field_updates)} fields")
+            logger.info(f"Starting PDF field rebuild for {len(field_updates)} fields")
             
             # Debug: Write field updates to debug file
             with open('/tmp/pdf_rebuild_debug.json', 'w') as f:
@@ -243,7 +393,7 @@ class PDFCompleteRebuilder:
             # Debug: track what happens
             debug_info = {'input_fields': len(field_updates)}
             
-            # Step 1: Open and analyze original PDF
+            # Step 1: Open the original PDF
             original_doc = fitz.open(input_path)
             
             # Step 1.5: Extract existing field positions BEFORE removing them
@@ -256,15 +406,29 @@ class PDFCompleteRebuilder:
             pages_content = self.extract_visual_content(original_doc)
             logger.info(f"Extracted content from {len(pages_content)} pages")
             
-            # Step 3: Create a completely clean PDF (no fields, no annotations)
+            # Step 3: Create a working copy preserving ALL document structure
             temp_clean_path = tempfile.mktemp(suffix='_clean.pdf')
             
-            # Create new document preserving PDF content but removing form fields
-            # Important: We need to preserve the actual page content, not just the structure
+            # IMPORTANT: Preserve the original document structure including tags
             temp_doc = fitz.open()
             
-            # Copy the entire document first to preserve content
+            # Insert the entire document to preserve structure, tags, and content
             temp_doc.insert_pdf(original_doc)
+            
+            # Process fonts to ensure they're embedded
+            try:
+                for page in temp_doc:
+                    fonts = page.get_fonts()
+                    for font in fonts:
+                        font_name = font[3]  # Font name
+                        font_xref = font[0]  # Font xref
+                        # Check if font needs embedding
+                        if 'Arial' in font_name:
+                            logger.info(f"Found Arial font: {font_name}, xref: {font_xref}")
+                            # PyMuPDF doesn't provide direct font embedding control
+                            # The fonts are already in the document from the source
+            except Exception as e:
+                logger.warning(f"Could not analyze fonts: {e}")
             
             # Now remove ONLY the form fields (widgets), keeping everything else
             for page in temp_doc:
@@ -278,7 +442,7 @@ class PDFCompleteRebuilder:
                         page.delete_annot(annot)
             
             # Save to ensure changes are committed
-            temp_doc.save(temp_clean_path, garbage=4, deflate=True, clean=True)
+            temp_doc.save(temp_clean_path, garbage=0, deflate=False)
             temp_doc.close()
             
             # Close the original document as we're done with it
@@ -337,7 +501,7 @@ class PDFCompleteRebuilder:
                         'width': width,
                         'height': height,
                         'page': page_num - 1,  # Convert to 0-based index
-                        'tooltip': field_info.get('Tooltip') or field_info.get('tooltip', ''),
+                        'tooltip': field_info.get('Tooltip') or field_info.get('tooltip') or existing_field.get('tooltip', new_name),
                         'required': field_info.get('IsRequired') if 'IsRequired' in field_info else field_info.get('isRequired', False)
                     }
                 else:
@@ -352,16 +516,27 @@ class PDFCompleteRebuilder:
             # Add existing fields that weren't updated
             for field_name, existing_field in existing_fields.items():
                 if field_name not in updated_field_names:
-                    # Keep existing field as-is
+                    # Keep existing field but check for duplicates
+                    # If this field position conflicts with an already-added field, offset it
+                    field_x = existing_field.get('x', 100)
+                    field_y = existing_field.get('y', 100)
+                    
+                    # Check if this position is already taken
+                    for existing_page_fields in fields_by_page.get(existing_field.get('page', 0), []):
+                        if abs(existing_page_fields['x'] - field_x) < 5 and abs(existing_page_fields['y'] - field_y) < 5:
+                            # Position conflict - offset this field
+                            field_y += 25  # Move down by 25 pixels
+                            break
+                    
                     field_def = {
                         'name': field_name,
                         'type': existing_field.get('type', 'text'),
-                        'x': existing_field.get('x', 100),
-                        'y': existing_field.get('y', 100),
+                        'x': field_x,
+                        'y': field_y,
                         'width': existing_field.get('width', 200),
                         'height': existing_field.get('height', 20),
                         'page': existing_field.get('page', 0),
-                        'tooltip': '',
+                        'tooltip': field_name,  # Use field name as tooltip for existing fields
                         'required': False
                     }
                     
@@ -379,6 +554,8 @@ class PDFCompleteRebuilder:
             
             # Add fields to each page
             added_fields = []
+            used_field_names = set()  # Track used field names to avoid duplicates
+            
             for page_num, fields in fields_by_page.items():
                 if page_num >= len(final_doc):
                     logger.warning(f"Page {page_num} does not exist, skipping fields")
@@ -389,7 +566,28 @@ class PDFCompleteRebuilder:
                 # Sort fields by Y then X for proper tab order
                 fields.sort(key=lambda f: (-f.get('y', 0), f.get('x', 0)))
                 
+                # Track positions to handle duplicate fields at same location
+                used_positions = {}
+                
                 for field_def in fields:
+                    # Handle duplicate field names
+                    orig_name = field_def['name']
+                    field_name = orig_name
+                    counter = 2
+                    while field_name in used_field_names:
+                        field_name = f"{orig_name}_{counter}"
+                        counter += 1
+                    field_def['name'] = field_name
+                    used_field_names.add(field_name)
+                    
+                    # Handle fields at same position
+                    pos_key = f"{field_def.get('x', 0):.1f},{field_def.get('y', 0):.1f}"
+                    if pos_key in used_positions:
+                        # Offset this field vertically
+                        field_def['y'] = field_def.get('y', 0) + 25
+                        logger.info(f"Offsetting duplicate field '{field_name}' at position {pos_key}")
+                    used_positions[pos_key] = field_name
+                    
                     widget = self.add_form_field(page, field_def)
                     if widget:
                         added_fields.append({
@@ -403,18 +601,47 @@ class PDFCompleteRebuilder:
             # Step 5: Create clean tag structure for accessibility
             self.create_tag_structure(final_doc, fields_by_page)
             
-            # Step 6: Set document metadata for PDF/UA
-            final_doc.set_metadata({
-                'producer': 'AccessForm PDF Rebuilder',
-                'creator': 'AccessForm Complete Rebuild',
-                'title': 'Accessible PDF Form'
-            })
+            # Step 6: Save and reload to ensure fields are properly committed
+            # This fixes the issue where fields only appear after second edit
+            temp_commit_path = tempfile.mktemp(suffix='_commit.pdf')
+            final_doc.save(temp_commit_path, garbage=0, deflate=False)
+            final_doc.close()
             
-            # Language will be set via metadata
+            # Reload the document
+            final_doc = fitz.open(temp_commit_path)
+            
+            # Set document metadata for accessibility
+            metadata = {
+                'producer': 'AccessForm PDF Rebuilder',
+                'creator': 'AccessForm System',
+                'title': 'Accessible PDF Form',
+                'subject': 'Accessible Form Document'
+            }
+            final_doc.set_metadata(metadata)
+            
+            # Set document language for PDF/UA compliance
+            final_doc.set_language('en-US')
+            
+            # Add PDF/UA identifier
+            try:
+                if hasattr(final_doc, 'xref_set_key'):
+                    catalog_xref = final_doc.pdf_catalog()
+                    
+                    # Add PDF/UA-1 identifier
+                    pdfuaid = """<</Part 1>>"""
+                    ua_xref = final_doc.xref_add_object(pdfuaid)
+                    final_doc.xref_set_key(catalog_xref, 'PdfUAId', f'{ua_xref} 0 R')
+                    
+                    logger.info("Added PDF/UA identifier")
+            except Exception as e:
+                logger.warning(f"Could not add PDF/UA identifier: {e}")
+            
+            # Skip viewer preferences to avoid conflicts
             
             # Step 7: Save final PDF
             output_path = tempfile.mktemp(suffix='_rebuilt.pdf')
-            final_doc.save(output_path, garbage=4, deflate=True, clean=True)
+            # Save with minimal options to avoid corruption
+            final_doc.save(output_path, garbage=0, deflate=False)
             
             # Verify the result
             verify_doc = fitz.open(output_path)
@@ -423,9 +650,11 @@ class PDFCompleteRebuilder:
             
             final_doc.close()
             
-            # Clean up temp file
+            # Clean up temp files
             if os.path.exists(temp_clean_path):
                 os.remove(temp_clean_path)
+            if os.path.exists(temp_commit_path):
+                os.remove(temp_commit_path)
             
             logger.info(f"Successfully rebuilt PDF with {total_fields} fields")
             

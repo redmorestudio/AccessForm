@@ -91,8 +91,23 @@ builder.Services.AddScoped<PdfFieldTagEditorService>();
 // Add iText field rebuild service for proper PDF/UA compliant field renaming
 builder.Services.AddScoped<ITextFieldRebuildService>();
 
-// Add complete PDF rebuild service to eliminate ghost fields
-builder.Services.AddScoped<PdfCompleteRebuildService>();
+// Add Adobe Autotag Service for accessibility
+builder.Services.AddScoped<AccessFormServer.Services.AdobeAutotagService>(provider =>
+{
+    var logger = provider.GetRequiredService<ILogger<AccessFormServer.Services.AdobeAutotagService>>();
+    // Look for credentials in the adobe folder
+    var credentialsPath = Path.Combine(Directory.GetCurrentDirectory(), "../adobe/pdfservices-api-credentials.json");
+    return new AccessFormServer.Services.AdobeAutotagService(logger, credentialsPath);
+});
+
+// Add complete PDF rebuild service to eliminate ghost fields with Adobe autotag support
+builder.Services.AddScoped<PdfCompleteRebuildService>(provider =>
+{
+    var logger = provider.GetRequiredService<ILogger<PdfCompleteRebuildService>>();
+    var passportPdfService = provider.GetService<PassportPdfService>();
+    var adobeService = provider.GetService<AccessFormServer.Services.AdobeAutotagService>();
+    return new PdfCompleteRebuildService(logger, passportPdfService, adobeService);
+});
 
 // Add NLP services  
 builder.Services.AddScoped<NLPLabelGenerator>();
@@ -1574,15 +1589,23 @@ app.MapPost("/api/update-pdf-fields-v4", async (HttpRequest request, ILogger<Pro
             fieldUpdatesJson = form["fields"];
         }
         
-        logger.LogInformation($"[V4 Complete Rebuild] Received fieldUpdatesJson: {(string.IsNullOrEmpty(fieldUpdatesJson) ? "NULL" : fieldUpdatesJson.ToString())}");
+        logger.LogInformation($"[V4 Complete Rebuild] Form has {form.Files.Count} files, {form.Count} fields");
+        foreach (var key in form.Keys)
+        {
+            logger.LogInformation($"[V4 Complete Rebuild] Form key: {key} = {form[key].ToString().Substring(0, Math.Min(100, form[key].ToString().Length))}");
+        }
+        
+        logger.LogInformation($"[V4 Complete Rebuild] Received fieldUpdatesJson: {(string.IsNullOrEmpty(fieldUpdatesJson) ? "NULL" : fieldUpdatesJson.ToString().Substring(0, Math.Min(200, fieldUpdatesJson.ToString().Length)))}");
         
         if (pdfFile == null || pdfFile.Length == 0)
         {
+            logger.LogError("[V4 Complete Rebuild] No PDF file provided");
             return Results.BadRequest(new { error = "No PDF file provided" });
         }
         
         if (string.IsNullOrEmpty(fieldUpdatesJson))
         {
+            logger.LogError("[V4 Complete Rebuild] No field updates provided");
             return Results.BadRequest(new { error = "No field updates provided" });
         }
         
@@ -1643,6 +1666,7 @@ app.MapPost("/api/update-pdf-fields-v4", async (HttpRequest request, ILogger<Pro
             string? previewBase64 = null;
             try
             {
+                logger.LogInformation("[V4 Complete Rebuild] Starting preview generation");
                 var previewOptions = new PDFtoImage.RenderOptions
                 {
                     Dpi = 150,
@@ -1653,14 +1677,20 @@ app.MapPost("/api/update-pdf-fields-v4", async (HttpRequest request, ILogger<Pro
                 using var previewBitmap = PDFtoImage.Conversion.ToImage(result.PdfBytes, 0, options: previewOptions);
                 if (previewBitmap != null)
                 {
+                    logger.LogInformation($"[V4 Complete Rebuild] Preview bitmap created: {previewBitmap.Width}x{previewBitmap.Height}");
                     using var image = SkiaSharp.SKImage.FromBitmap(previewBitmap);
                     using var data = image.Encode(SkiaSharp.SKEncodedImageFormat.Png, 85);
                     previewBase64 = Convert.ToBase64String(data.ToArray());
+                    logger.LogInformation($"[V4 Complete Rebuild] Preview generated: {previewBase64?.Length ?? 0} characters");
+                }
+                else
+                {
+                    logger.LogWarning("[V4 Complete Rebuild] Preview bitmap was null");
                 }
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "[V4 Complete Rebuild] Failed to generate preview");
+                logger.LogError(ex, "[V4 Complete Rebuild] Failed to generate preview");
             }
             
             var response = new
