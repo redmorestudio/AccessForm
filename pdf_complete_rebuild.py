@@ -231,12 +231,17 @@ class PDFCompleteRebuilder:
             with open('/tmp/pdf_rebuild_debug.json', 'w') as f:
                 json.dump(field_updates, f, indent=2)
             
+            # Debug: track what happens
+            debug_info = {'input_fields': len(field_updates)}
+            
             # Step 1: Open and analyze original PDF
             original_doc = fitz.open(input_path)
             
             # Step 1.5: Extract existing field positions BEFORE removing them
             existing_fields = self.extract_existing_fields(original_doc)
             logger.info(f"Found {len(existing_fields)} existing fields in the document")
+            debug_info['existing_fields'] = len(existing_fields)
+            debug_info['existing_field_names'] = list(existing_fields.keys())
             
             # Step 2: Extract visual content (without fields)
             pages_content = self.extract_visual_content(original_doc)
@@ -355,6 +360,13 @@ class PDFCompleteRebuilder:
                     if page_num not in fields_by_page:
                         fields_by_page[page_num] = []
                     fields_by_page[page_num].append(field_def)
+            
+            # Debug: track fields to be added
+            debug_info['fields_by_page'] = {page: len(fields) for page, fields in fields_by_page.items()}
+            debug_info['total_to_add'] = sum(len(fields) for fields in fields_by_page.values())
+            
+            with open('/tmp/pdf_rebuild_debug2.json', 'w') as f:
+                json.dump(debug_info, f, indent=2)
             
             # Add fields to each page
             added_fields = []
