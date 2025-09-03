@@ -176,6 +176,43 @@ class PDFCompleteRebuilder:
             logger.error(f"Failed to create tag structure: {e}")
             return False
     
+    def extract_existing_fields(self, doc: fitz.Document) -> Dict[str, Dict[str, Any]]:
+        """Extract position and properties of existing fields from the document"""
+        existing_fields = {}
+        
+        for page_num, page in enumerate(doc):
+            for widget in page.widgets():
+                field_name = widget.field_name
+                if field_name:
+                    rect = widget.rect
+                    existing_fields[field_name] = {
+                        'x': rect.x0,
+                        'y': rect.y0,
+                        'width': rect.width,
+                        'height': rect.height,
+                        'page': page_num,
+                        'type': self.get_widget_type_name(widget.field_type),
+                        'flags': widget.field_flags,
+                        'value': widget.field_value,
+                        'border_width': widget.border_width
+                    }
+                    logger.info(f"Found existing field '{field_name}' at ({rect.x0}, {rect.y0}) with size {rect.width}x{rect.height}")
+        
+        return existing_fields
+    
+    def get_widget_type_name(self, widget_type: int) -> str:
+        """Convert widget type constant to string name"""
+        type_map = {
+            fitz.PDF_WIDGET_TYPE_TEXT: 'text',
+            fitz.PDF_WIDGET_TYPE_CHECKBOX: 'checkbox',
+            fitz.PDF_WIDGET_TYPE_RADIOBUTTON: 'radio',
+            fitz.PDF_WIDGET_TYPE_COMBOBOX: 'combobox',
+            fitz.PDF_WIDGET_TYPE_LISTBOX: 'listbox',
+            fitz.PDF_WIDGET_TYPE_SIGNATURE: 'signature',
+            fitz.PDF_WIDGET_TYPE_BUTTON: 'button'
+        }
+        return type_map.get(widget_type, 'text')
+    
     def rebuild_pdf(self, input_path: str, field_updates: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Completely rebuild a PDF with new fields and clean structure.
@@ -192,6 +229,10 @@ class PDFCompleteRebuilder:
             
             # Step 1: Open and analyze original PDF
             original_doc = fitz.open(input_path)
+            
+            # Step 1.5: Extract existing field positions BEFORE removing them
+            existing_fields = self.extract_existing_fields(original_doc)
+            logger.info(f"Found {len(existing_fields)} existing fields in the document")
             
             # Step 2: Extract visual content (without fields)
             pages_content = self.extract_visual_content(original_doc)
@@ -232,22 +273,34 @@ class PDFCompleteRebuilder:
             
             # Group fields by page
             fields_by_page = {}
+            
+            # Track which fields are being updated
+            updated_field_names = set()
+            
             for field_info in field_updates:
                 # Parse field update format
                 if 'originalName' in field_info:
-                    # Convert from update format to field definition
-                    # Handle page number carefully - it might be None
-                    page_num = field_info.get('PageNumber') or field_info.get('pageNumber') or 1
+                    original_name = field_info['originalName']
+                    new_name = field_info.get('newName', original_name)
+                    updated_field_names.add(original_name)
+                    
+                    # Try to get position from existing field if not provided
+                    existing_field = existing_fields.get(original_name, {})
+                    
+                    # Handle page number - prefer existing field's page if not provided
+                    page_num = field_info.get('PageNumber') or field_info.get('pageNumber')
                     if page_num is None:
+                        page_num = existing_field.get('page', 0) + 1  # Convert to 1-based for consistency
+                    if page_num is None or page_num < 1:
                         page_num = 1
                     
                     field_def = {
-                        'name': field_info.get('newName', field_info['originalName']),
-                        'type': field_info.get('fieldType', 'text'),
-                        'x': field_info.get('X', field_info.get('x', 100)),
-                        'y': field_info.get('Y', field_info.get('y', 100)),
-                        'width': field_info.get('Width', field_info.get('width', 200)),
-                        'height': field_info.get('Height', field_info.get('height', 20)),
+                        'name': new_name,
+                        'type': field_info.get('fieldType') or existing_field.get('type', 'text'),
+                        'x': field_info.get('X') or field_info.get('x') or existing_field.get('x', 100),
+                        'y': field_info.get('Y') or field_info.get('y') or existing_field.get('y', 100),
+                        'width': field_info.get('Width') or field_info.get('width') or existing_field.get('width', 200),
+                        'height': field_info.get('Height') or field_info.get('height') or existing_field.get('height', 20),
                         'page': page_num - 1,  # Convert to 0-based index
                         'tooltip': field_info.get('Tooltip', field_info.get('tooltip', '')),
                         'required': field_info.get('IsRequired', field_info.get('isRequired', False))
@@ -260,6 +313,27 @@ class PDFCompleteRebuilder:
                 if page_num not in fields_by_page:
                     fields_by_page[page_num] = []
                 fields_by_page[page_num].append(field_def)
+            
+            # Add existing fields that weren't updated
+            for field_name, existing_field in existing_fields.items():
+                if field_name not in updated_field_names:
+                    # Keep existing field as-is
+                    field_def = {
+                        'name': field_name,
+                        'type': existing_field.get('type', 'text'),
+                        'x': existing_field.get('x', 100),
+                        'y': existing_field.get('y', 100),
+                        'width': existing_field.get('width', 200),
+                        'height': existing_field.get('height', 20),
+                        'page': existing_field.get('page', 0),
+                        'tooltip': '',
+                        'required': False
+                    }
+                    
+                    page_num = field_def['page']
+                    if page_num not in fields_by_page:
+                        fields_by_page[page_num] = []
+                    fields_by_page[page_num].append(field_def)
             
             # Add fields to each page
             added_fields = []
