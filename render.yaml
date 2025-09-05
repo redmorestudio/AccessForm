@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: accessform
+    runtime: dotnet
+    plan: starter
+    buildCommand: ./build.sh
+    startCommand: dotnet run --configuration Release --urls http://0.0.0.0:$PORT
+    autoDeploy: true
+    env: 
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ASPNETCORE_URLS
+        value: http://0.0.0.0:$PORT
+      - key: DOTNET_RUNNING_IN_CONTAINER
+        value: true
+    healthCheckPath: /
+    # Increase timeouts for your AI processing
+    httpTimeout: 900  # 15 minutes
+    disk:
+      name: accessform-disk  
+      mountPath: /app/uploads
+      sizeGB: 2
