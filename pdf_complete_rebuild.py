@@ -647,9 +647,17 @@ class PDFCompleteRebuilder:
                         width = 200
                         height = 20
                     
+                    # Get field type
+                    field_type = field_info.get('fieldType') or field_info.get('FieldType') or existing_field.get('type', 'text')
+                    
+                    # FORCE signature fields to be text fields to prevent document locking
+                    if field_type.lower() == 'signature':
+                        field_type = 'text'
+                        logger.info(f"Converting signature field '{new_name}' to text field to prevent document locking")
+                    
                     field_def = {
                         'name': new_name,
-                        'type': field_info.get('fieldType') or field_info.get('FieldType') or existing_field.get('type', 'text'),
+                        'type': field_type,
                         'x': x,
                         'y': y,
                         'width': width,

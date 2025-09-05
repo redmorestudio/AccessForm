@@ -2999,18 +2999,29 @@ app.MapPost("/api/convert-with-config", async (
         await stream.CopyToAsync(ms);
         var fileBytes = ms.ToArray();
 
-        // Create default config
+        // Read config from form data instead of hardcoding!
         var config = new WordToPdfConverter.Models.FieldDetectionConfig
         {
             Services = new WordToPdfConverter.Models.ServiceSelection
             {
-                UseSyncfusion = true,
-                UseClaudeVision = false,
-                UseGoogle = false,
-                UseClaudeValidation = false
+                UseSyncfusion = request.Form["useSyncfusion"].ToString()?.ToLower() == "true",
+                UseClaudeVision = request.Form["useClaudeVision"].ToString()?.ToLower() == "true",
+                UseGoogle = request.Form["useGoogle"].ToString()?.ToLower() == "true",
+                UseClaudeValidation = request.Form["useClaudeValidation"].ToString()?.ToLower() == "true"
             },
-            Mode = WordToPdfConverter.Models.ProcessingMode.Sequential
+            Mode = request.Form["mode"].ToString() switch
+            {
+                "Simultaneous" => WordToPdfConverter.Models.ProcessingMode.Simultaneous,
+                "SyncfusionWithValidation" => WordToPdfConverter.Models.ProcessingMode.SyncfusionWithValidation,
+                _ => WordToPdfConverter.Models.ProcessingMode.Sequential
+            }
         };
+        
+        logger.LogInformation($"Config from frontend: Syncfusion={config.Services.UseSyncfusion}, " +
+                              $"ClaudeVision={config.Services.UseClaudeVision}, " +
+                              $"Google={config.Services.UseGoogle}, " +
+                              $"ClaudeValidation={config.Services.UseClaudeValidation}, " +
+                              $"Mode={config.Mode}");
 
         logger.LogInformation($"Processing {file.FileName} with config");
         var (pdfBytes, fields) = await fieldService.ConvertWithConfig(fileBytes, file.FileName, config);
