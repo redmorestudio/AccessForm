@@ -149,11 +149,30 @@ namespace WordToPdfConverter.Services
                         _logger.LogInformation("PHASE 3: Claude Vision detection");
                         var visionFields = await DetectWithClaudeVision(pdfBytes);
                         
-                        // Merge vision fields, avoiding duplicates
+                        // Merge vision fields - UPDATE existing fields with Claude's better labels
+                        _logger.LogInformation($"Merging {visionFields.Count} Claude Vision fields with {detectedFields.Count} existing fields");
                         foreach (var visionField in visionFields)
                         {
-                            if (!HasDuplicateField(detectedFields, visionField))
+                            // Find existing field at same position
+                            var existingField = detectedFields.FirstOrDefault(f => 
+                                f.PageNumber == visionField.PageNumber &&
+                                Math.Abs(f.X - visionField.X) < 10 &&
+                                Math.Abs(f.Y - visionField.Y) < 10);
+                            
+                            if (existingField != null)
                             {
+                                // UPDATE the existing field with Claude's better information
+                                _logger.LogInformation($"Updating field '{existingField.FieldName}' -> '{visionField.FieldName}' (type: {existingField.FieldType} -> {visionField.FieldType})");
+                                existingField.FieldName = visionField.FieldName;
+                                existingField.FieldType = visionField.FieldType;
+                                if (!string.IsNullOrEmpty(visionField.Tooltip))
+                                    existingField.Tooltip = visionField.Tooltip;
+                                existingField.Source = $"{existingField.Source}+Claude";
+                            }
+                            else
+                            {
+                                // Add new field if it doesn't exist
+                                _logger.LogInformation($"Adding new Claude Vision field '{visionField.FieldName}' at ({visionField.X}, {visionField.Y})");
                                 detectedFields.Add(visionField);
                             }
                         }
@@ -666,11 +685,14 @@ namespace WordToPdfConverter.Services
                         break;
                         
                     case "signature":
-                        var sigField = new PdfSignatureField(pdfDoc.Pages[field.PageNumber - 1],
+                        // CREATE TEXT FIELD INSTEAD OF SIGNATURE FIELD TO PREVENT DOCUMENT LOCKING
+                        var sigTextField = new PdfTextBoxField(pdfDoc.Pages[field.PageNumber - 1],
                             field.FieldName ?? field.ShortId);
-                        sigField.Bounds = bounds;
-                        // Signature fields may not support tooltips directly
-                        pdfField = sigField;
+                        sigTextField.Bounds = bounds;
+                        sigTextField.ToolTip = tooltip + " (Signature)";
+                        sigTextField.BackColor = new PdfColor(245, 245, 245); // Light gray background
+                        pdfField = sigTextField;
+                        _logger.LogInformation($"Created text field instead of signature field for '{field.FieldName}' to prevent locking");
                         break;
                         
                     default:
@@ -744,65 +766,63 @@ namespace WordToPdfConverter.Services
         
         private RectangleF ApplySmartFieldSizing(RectangleF bounds, string fieldType, string fieldName)
         {
+            // ONLY CHANGE WIDTH - NEVER TOUCH X, Y, or HEIGHT!
             var newBounds = new RectangleF(bounds.X, bounds.Y, bounds.Width, bounds.Height);
-            
-            // Simple defaults - NEVER move X or Y position
-            // Just apply reasonable widths and heights
             
             var lowerType = fieldType.ToLower();
             var lowerName = (fieldName ?? "").ToLower();
             
-            // Check field type and name for hints
+            // ONLY adjust width based on field type/name
             if (lowerType == "checkbox")
             {
                 newBounds.Width = 20f;
-                newBounds.Height = 20f;
+                // DO NOT CHANGE HEIGHT!
             }
             else if (lowerType == "signature")
             {
                 newBounds.Width = 200f;
-                newBounds.Height = 30f;
+                // DO NOT CHANGE HEIGHT!
             }
             else if (lowerType == "date" || lowerName.Contains("date"))
             {
                 newBounds.Width = 100f;
-                newBounds.Height = 20f;
+                // DO NOT CHANGE HEIGHT!
             }
             else if (lowerType == "name" || lowerName.Contains("name"))
             {
                 newBounds.Width = 150f;
-                newBounds.Height = 20f;
+                // DO NOT CHANGE HEIGHT!
             }
             else if (lowerType == "textarea" || lowerName.Contains("description") || lowerName.Contains("reason") || lowerName.Contains("refusal"))
             {
                 newBounds.Width = 300f;
-                newBounds.Height = 40f;
+                // DO NOT CHANGE HEIGHT!
             }
             else if (lowerType == "address" || lowerName.Contains("address"))
             {
                 newBounds.Width = 200f;
-                newBounds.Height = 20f;
+                // DO NOT CHANGE HEIGHT!
             }
             else if (lowerType == "city" || lowerName.Contains("city"))
             {
                 newBounds.Width = 150f;
-                newBounds.Height = 20f;
+                // DO NOT CHANGE HEIGHT!
             }
             else if (lowerType == "state" || lowerName.Contains("state"))
             {
                 newBounds.Width = 30f;
-                newBounds.Height = 20f;
+                // DO NOT CHANGE HEIGHT!
             }
             else if (lowerType == "zip" || lowerName.Contains("zip"))
             {
                 newBounds.Width = 60f;
-                newBounds.Height = 20f;
+                // DO NOT CHANGE HEIGHT!
             }
             else
             {
                 // Default for text fields
                 newBounds.Width = 150f;
-                newBounds.Height = 20f;
+                // DO NOT CHANGE HEIGHT!
             }
             
             return newBounds;
