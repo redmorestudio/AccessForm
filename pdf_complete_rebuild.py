@@ -603,7 +603,25 @@ class PDFCompleteRebuilder:
                     updated_field_names.add(lookup_name)
                     
                     # IMPORTANT: Look up existing field by ORIGINAL name first, since that's how they're stored
-                    existing_field = existing_fields.get(original_name, {})
+                    # Special handling for duplicate field names (e.g., "In person, hand-delivered" appears twice)
+                    existing_field = {}
+                    
+                    # For duplicate names, use field type to disambiguate
+                    field_type_hint = field_info.get('fieldType') or field_info.get('FieldType', '').lower()
+                    
+                    if original_name == "In person, hand-delivered" and field_type_hint in ['text', 'date']:
+                        # This is the date field at the bottom, not the checkbox
+                        # Look for the field that's NOT a checkbox
+                        for fname, fdata in existing_fields.items():
+                            if fname == "In person, hand-delivered" or fname.lower() == "date sent/delivered":
+                                # Skip if it's a checkbox (has small width)
+                                if fdata.get('width', 0) > 30:  # Text fields are wider than checkboxes
+                                    existing_field = fdata
+                                    logger.info(f"Found date field variant of 'In person, hand-delivered'")
+                                    break
+                    
+                    if not existing_field:
+                        existing_field = existing_fields.get(original_name, {})
                     
                     if not existing_field:
                         # If not found by original name, try the new name (in case of unnamed fields)
