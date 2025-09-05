@@ -9,6 +9,7 @@ using Adobe.PDFServicesSDK.pdfjobs.jobs;
 using Adobe.PDFServicesSDK.pdfjobs.results;
 using Adobe.PDFServicesSDK.exception;
 using Adobe.PDFServicesSDK.pdfjobs.parameters.autotag;
+using Adobe.PDFServicesSDK.pdfjobs.parameters.ocr;
 using System.Text.Json;
 
 namespace AccessFormServer.Services
@@ -155,6 +156,74 @@ namespace AccessFormServer.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to autotag PDF");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Apply OCR to PDF to ensure all fonts are properly embedded
+        /// </summary>
+        public async Task<byte[]> OcrPdfAsync(byte[] pdfBytes)
+        {
+            try
+            {
+                _logger.LogInformation($"Starting Adobe OCR for {pdfBytes.Length} byte PDF to embed fonts");
+
+                // Create PDF Services instance
+                PDFServices pdfServices = new PDFServices(_credentials);
+
+                // Upload the PDF
+                using var inputStream = new MemoryStream(pdfBytes);
+                IAsset asset = pdfServices.Upload(inputStream, PDFServicesMediaType.PDF.GetMIMETypeValue());
+
+                // Create OCR parameters to ensure fonts are embedded
+                var ocrParams = OCRParams.OCRParamsBuilder()
+                    .WithOcrLocale(OCRSupportedLocale.EN_US)
+                    .WithOcrType(OCRSupportedType.SEARCHABLE_IMAGE_EXACT)
+                    .Build();
+                
+                // Create OCR job with parameters - this will recognize text and embed fonts properly
+                OCRJob ocrJob = new OCRJob(asset).SetParams(ocrParams);
+
+                // Submit the job
+                _logger.LogInformation("Submitting OCR job to Adobe API");
+                string location = pdfServices.Submit(ocrJob);
+                
+                // Wait for and get the result
+                PDFServicesResponse<OCRResult> response = 
+                    pdfServices.GetJobResult<OCRResult>(location, typeof(OCRResult));
+
+                // Get the OCR'd PDF
+                IAsset ocrAsset = response.Result.Asset;
+                StreamAsset streamAsset = pdfServices.GetContent(ocrAsset);
+
+                // Read the result into a byte array
+                using var resultStream = new MemoryStream();
+                await streamAsset.Stream.CopyToAsync(resultStream);
+                var ocrPdfBytes = resultStream.ToArray();
+
+                _logger.LogInformation($"Adobe OCR successful, result is {ocrPdfBytes.Length} bytes");
+
+                return ocrPdfBytes;
+            }
+            catch (ServiceUsageException ex)
+            {
+                _logger.LogError(ex, "Adobe API service usage error during OCR");
+                throw new InvalidOperationException($"Adobe API usage error: {ex.Message}", ex);
+            }
+            catch (ServiceApiException ex)
+            {
+                _logger.LogError(ex, "Adobe API service error during OCR");
+                throw new InvalidOperationException($"Adobe API error: {ex.Message}", ex);
+            }
+            catch (SDKException ex)
+            {
+                _logger.LogError(ex, "Adobe SDK error during OCR");
+                throw new InvalidOperationException($"Adobe SDK error: {ex.Message}", ex);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to OCR PDF");
                 throw;
             }
         }

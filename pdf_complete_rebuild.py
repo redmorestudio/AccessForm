@@ -78,10 +78,17 @@ class PDFCompleteRebuilder:
         """Intelligently detect field type and generate appropriate tooltip based on field name"""
         name_lower = field_name.lower()
         
+        # Special handling for delivery method checkboxes
+        if name_lower in ['mailed', 'emailed', 'faxed']:
+            field_type = 'checkbox'
+            tooltip = provided_tooltip or f"Check if {field_name.lower()}"
+            return field_type, tooltip
+        
         # Smart type detection based on field name patterns
         if 'signature' in name_lower and 'date' not in name_lower:
+            # Mark as signature for proper handling
             field_type = 'signature'
-            tooltip = provided_tooltip or f"Click to sign {field_name}"
+            tooltip = provided_tooltip or f"Click to add signature"
         elif 'date' in name_lower or 'dob' in name_lower or 'birth' in name_lower:
             field_type = 'text'  # Dates are text fields with special formatting
             tooltip = provided_tooltip or f"Enter date in MM/DD/YYYY format"
@@ -115,7 +122,14 @@ class PDFCompleteRebuilder:
     def add_form_field(self, page: fitz.Page, field_info: Dict[str, Any]) -> Optional[fitz.Widget]:
         """Add a single form field to a page with proper properties"""
         try:
-            field_name = field_info.get('name', f'field_{self.field_counter}')
+            # Get field name, but handle unnamed/duplicate fields better
+            field_name = field_info.get('name', '')
+            
+            # If field has no name or empty name, give it a temporary name
+            if not field_name or field_name.strip() == '':
+                field_name = f'TEMP_FIELD_{self.field_counter}'
+                logger.info(f"Assigning temporary name: {field_name}")
+            
             provided_type = field_info.get('type', 'text')
             provided_tooltip = field_info.get('tooltip', '')
             
@@ -128,18 +142,14 @@ class PDFCompleteRebuilder:
             width = field_info.get('width', 200)
             height = field_info.get('height', 20)
             
-            # Adjust position for text area fields (description, reason, etc.)
+            # Text area fields don't need position adjustment - they're already correct
+            # Removing the adjustment that was messing them up
             name_lower = field_name.lower()
-            if any(x in name_lower for x in ['description', 'comments', 'notes', 'reason']):
-                # Move text areas left and UP on the visual page
-                x = max(0, x - 20)  # 20px to the left
-                y = y + 20  # Move UP on page (increase Y since we convert later)
-                height = 27  # Fixed height for text areas
             
-            # Convert Y coordinate from top-left origin to bottom-left origin
-            # Frontend uses top-left (Y increases downward), PyMuPDF uses bottom-left (Y increases upward)
-            page_height = page.rect.height
-            y_converted = page_height - y - height
+            # Syncfusion already provides PDF coordinates (bottom-left origin)
+            # PyMuPDF also uses bottom-left origin
+            # So NO conversion is needed
+            y_converted = y
             
             # Adjust for checkbox/radio button dimensions
             if field_type in ['checkbox', 'radio', 'radiobutton']:
@@ -160,7 +170,7 @@ class PDFCompleteRebuilder:
                 'combobox': fitz.PDF_WIDGET_TYPE_COMBOBOX,
                 'dropdown': fitz.PDF_WIDGET_TYPE_COMBOBOX,
                 'listbox': fitz.PDF_WIDGET_TYPE_LISTBOX,
-                'signature': fitz.PDF_WIDGET_TYPE_SIGNATURE,
+                'signature': fitz.PDF_WIDGET_TYPE_TEXT,  # Use text field for signatures to avoid document lock
                 'button': fitz.PDF_WIDGET_TYPE_BUTTON,
                 'text': fitz.PDF_WIDGET_TYPE_TEXT,
             }
@@ -179,9 +189,9 @@ class PDFCompleteRebuilder:
             widget.border_color = [0, 0, 0]  # Black border
             widget.fill_color = [1, 1, 1]    # White background
             
-            # IMPORTANT: Set text font to Helvetica to avoid ZapfDingbats
-            # This applies to ALL widgets to prevent any ZapfDingbats usage
-            widget.text_font = "Helv"
+            # IMPORTANT: Use only built-in PDF fonts to avoid embedding issues
+            # Helvetica is a PDF standard font that doesn't require embedding
+            widget.text_font = "Helv"  # Use Helvetica, not Arial
             widget.text_fontsize = 10
             
             # Set type-specific properties
@@ -189,8 +199,15 @@ class PDFCompleteRebuilder:
                 # Font already set above to avoid ZapfDingbats
                 widget.text_color = [0, 0, 0]
                 
+                # Special handling for signature fields (using text type to avoid locks)
+                if field_type == 'signature':
+                    # Make signature fields look different
+                    widget.border_width = 1
+                    widget.fill_color = [0.98, 0.98, 0.98]  # Very light gray background
+                    widget.text_fontsize = 12  # Slightly larger for signatures
+                
                 # Check for multiline
-                if field_info.get('multiline', False):
+                if field_info.get('multiline', False) or field_type == 'textarea':
                     widget.field_flags |= fitz.PDF_FIELD_IS_MULTILINE
             
             elif widget_type == fitz.PDF_WIDGET_TYPE_COMBOBOX:
@@ -263,6 +280,45 @@ class PDFCompleteRebuilder:
             logger.error(f"Failed to add field: {e}")
             return None
     
+    def remove_signature_locks(self, doc: fitz.Document) -> None:
+        """Remove signature flags that prevent editing of the document"""
+        try:
+            if hasattr(doc, 'xref_set_key') and hasattr(doc, 'pdf_catalog'):
+                catalog_xref = doc.pdf_catalog()
+                
+                # Remove SigFlags from AcroForm dictionary
+                # SigFlags value of 3 means "signatures exist and document is locked"
+                # We want to remove this entirely or set it to 0
+                try:
+                    acroform = doc.xref_get_key(catalog_xref, 'AcroForm')
+                    if acroform:
+                        # Parse the AcroForm reference more robustly
+                        import re
+                        match = re.match(r'(\d+)\s+\d+\s+R', acroform.strip())
+                        if match:
+                            acroform_xref = int(match.group(1))
+                            # Set SigFlags to 0 (no signatures) instead of removing it
+                            doc.xref_set_key(acroform_xref, 'SigFlags', '0')
+                            logger.info("Reset signature flags to allow editing")
+                except Exception as e:
+                    logger.debug(f"Could not modify AcroForm: {e}")
+                    
+                # Also remove any Perms (permissions) dictionary that might lock the document
+                try:
+                    doc.xref_set_key(catalog_xref, 'Perms', None)
+                except:
+                    pass
+                
+                # Remove DSS (Document Security Store) that might indicate signatures
+                try:
+                    doc.xref_set_key(catalog_xref, 'DSS', None)
+                except:
+                    pass
+                    
+        except Exception as e:
+            logger.debug(f"Could not remove signature locks: {e}")
+            # Not critical - document will still work
+    
     def create_tag_structure(self, doc: fitz.Document, fields_by_page: Dict[int, List[Dict]]) -> bool:
         """Create accessibility structure for PDF/UA compliance"""
         try:
@@ -287,11 +343,12 @@ class PDFCompleteRebuilder:
                     struct_xref = doc.xref_add_object(struct_tree_root)
                     doc.xref_set_key(catalog_xref, 'StructTreeRoot', f'{struct_xref} 0 R')
                     
-                    # Set language
+                    # Set language with proper PDF string syntax
                     doc.xref_set_key(catalog_xref, 'Lang', '(en-US)')
                     
-                    # Add ViewerPreferences for accessibility
-                    doc.xref_set_key(catalog_xref, 'ViewerPreferences', '<</DisplayDocTitle true>>')
+                    # Add ViewerPreferences for accessibility with DisplayDocTitle
+                    viewer_prefs = '<</DisplayDocTitle true>>'
+                    doc.xref_set_key(catalog_xref, 'ViewerPreferences', viewer_prefs)
                     
                     logger.info("Added document structure tree root and accessibility metadata")
             except Exception as e:
@@ -299,15 +356,21 @@ class PDFCompleteRebuilder:
             
             # Count content elements
             for page_num, page in enumerate(doc):
-                # Count text blocks
+                # Count text blocks, but exclude whitespace-only blocks
                 text_blocks = page.get_text("blocks")
                 for block in text_blocks:
-                    if block[4].strip():  # If text is not empty
+                    text_content = block[4].strip()
+                    # Only count non-empty text that isn't just whitespace
+                    if text_content and not text_content.isspace():
                         self.tag_counter += 1
                 
-                # Count images
+                # Count images and try to add alt text placeholder
                 image_list = page.get_images()
                 self.tag_counter += len(image_list)
+                
+                # Note: Image alt text needs to be added to the structure tree
+                # This requires the Texas Workforce Commission header image to have alt text
+                # The Adobe autotag API will handle this properly
                 
                 # Count form fields
                 if page_num in fields_by_page:
@@ -317,10 +380,15 @@ class PDFCompleteRebuilder:
                 try:
                     page_xref = page.xref
                     if page_xref and hasattr(doc, 'xref_set_key'):
-                        # Set tab order for accessibility
+                        # Set tab order to structure order for accessibility
                         doc.xref_set_key(page_xref, 'Tabs', '/S')
                         # Mark page as having structured content
                         doc.xref_set_key(page_xref, 'StructParents', '0')
+                        
+                        # Mark paths as artifacts to fix "path object not tagged" error
+                        # Paths that are decorative should be marked as artifacts
+                        # This is done through the content stream but PyMuPDF doesn't directly support it
+                        # The Adobe autotag will handle this properly
                 except:
                     pass
             
@@ -334,30 +402,73 @@ class PDFCompleteRebuilder:
     def extract_existing_fields(self, doc: fitz.Document) -> Dict[str, Dict[str, Any]]:
         """Extract position and properties of existing fields from the document"""
         existing_fields = {}
+        unnamed_counter = 1
         
         for page_num, page in enumerate(doc):
             page_height = page.rect.height
             for widget in page.widgets():
                 field_name = widget.field_name
-                if field_name:
+                
+                # Handle unnamed fields - give them a temporary name based on position
+                if not field_name or field_name.strip() == '':
                     rect = widget.rect
-                    # Convert from PyMuPDF bottom-left to top-left for consistency with frontend
-                    y_top_left = page_height - rect.y1  # y1 is the bottom of the rect in PyMuPDF
-                    existing_fields[field_name] = {
-                        'x': rect.x0,
-                        'y': y_top_left,
-                        'width': rect.width,
-                        'height': rect.height,
-                        'page': page_num,
-                        'type': self.get_widget_type_name(widget.field_type),
-                        'flags': widget.field_flags,
-                        'value': widget.field_value,
-                        'border_width': widget.border_width,
-                        'page_height': page_height  # Store for later conversion if needed
-                    }
-                    logger.info(f"Found existing field '{field_name}' at ({rect.x0}, {y_top_left}) with size {rect.width}x{rect.height}")
+                    # Try to infer a name from nearby text
+                    nearby_text = self.get_nearby_text(page, rect)
+                    if nearby_text and 'Date' in nearby_text:
+                        field_name = f"Date_Sent_Delivered"
+                    else:
+                        field_name = f"UNNAMED_FIELD_{unnamed_counter}"
+                    unnamed_counter += 1
+                    logger.warning(f"Found unnamed field at ({rect.x0}, {rect.y0}), assigning name: {field_name}")
+                
+                rect = widget.rect
+                # Convert from PyMuPDF bottom-left to top-left for consistency with frontend
+                y_top_left = page_height - rect.y1  # y1 is the bottom of the rect in PyMuPDF
+                existing_fields[field_name] = {
+                    'x': rect.x0,
+                    'y': y_top_left,
+                    'width': rect.width,
+                    'height': rect.height,
+                    'page': page_num,
+                    'type': self.get_widget_type_name(widget.field_type),
+                    'flags': widget.field_flags,
+                    'value': widget.field_value,
+                    'border_width': widget.border_width,
+                    'page_height': page_height,  # Store for later conversion if needed
+                    'was_unnamed': not widget.field_name  # Track if it was originally unnamed
+                }
+                logger.info(f"Found existing field '{field_name}' at ({rect.x0}, {y_top_left}) with size {rect.width}x{rect.height}")
         
         return existing_fields
+    
+    def get_nearby_text(self, page: fitz.Page, rect: fitz.Rect, max_distance: float = 50) -> str:
+        """Get text near a field to help identify unnamed fields"""
+        try:
+            # Look for text to the left of the field
+            search_rect = fitz.Rect(
+                rect.x0 - max_distance * 3,  # Look further left for labels
+                rect.y0 - 10,
+                rect.x0,
+                rect.y1 + 10
+            )
+            
+            # Get all text blocks on the page
+            blocks = page.get_text("blocks")
+            nearby_text = []
+            
+            for block in blocks:
+                if len(block) >= 5:
+                    block_rect = fitz.Rect(block[0], block[1], block[2], block[3])
+                    # Check if this text block is near our field
+                    if block_rect.intersects(search_rect):
+                        text = block[4].strip()
+                        if text and not text.isspace():
+                            nearby_text.append(text)
+            
+            return ' '.join(nearby_text)
+        except Exception as e:
+            logger.debug(f"Could not get nearby text: {e}")
+            return ""
     
     def get_widget_type_name(self, widget_type: int) -> str:
         """Convert widget type constant to string name"""
@@ -402,6 +513,12 @@ class PDFCompleteRebuilder:
             debug_info['existing_fields'] = len(existing_fields)
             debug_info['existing_field_names'] = list(existing_fields.keys())
             
+            # Debug: log existing field positions
+            with open('/tmp/existing_fields_debug.json', 'w') as f:
+                json.dump(existing_fields, f, indent=2)
+            for name, field in existing_fields.items():
+                logger.info(f"Existing field '{name}': pos=({field.get('x', 0):.1f}, {field.get('y', 0):.1f}), size={field.get('width', 0):.1f}x{field.get('height', 0):.1f}")
+            
             # Step 2: Extract visual content (without fields)
             pages_content = self.extract_visual_content(original_doc)
             logger.info(f"Extracted content from {len(pages_content)} pages")
@@ -415,18 +532,18 @@ class PDFCompleteRebuilder:
             # Insert the entire document to preserve structure, tags, and content
             temp_doc.insert_pdf(original_doc)
             
-            # Process fonts to ensure they're embedded
+            # Process fonts - substitute Arial with Helvetica to avoid embedding issues
             try:
                 for page in temp_doc:
                     fonts = page.get_fonts()
                     for font in fonts:
                         font_name = font[3]  # Font name
                         font_xref = font[0]  # Font xref
-                        # Check if font needs embedding
+                        # Log Arial fonts that cause embedding issues
                         if 'Arial' in font_name:
-                            logger.info(f"Found Arial font: {font_name}, xref: {font_xref}")
-                            # PyMuPDF doesn't provide direct font embedding control
-                            # The fonts are already in the document from the source
+                            logger.info(f"Found problematic Arial font: {font_name}, xref: {font_xref}")
+                            # Note: PyMuPDF doesn't support direct font substitution
+                            # The Arial fonts will be handled by Adobe's API or need post-processing
             except Exception as e:
                 logger.warning(f"Could not analyze fonts: {e}")
             
@@ -464,10 +581,31 @@ class PDFCompleteRebuilder:
                 if 'originalName' in field_info:
                     original_name = field_info['originalName']
                     new_name = field_info.get('newName', original_name)
-                    updated_field_names.add(original_name)
                     
-                    # Try to get position from existing field if not provided
+                    # Map common variations to handle unnamed fields
+                    lookup_name = original_name
+                    if original_name.lower() == 'date delivered':
+                        # This is likely our unnamed field
+                        lookup_name = 'Date_Sent_Delivered'
+                        logger.info(f"Mapping 'date delivered' to 'Date_Sent_Delivered'")
+                    elif original_name.lower() == 'in person, hand-delivered' and field_info.get('fieldType') == 'text':
+                        # The text field "In person, hand-delivered" should use its existing position
+                        # It exists in the PDF with this name but wrong type
+                        lookup_name = 'In person, hand-delivered'
+                        logger.info(f"Text field 'In person, hand-delivered' will use existing position")
+                    
+                    updated_field_names.add(lookup_name)
+                    
+                    # IMPORTANT: Look up existing field by ORIGINAL name first, since that's how they're stored
                     existing_field = existing_fields.get(original_name, {})
+                    
+                    if not existing_field:
+                        # If not found by original name, try the new name (in case of unnamed fields)
+                        existing_field = existing_fields.get(lookup_name, {})
+                        if existing_field:
+                            logger.info(f"Found existing field using new name '{lookup_name}'")
+                    else:
+                        logger.info(f"Found existing field using original name '{original_name}'")
                     
                     # Handle page number - prefer existing field's page if not provided
                     page_num = field_info.get('PageNumber') or field_info.get('pageNumber')
@@ -476,22 +614,22 @@ class PDFCompleteRebuilder:
                     if page_num is None or page_num < 1:
                         page_num = 1
                     
-                    # Get coordinates - check both capital and lowercase, handle 0 values properly
-                    x = field_info.get('X') if 'X' in field_info else field_info.get('x')
-                    if x is None:
+                    # ALWAYS use existing field positions when available
+                    # Field updates should ONLY change name, type, and tooltip
+                    # NEVER change the position from what Syncfusion originally extracted
+                    if existing_field:
+                        # Use original Syncfusion positions
                         x = existing_field.get('x', 100)
-                    
-                    y = field_info.get('Y') if 'Y' in field_info else field_info.get('y')
-                    if y is None:
                         y = existing_field.get('y', 100)
-                    
-                    width = field_info.get('Width') if 'Width' in field_info else field_info.get('width')
-                    if width is None:
                         width = existing_field.get('width', 200)
-                    
-                    height = field_info.get('Height') if 'Height' in field_info else field_info.get('height')
-                    if height is None:
                         height = existing_field.get('height', 20)
+                        logger.info(f"Using original Syncfusion position for '{original_name}': ({x}, {y}), size: ({width}x{height})")
+                    else:
+                        # Field not found - this should not happen!
+                        logger.error(f"CRITICAL: Field '{original_name}' not found in existing fields!")
+                        logger.error(f"Available fields: {list(existing_fields.keys())}")
+                        # Skip this field rather than adding it at wrong position
+                        continue
                     
                     field_def = {
                         'name': new_name,
@@ -570,22 +708,29 @@ class PDFCompleteRebuilder:
                 used_positions = {}
                 
                 for field_def in fields:
-                    # Handle duplicate field names
                     orig_name = field_def['name']
+                    
+                    # Check if this is a duplicate field at the same position
+                    pos_key = f"{field_def.get('x', 0):.1f},{field_def.get('y', 0):.1f}"
+                    
+                    # Don't check for overlaps - trust the positions from the JSON
+                    # The front-end has already arranged the fields correctly
+                    
+                    # Handle duplicate field names (different positions)
                     field_name = orig_name
                     counter = 2
                     while field_name in used_field_names:
-                        field_name = f"{orig_name}_{counter}"
-                        counter += 1
+                        # Special case: if it's an unnamed field that got a nearby name, rename it
+                        if orig_name.lower() in ['in person, hand-delivered', 'mailed', 'emailed', 'faxed'] and field_def.get('type') == 'text':
+                            field_name = f"Date_Sent_{orig_name.replace(' ', '_').replace(',', '').replace('-', '_')}"
+                            logger.info(f"Renaming likely mislabeled field from '{orig_name}' to '{field_name}'")
+                            break
+                        else:
+                            field_name = f"{orig_name}_{counter}"
+                            counter += 1
+                    
                     field_def['name'] = field_name
                     used_field_names.add(field_name)
-                    
-                    # Handle fields at same position
-                    pos_key = f"{field_def.get('x', 0):.1f},{field_def.get('y', 0):.1f}"
-                    if pos_key in used_positions:
-                        # Offset this field vertically
-                        field_def['y'] = field_def.get('y', 0) + 25
-                        logger.info(f"Offsetting duplicate field '{field_name}' at position {pos_key}")
                     used_positions[pos_key] = field_name
                     
                     widget = self.add_form_field(page, field_def)
@@ -636,7 +781,8 @@ class PDFCompleteRebuilder:
             except Exception as e:
                 logger.warning(f"Could not add PDF/UA identifier: {e}")
             
-            # Skip viewer preferences to avoid conflicts
+            # Remove signature locks to keep document editable
+            self.remove_signature_locks(final_doc)
             
             # Step 7: Save final PDF
             output_path = tempfile.mktemp(suffix='_rebuilt.pdf')

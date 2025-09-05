@@ -7,7 +7,7 @@
 @inject IJSRuntime JSRuntime
 
 <div class="modal @(IsVisible ? "show d-block" : "")" tabindex="-1" role="dialog" style="background-color: rgba(0,0,0,0.5);">
-    <div class="modal-dialog modal-fullscreen-lg-down" role="document" style="max-width: 95%; height: 95vh;">
+    <div class="modal-dialog modal-fullscreen-lg-down" role="document" style="max-width: 95%; height: 98vh;">
         <div class="modal-content h-100" style="display: flex; flex-direction: column;">
             <div class="modal-header">
                 <h5 class="modal-title">
@@ -16,7 +16,7 @@
                 </h5>
                 <button type="button" class="btn-close" @onclick="Cancel"></button>
             </div>
-            <div class="modal-body" style="overflow-y: auto; max-height: calc(85vh - 150px);">
+            <div class="modal-body" style="overflow-y: auto; max-height: calc(95vh - 100px);">
                 <div class="row">
                     <div class="col-md-6">
                         <h5>PDF Preview - Page @CurrentPage</h5>

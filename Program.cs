@@ -2278,9 +2278,42 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
                     if (width <= 0) width = 150;
                     if (height <= 0) height = 20;
                     
+                    // Handle unnamed fields or misidentified fields
+                    string fieldName = field.Name;
+                    
+                    // Track field names we've already seen to detect duplicates
+                    var seenFields = fields.Select(f => ((dynamic)f).name?.ToString()).Where(n => n != null).ToList();
+                    
+                    if (string.IsNullOrWhiteSpace(fieldName))
+                    {
+                        // Generate a name based on position
+                        fieldName = $"UNNAMED_FIELD_{x:F0}_{y:F0}";
+                        logger.LogWarning($"Found unnamed field at ({x:F2},{y:F2}), assigning name: {fieldName}");
+                    }
+                    else if (fieldName.ToLower() == "in person, hand-delivered" && fieldType == "text")
+                    {
+                        // This is likely a misidentified field - the date field
+                        fieldName = "Date Sent/Delivered";
+                        logger.LogWarning($"Detected misidentified text field 'In person, hand-delivered', renaming to 'Date Sent/Delivered'");
+                    }
+                    else if (seenFields.Any(f => f?.ToLower() == fieldName.ToLower()) && fieldType == "text")
+                    {
+                        // If we've already seen this field name and this is a text field, it's probably the date field
+                        if (fieldName.ToLower().Contains("in person"))
+                        {
+                            fieldName = "Date Sent/Delivered";
+                            logger.LogWarning($"Found duplicate field '{field.Name}' as text field, renaming to 'Date Sent/Delivered'");
+                        }
+                        else
+                        {
+                            fieldName = $"{fieldName}_2";
+                            logger.LogWarning($"Found duplicate field '{field.Name}', renaming to '{fieldName}'");
+                        }
+                    }
+                    
                     fields.Add(new
                     {
-                        name = field.Name,
+                        name = fieldName,
                         type = fieldType,
                         page = page,
                         x = x,
@@ -2290,7 +2323,7 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
                         tooltip = tooltip
                     });
                     
-                    logger.LogInformation($"Found field '{field.Name}' type={fieldType} at ({x:F2},{y:F2}) size={width:F2}x{height:F2} on page {page} (fieldPage={fieldPage?.GetType().Name})");
+                    logger.LogInformation($"Found field '{fieldName}' (original: '{field.Name}') type={fieldType} at ({x:F2},{y:F2}) size={width:F2}x{height:F2} on page {page} (fieldPage={fieldPage?.GetType().Name})");
                 }
             }
             
