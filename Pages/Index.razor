@@ -1803,10 +1803,16 @@
                                     fieldToUpdate.Name = correctedField.GetProperty("name").GetString();
                                     fieldToUpdate.Type = correctedField.GetProperty("type").GetString();
                                     fieldToUpdate.Tooltip = correctedField.TryGetProperty("tooltip", out var tooltip) ? tooltip.GetString() : "";
-                                    fieldToUpdate.X = correctedField.TryGetProperty("x", out var x) ? (float)x.GetDouble() : fieldToUpdate.X;
-                                    fieldToUpdate.Y = correctedField.TryGetProperty("y", out var y) ? (float)y.GetDouble() : fieldToUpdate.Y;
-                                    fieldToUpdate.Width = correctedField.TryGetProperty("width", out var width) ? (float)width.GetDouble() : fieldToUpdate.Width;
-                                    fieldToUpdate.Height = correctedField.TryGetProperty("height", out var height) ? (float)height.GetDouble() : fieldToUpdate.Height;
+                                    
+                                    // Only update positions if they're not null
+                                    if (correctedField.TryGetProperty("x", out var x) && x.ValueKind != System.Text.Json.JsonValueKind.Null)
+                                        fieldToUpdate.X = (float)x.GetDouble();
+                                    if (correctedField.TryGetProperty("y", out var y) && y.ValueKind != System.Text.Json.JsonValueKind.Null)
+                                        fieldToUpdate.Y = (float)y.GetDouble();
+                                    if (correctedField.TryGetProperty("width", out var width) && width.ValueKind != System.Text.Json.JsonValueKind.Null)
+                                        fieldToUpdate.Width = (float)width.GetDouble();
+                                    if (correctedField.TryGetProperty("height", out var height) && height.ValueKind != System.Text.Json.JsonValueKind.Null)
+                                        fieldToUpdate.Height = (float)height.GetDouble();
                                     // Update OriginalName for future edits
                                     fieldToUpdate.OriginalName = fieldToUpdate.Name;
                                 }

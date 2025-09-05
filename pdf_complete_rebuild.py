@@ -146,10 +146,12 @@ class PDFCompleteRebuilder:
             # Removing the adjustment that was messing them up
             name_lower = field_name.lower()
             
-            # Syncfusion already provides PDF coordinates (bottom-left origin)
-            # PyMuPDF also uses bottom-left origin
-            # So NO conversion is needed
-            y_converted = y
+            # IMPORTANT: Coordinate conversion
+            # Syncfusion/frontend uses top-left origin (Y increases downward)
+            # PyMuPDF uses bottom-left origin (Y increases upward)
+            # We store positions in top-left format, so we need to convert to bottom-left
+            page_height = page.rect.height
+            y_converted = page_height - y - height  # Convert from top-left to bottom-left
             
             # Adjust for checkbox/radio button dimensions
             if field_type in ['checkbox', 'radio', 'radiobutton']:
@@ -577,10 +579,10 @@ class PDFCompleteRebuilder:
             updated_field_names = set()
             
             for field_info in field_updates:
-                # Parse field update format
-                if 'originalName' in field_info:
-                    original_name = field_info['originalName']
-                    new_name = field_info.get('newName', original_name)
+                # Parse field update format - handle both camelCase and PascalCase
+                if 'originalName' in field_info or 'OriginalName' in field_info:
+                    original_name = field_info.get('originalName') or field_info.get('OriginalName') or ''  # Handle None values
+                    new_name = field_info.get('newName') or field_info.get('NewName') or original_name or ''  # Handle None values
                     
                     # Map common variations to handle unnamed fields
                     lookup_name = original_name
@@ -588,6 +590,10 @@ class PDFCompleteRebuilder:
                         # This is likely our unnamed field
                         lookup_name = 'Date_Sent_Delivered'
                         logger.info(f"Mapping 'date delivered' to 'Date_Sent_Delivered'")
+                    elif original_name.lower() == 'date recieved' or original_name.lower() == 'date received':
+                        # Handle the misspelled field name
+                        lookup_name = 'Date recieved'  # Use the actual field name from the PDF (with typo)
+                        logger.info(f"Mapping '{original_name}' to 'Date recieved' (with original typo)")
                     elif original_name.lower() == 'in person, hand-delivered' and field_info.get('fieldType') == 'text':
                         # The text field "In person, hand-delivered" should use its existing position
                         # It exists in the PDF with this name but wrong type
@@ -604,12 +610,19 @@ class PDFCompleteRebuilder:
                         existing_field = existing_fields.get(lookup_name, {})
                         if existing_field:
                             logger.info(f"Found existing field using new name '{lookup_name}'")
+                        else:
+                            # Try case-insensitive search as last resort
+                            for field_name, field_data in existing_fields.items():
+                                if field_name.lower() == original_name.lower() or field_name.lower() == lookup_name.lower():
+                                    existing_field = field_data
+                                    logger.info(f"Found existing field '{field_name}' using case-insensitive search for '{original_name}'")
+                                    break
                     else:
                         logger.info(f"Found existing field using original name '{original_name}'")
                     
                     # Handle page number - prefer existing field's page if not provided
                     page_num = field_info.get('PageNumber') or field_info.get('pageNumber')
-                    if page_num is None:
+                    if page_num is None and existing_field:
                         page_num = existing_field.get('page', 0) + 1  # Convert to 1-based for consistency
                     if page_num is None or page_num < 1:
                         page_num = 1
@@ -626,10 +639,13 @@ class PDFCompleteRebuilder:
                         logger.info(f"Using original Syncfusion position for '{original_name}': ({x}, {y}), size: ({width}x{height})")
                     else:
                         # Field not found - this should not happen!
-                        logger.error(f"CRITICAL: Field '{original_name}' not found in existing fields!")
-                        logger.error(f"Available fields: {list(existing_fields.keys())}")
-                        # Skip this field rather than adding it at wrong position
-                        continue
+                        logger.warning(f"Field '{original_name}' not found in existing fields - using default position")
+                        logger.info(f"Available fields: {list(existing_fields.keys())}")
+                        # Use reasonable defaults instead of skipping
+                        x = 100
+                        y = 100 + (len(fields_by_page.get(page_num - 1, [])) * 30)  # Offset vertically for each field
+                        width = 200
+                        height = 20
                     
                     field_def = {
                         'name': new_name,
