@@ -1618,8 +1618,22 @@ app.MapPost("/api/update-pdf-fields-v4", async (HttpRequest request, ILogger<Pro
         }
         
         // Parse field updates - compatible with ITextFieldRebuildService format
-        var fieldUpdates = JsonSerializer.Deserialize<List<PdfCompleteRebuildService.FieldUpdate>>(fieldUpdatesJson, 
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<PdfCompleteRebuildService.FieldUpdate>();
+        List<PdfCompleteRebuildService.FieldUpdate> fieldUpdates;
+        try 
+        {
+            fieldUpdates = JsonSerializer.Deserialize<List<PdfCompleteRebuildService.FieldUpdate>>(fieldUpdatesJson, 
+                new JsonSerializerOptions 
+                { 
+                    PropertyNameCaseInsensitive = true,
+                    NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
+                }) ?? new List<PdfCompleteRebuildService.FieldUpdate>();
+        }
+        catch (JsonException ex)
+        {
+            logger.LogError($"[V4 Complete Rebuild] JSON deserialization error: {ex.Message}");
+            logger.LogError($"[V4 Complete Rebuild] JSON that failed: {fieldUpdatesJson}");
+            return Results.BadRequest(new { error = $"Invalid field updates format: {ex.Message}" });
+        }
         
         logger.LogInformation($"[V4 Complete Rebuild] Processing {fieldUpdates.Count} field updates");
         
