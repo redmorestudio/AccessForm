@@ -17,7 +17,7 @@ namespace AccessFormServer.Services
             { 
                 "text", "textarea", "email", "phone", "ssn", "ssn_partial", "ein", 
                 "date", "time", "numeric", "currency", "percentage", "url",
-                "case_number", "drivers_license", "tin", "name", "address"
+                "case_number", "drivers_license", "tin", "name", "address", "signature"
             },
             
             // Text area can only become text types
@@ -88,7 +88,7 @@ namespace AccessFormServer.Services
             // Signature fields
             ["signature"] = new HashSet<string> 
             { 
-                "signature"
+                "signature", "text"
             },
             
             ["initials"] = new HashSet<string> 

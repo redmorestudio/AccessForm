@@ -123,18 +123,24 @@ namespace WordToPdfConverter.Services
                         // Read the rebuilt PDF
                         var rebuiltPdfBytes = await File.ReadAllBytesAsync(result.OutputPath);
                         
-                        // Apply Adobe autotag for full accessibility compliance
+                        // Apply Adobe OCR and autotag for full accessibility compliance
                         if (_adobeAutotagService != null && _adobeAutotagService.IsConfigured())
                         {
                             try
                             {
+                                // First apply OCR to ensure fonts are properly embedded
+                                _logger.LogInformation("Applying Adobe OCR to embed fonts...");
+                                rebuiltPdfBytes = await _adobeAutotagService.OcrPdfAsync(rebuiltPdfBytes);
+                                _logger.LogInformation("Adobe OCR applied successfully");
+                                
+                                // Then apply autotag for accessibility
                                 _logger.LogInformation("Applying Adobe autotag for accessibility...");
                                 rebuiltPdfBytes = await _adobeAutotagService.AutotagPdfAsync(rebuiltPdfBytes, generateReport: false);
                                 _logger.LogInformation("Adobe autotag applied successfully");
                             }
                             catch (Exception ex)
                             {
-                                _logger.LogWarning(ex, "Failed to apply Adobe autotag, continuing with basic PDF");
+                                _logger.LogWarning(ex, "Failed to apply Adobe processing, continuing with basic PDF");
                             }
                         }
                         else

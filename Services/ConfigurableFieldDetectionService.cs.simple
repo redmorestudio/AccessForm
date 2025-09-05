@@ -1,0 +1,65 @@
+        private RectangleF ApplySmartFieldSizing(RectangleF bounds, string fieldType, string fieldName)
+        {
+            var newBounds = new RectangleF(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+            
+            // Simple defaults - NEVER move X or Y position
+            // Just apply reasonable widths and heights
+            
+            // Set standard height
+            if (fieldType.ToLower() != "checkbox" && fieldType.ToLower() != "signature" && fieldType.ToLower() != "textarea")
+            {
+                newBounds.Height = 20f;
+            }
+            
+            // Apply simple width defaults based on field type
+            var lowerType = fieldType.ToLower();
+            var lowerName = (fieldName ?? "").ToLower();
+            
+            // Check field type first
+            if (lowerType == "checkbox")
+            {
+                newBounds.Width = 20f;
+                newBounds.Height = 20f;
+            }
+            else if (lowerType == "signature")
+            {
+                newBounds.Width = 200f;
+                newBounds.Height = 30f;
+            }
+            else if (lowerType == "date" || lowerName.Contains("date"))
+            {
+                newBounds.Width = 100f;
+            }
+            else if (lowerType == "name" || lowerName.Contains("name"))
+            {
+                newBounds.Width = 150f;
+            }
+            else if (lowerType == "textarea" || lowerName.Contains("description") || lowerName.Contains("reason") || lowerName.Contains("refusal"))
+            {
+                newBounds.Width = 300f;
+                newBounds.Height = 40f;
+            }
+            else if (lowerType == "address" || lowerName.Contains("address"))
+            {
+                newBounds.Width = 200f;
+            }
+            else if (lowerType == "city" || lowerName.Contains("city"))
+            {
+                newBounds.Width = 150f;
+            }
+            else if (lowerType == "state" || lowerName.Contains("state"))
+            {
+                newBounds.Width = 30f;
+            }
+            else if (lowerType == "zip" || lowerName.Contains("zip"))
+            {
+                newBounds.Width = 60f;
+            }
+            else
+            {
+                // Default width for text fields
+                newBounds.Width = 150f;
+            }
+            
+            return newBounds;
+        }

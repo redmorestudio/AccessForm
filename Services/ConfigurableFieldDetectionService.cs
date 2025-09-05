@@ -746,182 +746,63 @@ namespace WordToPdfConverter.Services
         {
             var newBounds = new RectangleF(bounds.X, bounds.Y, bounds.Width, bounds.Height);
             
-            // Ensure minimum height for all fields except checkboxes
-            if (fieldType.ToLower() != "checkbox" && newBounds.Height < STANDARD_FIELD_HEIGHT)
+            // Simple defaults - NEVER move X or Y position
+            // Just apply reasonable widths and heights
+            
+            var lowerType = fieldType.ToLower();
+            var lowerName = (fieldName ?? "").ToLower();
+            
+            // Check field type and name for hints
+            if (lowerType == "checkbox")
             {
-                newBounds.Height = STANDARD_FIELD_HEIGHT;
+                newBounds.Width = 20f;
+                newBounds.Height = 20f;
             }
-            
-            // Don't move fields horizontally if they're already positioned beyond typical label area
-            // This preserves the form's original layout
-            bool preserveXPosition = newBounds.X > 200;
-            
-            // Apply width based on field type
-            switch (fieldType.ToLower())
+            else if (lowerType == "signature")
             {
-                case "checkbox":
-                    newBounds.Width = CHECKBOX_SIZE;
-                    newBounds.Height = CHECKBOX_SIZE;
-                    break;
-                    
-                case "name":
-                case "first_name":
-                case "last_name":
-                case "middle_name":
-                case "full_name":
-                    newBounds.Width = NAME_FIELD_WIDTH;
-                    break;
-                    
-                case "date":
-                case "date_of_birth":
-                case "dob":
-                    newBounds.Width = DATE_FIELD_WIDTH;
-                    break;
-                    
-                case "address":
-                case "street_address":
-                case "address_line_1":
-                case "address_line_2":
-                    newBounds.Width = ADDRESS_FIELD_WIDTH;
-                    break;
-                    
-                case "city":
-                    newBounds.Width = CITY_FIELD_WIDTH;
-                    break;
-                    
-                case "state":
-                case "state_abbreviation":
-                    newBounds.Width = STATE_FIELD_WIDTH;
-                    break;
-                    
-                case "zip":
-                case "zipcode":
-                case "postal_code":
-                    newBounds.Width = ZIP_FIELD_WIDTH;
-                    break;
-                    
-                case "phone":
-                case "phone_number":
-                case "mobile":
-                case "telephone":
-                    newBounds.Width = PHONE_FIELD_WIDTH;
-                    break;
-                    
-                case "email":
-                case "email_address":
-                    newBounds.Width = EMAIL_FIELD_WIDTH;
-                    break;
-                    
-                case "ssn":
-                case "social_security_number":
-                    newBounds.Width = SSN_FIELD_WIDTH;
-                    break;
-                    
-                case "ssn_partial":
-                    newBounds.Width = 50f;  // Just last 4 digits
-                    break;
-                    
-                case "ein":
-                case "tax_id":
-                    newBounds.Width = EIN_FIELD_WIDTH;
-                    break;
-                    
-                case "signature":
-                    newBounds.Width = SIGNATURE_FIELD_WIDTH;
-                    newBounds.Height = 30f;  // Signatures need more height
-                    break;
-                    
-                case "numeric":
-                case "number":
-                case "integer":
-                case "age":
-                case "year":
-                    newBounds.Width = NUMERIC_FIELD_WIDTH;
-                    break;
-                    
-                case "currency":
-                case "amount":
-                case "price":
-                case "salary":
-                case "income":
-                    newBounds.Width = CURRENCY_FIELD_WIDTH;
-                    break;
-                    
-                case "percentage":
-                case "percent":
-                    newBounds.Width = PERCENTAGE_FIELD_WIDTH;
-                    break;
-                    
-                case "textarea":
-                case "comments":
-                case "notes":
-                    newBounds.Width = TEXTAREA_WIDTH;
-                    newBounds.Height = TEXTAREA_HEIGHT;
-                    // Only move to right if field is currently in label area
-                    if (!preserveXPosition && newBounds.X < 250)
-                    {
-                        newBounds.X = 250;  // Move to right of label
-                    }
-                    break;
-                    
-                case "description":
-                    // Description fields might be inline or multi-line
-                    // For "Description of Refusal" type fields, make them wider but single line
-                    if (fieldName != null && fieldName.ToLower().Contains("description"))
-                    {
-                        newBounds.Width = TEXTAREA_WIDTH;
-                        newBounds.Height = TEXTAREA_HEIGHT;
-                        // Only move if not already positioned
-                        if (!preserveXPosition && newBounds.X < 250)
-                        {
-                            newBounds.X = 250;
-                        }
-                    }
-                    else
-                    {
-                        newBounds.Width = DEFAULT_TEXT_WIDTH;
-                    }
-                    break;
-                    
-                default:
-                    // For generic text fields, try to infer from field name
-                    if (!string.IsNullOrEmpty(fieldName))
-                    {
-                        var lowerName = fieldName.ToLower();
-                        if (lowerName.Contains("name"))
-                            newBounds.Width = NAME_FIELD_WIDTH;
-                        else if (lowerName.Contains("date"))
-                            newBounds.Width = DATE_FIELD_WIDTH;
-                        else if (lowerName.Contains("address") || lowerName.Contains("street"))
-                            newBounds.Width = ADDRESS_FIELD_WIDTH;
-                        else if (lowerName.Contains("city"))
-                            newBounds.Width = CITY_FIELD_WIDTH;
-                        else if (lowerName.Contains("state"))
-                            newBounds.Width = STATE_FIELD_WIDTH;
-                        else if (lowerName.Contains("zip"))
-                            newBounds.Width = ZIP_FIELD_WIDTH;
-                        else if (lowerName.Contains("phone") || lowerName.Contains("mobile"))
-                            newBounds.Width = PHONE_FIELD_WIDTH;
-                        else if (lowerName.Contains("email"))
-                            newBounds.Width = EMAIL_FIELD_WIDTH;
-                        else if (lowerName.Contains("description") || lowerName.Contains("comment") || lowerName.Contains("reason") || lowerName.Contains("refusal"))
-                        {
-                            newBounds.Width = TEXTAREA_WIDTH;
-                            newBounds.Height = TEXTAREA_HEIGHT;
-                            // Only move if not already positioned
-                            if (!preserveXPosition && newBounds.X < 250)
-                            {
-                                newBounds.X = 250;
-                            }
-                        }
-                        else
-                            newBounds.Width = DEFAULT_TEXT_WIDTH;
-                    }
-                    else
-                    {
-                        newBounds.Width = DEFAULT_TEXT_WIDTH;
-                    }
-                    break;
+                newBounds.Width = 200f;
+                newBounds.Height = 30f;
+            }
+            else if (lowerType == "date" || lowerName.Contains("date"))
+            {
+                newBounds.Width = 100f;
+                newBounds.Height = 20f;
+            }
+            else if (lowerType == "name" || lowerName.Contains("name"))
+            {
+                newBounds.Width = 150f;
+                newBounds.Height = 20f;
+            }
+            else if (lowerType == "textarea" || lowerName.Contains("description") || lowerName.Contains("reason") || lowerName.Contains("refusal"))
+            {
+                newBounds.Width = 300f;
+                newBounds.Height = 40f;
+            }
+            else if (lowerType == "address" || lowerName.Contains("address"))
+            {
+                newBounds.Width = 200f;
+                newBounds.Height = 20f;
+            }
+            else if (lowerType == "city" || lowerName.Contains("city"))
+            {
+                newBounds.Width = 150f;
+                newBounds.Height = 20f;
+            }
+            else if (lowerType == "state" || lowerName.Contains("state"))
+            {
+                newBounds.Width = 30f;
+                newBounds.Height = 20f;
+            }
+            else if (lowerType == "zip" || lowerName.Contains("zip"))
+            {
+                newBounds.Width = 60f;
+                newBounds.Height = 20f;
+            }
+            else
+            {
+                // Default for text fields
+                newBounds.Width = 150f;
+                newBounds.Height = 20f;
             }
             
             return newBounds;
