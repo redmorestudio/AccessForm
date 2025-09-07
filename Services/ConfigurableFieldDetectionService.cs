@@ -24,6 +24,7 @@ namespace WordToPdfConverter.Services
     public class ConfigurableFieldDetectionService
     {
         private readonly ILogger<ConfigurableFieldDetectionService> _logger;
+        private readonly ILoggerFactory _loggerFactory;
         private readonly FormFieldCreationService _fieldCreationService;
         private readonly AnthropicService _anthropicService;
         private readonly WordFormFieldAnalyzer _wordAnalyzer;
@@ -35,6 +36,7 @@ namespace WordToPdfConverter.Services
 
         public ConfigurableFieldDetectionService(
             ILogger<ConfigurableFieldDetectionService> logger,
+            ILoggerFactory loggerFactory,
             FormFieldCreationService fieldCreationService,
             AnthropicService anthropicService,
             WordFormFieldAnalyzer wordAnalyzer,
@@ -44,6 +46,7 @@ namespace WordToPdfConverter.Services
             NLPLabelGenerator nlpGenerator)
         {
             _logger = logger;
+            _loggerFactory = loggerFactory;
             _fieldCreationService = fieldCreationService;
             _anthropicService = anthropicService;
             _wordAnalyzer = wordAnalyzer;
@@ -130,9 +133,30 @@ namespace WordToPdfConverter.Services
                         string pdfMarkdown = "";
                         try
                         {
-                            var markdownConverter = new PdfToMarkdownConverter(_logger as ILogger<PdfToMarkdownConverter>);
+                            var logger = _loggerFactory?.CreateLogger<PdfToMarkdownConverter>();
+                            if (logger == null)
+                            {
+                                _logger.LogError("CreateLogger returned null!");
+                                throw new InvalidOperationException("Logger factory returned null logger");
+                            }
+                            var markdownConverter = new PdfToMarkdownConverter(logger);
                             pdfMarkdown = markdownConverter.ConvertToMarkdown(pdfBytes);
                             _logger.LogInformation($"Converted PDF to Markdown: {pdfMarkdown.Length} characters");
+                            
+                            // Log the markdown to a file for debugging
+                            var debugPath = "/tmp/markdown_sent_to_claude.md";
+                            System.IO.File.WriteAllText(debugPath, pdfMarkdown);
+                            _logger.LogInformation($"Wrote markdown to {debugPath} for debugging");
+                            
+                            // Check if "Date Sent/Delivered" is in the markdown
+                            if (pdfMarkdown.Contains("Date Sent") || pdfMarkdown.Contains("Date Delivered"))
+                            {
+                                _logger.LogInformation("Markdown contains 'Date Sent/Delivered' label");
+                            }
+                            else
+                            {
+                                _logger.LogWarning("WARNING: Markdown does NOT contain 'Date Sent/Delivered' label - Claude won't know what to call this field!");
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -283,6 +307,9 @@ namespace WordToPdfConverter.Services
             // Deduplicate checkboxes that are too close together
             fields = DeduplicateCheckboxes(fields);
             
+            // Handle duplicate field names across all field types
+            fields = ResolveDuplicateFieldNames(fields);
+            
             return (pdfBytes, fields);
         }
 
@@ -373,6 +400,65 @@ namespace WordToPdfConverter.Services
             _logger.LogInformation($"Deduplicated fields: {fields.Count} → {finalFields.Count} (removed {fields.Count - finalFields.Count} duplicates)");
             
             return finalFields;
+        }
+        
+        private List<FieldDetectionResult> ResolveDuplicateFieldNames(List<FieldDetectionResult> fields)
+        {
+            var nameGroups = fields.GroupBy(f => f.FieldName).ToList();
+            var resolvedFields = new List<FieldDetectionResult>();
+            
+            foreach (var group in nameGroups)
+            {
+                var groupFields = group.ToList();
+                if (groupFields.Count == 1)
+                {
+                    // No duplicates, just add it
+                    resolvedFields.Add(groupFields[0]);
+                }
+                else
+                {
+                    // We have duplicates - need to disambiguate
+                    _logger.LogInformation($"Found {groupFields.Count} fields with duplicate name '{group.Key}'");
+                    
+                    // Sort by position (top to bottom, left to right)
+                    groupFields.Sort((a, b) =>
+                    {
+                        var pageCmp = a.PageNumber.CompareTo(b.PageNumber);
+                        if (pageCmp != 0) return pageCmp;
+                        var yCmp = a.Y.CompareTo(b.Y);
+                        if (yCmp != 0) return yCmp;
+                        return a.X.CompareTo(b.X);
+                    });
+                    
+                    // Disambiguate based on field type and position
+                    for (int i = 0; i < groupFields.Count; i++)
+                    {
+                        var field = groupFields[i];
+                        
+                        // If fields have different types, append the type
+                        var typeCounts = groupFields.GroupBy(f => f.FieldType).Count();
+                        if (typeCounts > 1)
+                        {
+                            // Different types with same name - append type to make unique
+                            field.FieldName = $"{field.FieldName}_{field.FieldType}";
+                            _logger.LogInformation($"Renamed duplicate field to '{field.FieldName}' based on type");
+                        }
+                        else if (groupFields.Count > 1)
+                        {
+                            // Same type, same name - append position index
+                            if (i > 0) // Keep first one as-is
+                            {
+                                field.FieldName = $"{field.FieldName}_{i + 1}";
+                                _logger.LogInformation($"Renamed duplicate field to '{field.FieldName}' based on position");
+                            }
+                        }
+                        
+                        resolvedFields.Add(field);
+                    }
+                }
+            }
+            
+            return resolvedFields;
         }
         
         private RectangleF GetLoadedFieldBounds(PdfLoadedField field)
@@ -485,7 +571,48 @@ namespace WordToPdfConverter.Services
         {
             var fields = new List<FieldDetectionResult>();
             
-            var visionResults = await _visionDetector.AnalyzePdfWithVision(pdfBytes, 5);
+            // Extract markdown context to help Claude Vision understand the document
+            string pdfMarkdown = null;
+            try
+            {
+                if (_loggerFactory == null)
+                {
+                    _logger.LogError("ERROR: _loggerFactory is NULL! Cannot create markdown converter.");
+                    pdfMarkdown = "";
+                }
+                else
+                {
+                    var logger = _loggerFactory?.CreateLogger<PdfToMarkdownConverter>();
+                    if (logger == null)
+                    {
+                        _logger.LogError("CreateLogger returned null in DetectWithClaudeVision!");
+                        throw new InvalidOperationException("Logger factory returned null logger");
+                    }
+                    var markdownConverter = new PdfToMarkdownConverter(logger);
+                    pdfMarkdown = markdownConverter.ConvertToMarkdown(pdfBytes);
+                    _logger.LogInformation($"Extracted markdown for Claude Vision: {pdfMarkdown.Length} characters");
+                }
+                
+                // Debug: Write markdown to file if we have it
+                if (!string.IsNullOrEmpty(pdfMarkdown))
+                {
+                    var debugPath = "/tmp/claude_vision_markdown.md";
+                    System.IO.File.WriteAllText(debugPath, pdfMarkdown);
+                    _logger.LogInformation($"Wrote markdown context to {debugPath}");
+                    
+                    // Check for specific labels
+                    if (pdfMarkdown.Contains("Date Sent") || pdfMarkdown.Contains("Delivered"))
+                    {
+                        _logger.LogInformation("Markdown contains 'Date Sent/Delivered' label");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Failed to extract markdown for Claude Vision: {ex.Message}");
+            }
+            
+            var visionResults = await _visionDetector.AnalyzePdfWithVision(pdfBytes, 5, pdfMarkdown);
             
             foreach (var page in visionResults)
             {
@@ -1076,9 +1203,9 @@ Document:
                 _logger.LogInformation($"Got {textFieldNames?.Count ?? 0} field names from text analysis");
             }
             
-            // For now, just call the vision detector to get labels
-            // In the future, we could send field positions to Claude for targeted labeling
-            var visionResults = await _visionDetector.AnalyzePdfWithVision(pdfBytes, 5);
+            // Call the vision detector with extracted text/markdown to get labels
+            // Pass the extractedText (which is actually markdown) to help Claude with field naming
+            var visionResults = await _visionDetector.AnalyzePdfWithVision(pdfBytes, 5, extractedText);
             
             // Extract all Claude-detected fields
             var claudeFields = new List<FieldDetectionResult>();
@@ -1127,6 +1254,21 @@ Document:
                 
                 _logger.LogInformation($"Page {pageNum}: {sfFields.Count} Syncfusion fields, {cvFields.Count} Claude labels");
                 
+                // Debug: Log the last few fields to see what's happening at the bottom
+                if (sfFieldsSorted.Count > 0)
+                {
+                    var lastSfField = sfFieldsSorted.Last();
+                    _logger.LogInformation($"Last Syncfusion field: {lastSfField.FieldName} at Y={lastSfField.Y}, X={lastSfField.X}, Type={lastSfField.FieldType}");
+                }
+                if (cvFieldsSorted.Count > 0)
+                {
+                    var bottomCvFields = cvFieldsSorted.Where(f => f.Y > 250 || cvFieldsSorted.IndexOf(f) >= cvFieldsSorted.Count - 5).ToList();
+                    foreach (var cvField in bottomCvFields)
+                    {
+                        _logger.LogInformation($"Bottom Claude field: {cvField.FieldName} at Y={cvField.Y}, X={cvField.X}, Type={cvField.FieldType}");
+                    }
+                }
+                
                 // Match fields - first by name, then by position
                 var usedLabels = new HashSet<string>();
                 
@@ -1149,7 +1291,7 @@ Document:
                              sfField.FieldName?.Contains(cv.FieldName ?? "", StringComparison.OrdinalIgnoreCase) == true));
                     }
                     
-                    // If still no match, find closest by position
+                    // If still no match, find closest by position with type preference
                     if (bestMatch == null)
                     {
                         double minDistance = double.MaxValue;
@@ -1162,11 +1304,27 @@ Document:
                             double dy = sfField.Y - cvField.Y;
                             double distance = Math.Sqrt(dx * dx + dy * dy);
                             
+                            // Prefer matching field types (checkbox to checkbox, text to text/date)
+                            var typeCompatible = 
+                                (sfField.FieldType.ToLower() == "checkbox" && cvField.FieldType.ToLower() == "checkbox") ||
+                                (sfField.FieldType.ToLower() != "checkbox" && cvField.FieldType.ToLower() != "checkbox");
+                            
+                            // Add type penalty if types don't match
+                            if (!typeCompatible)
+                            {
+                                distance += 1000; // Large penalty for type mismatch
+                            }
+                            
                             if (distance < minDistance)
                             {
                                 minDistance = distance;
                                 bestMatch = cvField;
                             }
+                        }
+                        
+                        if (bestMatch != null)
+                        {
+                            _logger.LogDebug($"Matched {sfField.FieldName} to {bestMatch.FieldName} by position (distance: {minDistance})");
                         }
                     }
                     
