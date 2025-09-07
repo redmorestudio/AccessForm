@@ -100,13 +100,21 @@ builder.Services.AddScoped<AccessFormServer.Services.AdobeAutotagService>(provid
     return new AccessFormServer.Services.AdobeAutotagService(logger, credentialsPath);
 });
 
+// Add Aspose PDF Service for font embedding and optimization
+builder.Services.AddScoped<AccessFormServer.Services.AsposePdfService>(provider =>
+{
+    var logger = provider.GetRequiredService<ILogger<AccessFormServer.Services.AsposePdfService>>();
+    return new AccessFormServer.Services.AsposePdfService(logger);
+});
+
 // Add complete PDF rebuild service to eliminate ghost fields with Adobe autotag support
 builder.Services.AddScoped<PdfCompleteRebuildService>(provider =>
 {
     var logger = provider.GetRequiredService<ILogger<PdfCompleteRebuildService>>();
     var passportPdfService = provider.GetService<PassportPdfService>();
     var adobeService = provider.GetService<AccessFormServer.Services.AdobeAutotagService>();
-    return new PdfCompleteRebuildService(logger, passportPdfService, adobeService);
+    var asposeService = provider.GetService<AccessFormServer.Services.AsposePdfService>();
+    return new PdfCompleteRebuildService(logger, passportPdfService, adobeService, asposeService);
 });
 
 // Add NLP services  
@@ -837,6 +845,7 @@ app.MapPost("/api/convert-with-ai", async (
     ConfigurableFieldDetectionService configService,
     EnhancedPdfService enhancedService,
     PassportPdfService passportPdfService,
+    PdfCompleteRebuildService completeRebuildService,
     NLPLabelGenerator nlpGenerator,
     DebugCacheService debugCache,
     ILogger<Program> logger) =>
@@ -1041,13 +1050,98 @@ app.MapPost("/api/convert-with-ai", async (
         
         // Apply accessibility remediation
         logger.LogInformation("Applying accessibility remediation");
-        using var remediationStream = new MemoryStream(normalPdfBytes);
-        using var remediatedDoc = new PdfLoadedDocument(remediationStream);
-        enhancer.EnhanceAccessibility(remediatedDoc, file.FileName);
-        using var remediatedOutputStream = new MemoryStream();
-        remediatedDoc.Save(remediatedOutputStream);
-        remediatedPdfBytes = remediatedOutputStream.ToArray();
-        remediatedDoc.Close(true);
+        
+        // Step 4.5: Use complete PDF rebuild for better PDF/UA compliance
+        // This will fix ZapfDingbats, tag structure, and more
+        if (completeRebuildService != null)
+        {
+            logger.LogInformation("Using complete PDF rebuild for accessibility compliance");
+            
+            // Prepare field updates from detected fields
+            var fieldUpdates = new List<PdfCompleteRebuildService.FieldUpdate>();
+            if (detectedFields > 0)
+            {
+                // Get the fields that were detected
+                // We need to extract field information from the PDF
+                using var pdfStream = new MemoryStream(normalPdfBytes);
+                using var pdfDoc = new PdfLoadedDocument(pdfStream);
+                
+                if (pdfDoc.Form != null && pdfDoc.Form.Fields != null)
+                {
+                    foreach (PdfLoadedField field in pdfDoc.Form.Fields)
+                    {
+                        // Clean field names by removing type suffixes like [name], [checkbox], etc.
+                        var cleanName = System.Text.RegularExpressions.Regex.Replace(field.Name, @"\[(name|text|textarea|checkbox|radio|dropdown|date|email|phone|signature|number)\]$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                        
+                        // Generate appropriate tooltip based on field name
+                        string tooltip = cleanName;
+                        var lowerName = cleanName.ToLower();
+                        
+                        if (lowerName.Contains("signature") && !lowerName.Contains("date"))
+                            tooltip = "Click to add signature";
+                        else if (lowerName.Contains("date"))
+                            tooltip = "Enter date in MM/DD/YYYY format";
+                        else if (lowerName.Contains("first name"))
+                            tooltip = "Enter first name";
+                        else if (lowerName.Contains("last name"))
+                            tooltip = "Enter last name";
+                        else if (lowerName.Contains("middle name"))
+                            tooltip = "Enter middle name or initial";
+                        else if (lowerName.Contains("email"))
+                            tooltip = "Enter email address";
+                        else if (lowerName.Contains("phone"))
+                            tooltip = "Enter phone number";
+                        else if (lowerName.Contains("description") || lowerName.Contains("reason"))
+                            tooltip = $"Enter detailed information for {cleanName}";
+                        else if (field is PdfLoadedCheckBoxField)
+                            tooltip = $"Check to select {cleanName}";
+                        
+                        fieldUpdates.Add(new PdfCompleteRebuildService.FieldUpdate
+                        {
+                            OriginalName = field.Name,
+                            NewName = cleanName,
+                            FieldType = field is PdfLoadedCheckBoxField ? "checkbox" : 
+                                       field is PdfLoadedRadioButtonListField ? "radio" :
+                                       field is PdfLoadedComboBoxField ? "dropdown" :
+                                       field is PdfLoadedTextBoxField ? "text" : "text",
+                            Tooltip = tooltip,
+                            PageNumber = 1  // Default to page 1 for now, as Page.Index doesn't exist
+                        });
+                    }
+                }
+            }
+            
+            var rebuildResult = await completeRebuildService.CompletelyRebuildPdfAsync(normalPdfBytes, fieldUpdates);
+            if (rebuildResult.Success && rebuildResult.PdfBytes != null)
+            {
+                logger.LogInformation($"PDF rebuild successful: {rebuildResult.TotalFields} fields, {rebuildResult.TagElements} tag elements");
+                normalPdfBytes = rebuildResult.PdfBytes;
+                remediatedPdfBytes = rebuildResult.PdfBytes;
+            }
+            else
+            {
+                logger.LogWarning($"PDF rebuild failed: {rebuildResult.ErrorMessage}, falling back to basic remediation");
+                // Fall back to basic remediation
+                using var remediationStream = new MemoryStream(normalPdfBytes);
+                using var remediatedDoc = new PdfLoadedDocument(remediationStream);
+                enhancer.EnhanceAccessibility(remediatedDoc, file.FileName);
+                using var remediatedOutputStream = new MemoryStream();
+                remediatedDoc.Save(remediatedOutputStream);
+                remediatedPdfBytes = remediatedOutputStream.ToArray();
+                remediatedDoc.Close(true);
+            }
+        }
+        else
+        {
+            // Fallback to original remediation if rebuild service isn't available
+            using var remediationStream = new MemoryStream(normalPdfBytes);
+            using var remediatedDoc = new PdfLoadedDocument(remediationStream);
+            enhancer.EnhanceAccessibility(remediatedDoc, file.FileName);
+            using var remediatedOutputStream = new MemoryStream();
+            remediatedDoc.Save(remediatedOutputStream);
+            remediatedPdfBytes = remediatedOutputStream.ToArray();
+            remediatedDoc.Close(true);
+        }
         
         // Step 5: Skip PassportPDF and clean field names directly
         // This preserves tag structure while removing type suffixes

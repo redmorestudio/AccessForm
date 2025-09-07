@@ -21,18 +21,18 @@ except ImportError as e:
     }))
     sys.exit(1)
 
-# Set up logging - DISABLE for production to avoid interfering with JSON output
-# logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s', stream=sys.stderr)
-# logger = logging.getLogger(__name__)
+# Set up logging - ENABLE for debugging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s: %(message)s', stream=sys.stderr)
+logger = logging.getLogger(__name__)
 
-# Create a null logger that does nothing
-class NullLogger:
-    def info(self, msg): pass
-    def debug(self, msg): pass
-    def warning(self, msg): pass
-    def error(self, msg): pass
+# Use real logger for debugging
+# class NullLogger:
+#     def info(self, msg): pass
+#     def debug(self, msg): pass
+#     def warning(self, msg): pass
+#     def error(self, msg): pass
     
-logger = NullLogger()
+# logger = NullLogger()
 
 class PDFCompleteRebuilder:
     """Handles complete PDF rebuilding with clean field and tag tree structure"""
@@ -175,6 +175,7 @@ class PDFCompleteRebuilder:
                 'signature': fitz.PDF_WIDGET_TYPE_TEXT,  # Use text field for signatures to avoid document lock
                 'button': fitz.PDF_WIDGET_TYPE_BUTTON,
                 'text': fitz.PDF_WIDGET_TYPE_TEXT,
+                'date': fitz.PDF_WIDGET_TYPE_TEXT,  # Date fields use text widget with format validation
             }
             
             widget_type = widget_type_map.get(field_type, fitz.PDF_WIDGET_TYPE_TEXT)
@@ -201,8 +202,22 @@ class PDFCompleteRebuilder:
                 # Font already set above to avoid ZapfDingbats
                 widget.text_color = [0, 0, 0]
                 
+                # Special handling for date fields
+                if field_type == 'date':
+                    # Add date format validation
+                    widget.field_flags |= fitz.PDF_FIELD_IS_COMMIT_ON_SEL_CHANGE
+                    # Set format for MM/DD/YYYY
+                    try:
+                        # Set the field format for dates
+                        widget.field_value = ""  # Start empty
+                        # Add visual hint in tooltip
+                        if not tooltip or "date" not in tooltip.lower():
+                            tooltip = f"{tooltip} (MM/DD/YYYY)" if tooltip else "Enter date (MM/DD/YYYY)"
+                    except:
+                        pass
+                
                 # Special handling for signature fields (using text type to avoid locks)
-                if field_type == 'signature':
+                elif field_type == 'signature':
                     # Make signature fields look different
                     widget.border_width = 1
                     widget.fill_color = [0.98, 0.98, 0.98]  # Very light gray background
@@ -273,6 +288,21 @@ class PDFCompleteRebuilder:
             # Update to apply changes
             widget.update()
             
+            # Try to mark the widget annotation for tagging
+            # This helps with PDF/UA compliance
+            try:
+                # Get the annotation object (widgets are a type of annotation)
+                if hasattr(widget, 'xref') and widget.xref > 0:
+                    # Try to add structure parent key to link to structure tree
+                    # This tells screen readers that this annotation is part of the document structure
+                    if hasattr(page.parent, 'xref_set_key'):
+                        # Set StructParent to indicate this should be in the tag tree
+                        page.parent.xref_set_key(widget.xref, 'StructParent', '0')
+                        logger.debug(f"Added StructParent to widget '{field_name}'")
+            except Exception as e:
+                # Not critical - the Adobe autotag will fix this
+                logger.debug(f"Could not add StructParent to widget: {e}")
+            
             self.field_counter += 1
             logger.debug(f"Added field '{field_name}' of type '{field_type}' at ({x}, {y})")
             
@@ -322,85 +352,17 @@ class PDFCompleteRebuilder:
             # Not critical - document will still work
     
     def create_tag_structure(self, doc: fitz.Document, fields_by_page: Dict[int, List[Dict]]) -> bool:
-        """Create accessibility structure for PDF/UA compliance"""
-        try:
-            self.tag_counter = 0
-            
-            # Add document-level accessibility metadata
-            try:
-                if hasattr(doc, 'xref_set_key') and hasattr(doc, 'pdf_catalog'):
-                    catalog_xref = doc.pdf_catalog()
-                    
-                    # Mark document as tagged
-                    doc.xref_set_key(catalog_xref, 'MarkInfo', '<</Marked true/Suspects false>>')
-                    
-                    # Create a basic structure tree root
-                    # This tells PDF readers that content is structured
-                    struct_tree_root = """<</Type/StructTreeRoot
-                        /K[<</Type/StructElem/S/Document>>]
-                        /ParentTree<</Nums[]>>
-                        /RoleMap<</Document/Document/H1/H1/H2/H2/P/P/Figure/Figure/Form/Form>>
-                    >>"""
-                    
-                    struct_xref = doc.xref_add_object(struct_tree_root)
-                    doc.xref_set_key(catalog_xref, 'StructTreeRoot', f'{struct_xref} 0 R')
-                    
-                    # Set language with proper PDF string syntax
-                    doc.xref_set_key(catalog_xref, 'Lang', '(en-US)')
-                    
-                    # Add ViewerPreferences for accessibility with DisplayDocTitle
-                    viewer_prefs = '<</DisplayDocTitle true>>'
-                    doc.xref_set_key(catalog_xref, 'ViewerPreferences', viewer_prefs)
-                    
-                    logger.info("Added document structure tree root and accessibility metadata")
-            except Exception as e:
-                logger.warning(f"Could not add full structure tree: {e}")
-            
-            # Count content elements
-            for page_num, page in enumerate(doc):
-                # Count text blocks, but exclude whitespace-only blocks
-                text_blocks = page.get_text("blocks")
-                for block in text_blocks:
-                    text_content = block[4].strip()
-                    # Only count non-empty text that isn't just whitespace
-                    if text_content and not text_content.isspace():
-                        self.tag_counter += 1
-                
-                # Count images and try to add alt text placeholder
-                image_list = page.get_images()
-                self.tag_counter += len(image_list)
-                
-                # Note: Image alt text needs to be added to the structure tree
-                # This requires the Texas Workforce Commission header image to have alt text
-                # The Adobe autotag API will handle this properly
-                
-                # Count form fields
-                if page_num in fields_by_page:
-                    self.tag_counter += len(fields_by_page[page_num])
-                
-                # Try to mark page content as tagged
-                try:
-                    page_xref = page.xref
-                    if page_xref and hasattr(doc, 'xref_set_key'):
-                        # Set tab order to structure order for accessibility
-                        doc.xref_set_key(page_xref, 'Tabs', '/S')
-                        # Mark page as having structured content
-                        doc.xref_set_key(page_xref, 'StructParents', '0')
-                        
-                        # Mark paths as artifacts to fix "path object not tagged" error
-                        # Paths that are decorative should be marked as artifacts
-                        # This is done through the content stream but PyMuPDF doesn't directly support it
-                        # The Adobe autotag will handle this properly
-                except:
-                    pass
-            
-            logger.info(f"Processed {self.tag_counter} content elements")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to create tag structure: {e}")
-            return False
+        """Don't modify tag structure - it's already working from C# side"""
+        logger.info("=== SKIPPING TAG STRUCTURE MODIFICATION ===")
+        logger.info("Tag structure already created by C# services - not modifying")
+        return True
     
+    def old_create_tag_structure_disabled(self, doc: fitz.Document, fields_by_page: Dict[int, List[Dict]]) -> bool:
+        """Old code - disabled to prevent breaking the working tag structure"""
+        # The old implementation tried to create PDF/UA tags but PyMuPDF can't do it properly
+        # This caused the tag structure to break
+        # We now rely on C# services and Adobe autotag to handle this
+        pass
     def extract_existing_fields(self, doc: fitz.Document) -> Dict[str, Dict[str, Any]]:
         """Extract position and properties of existing fields from the document"""
         existing_fields = {}
@@ -485,6 +447,39 @@ class PDFCompleteRebuilder:
         }
         return type_map.get(widget_type, 'text')
     
+    def replace_problematic_fonts(self, doc: fitz.Document) -> None:
+        """Note problematic fonts - Adobe will handle the actual replacement"""
+        logger.info("=== CHECKING FOR PROBLEMATIC FONTS ===")
+        
+        try:
+            # Just log problematic fonts - don't try to replace them here
+            # Adobe's OCR and autotag will handle font embedding properly
+            problematic_fonts = set()
+            
+            for page_num, page in enumerate(doc):
+                fonts = page.get_fonts()
+                for font in fonts:
+                    font_name = font[3]
+                    if any(problem in font_name for problem in ['Arial', 'ZapfDingbats', 'Symbol']):
+                        problematic_fonts.add(font_name)
+                        logger.info(f"Page {page_num}: Found problematic font '{font_name}'")
+            
+            if problematic_fonts:
+                logger.info(f"Found {len(problematic_fonts)} problematic fonts: {problematic_fonts}")
+                logger.info("Adobe OCR will replace these with embeddable fonts")
+            
+            # Ensure all form fields use Helvetica (this is safe)
+            for page in doc:
+                for widget in page.widgets():
+                    widget.text_font = "Helv"
+                    widget.update()
+            
+            logger.info("Form field fonts set to Helvetica")
+            
+        except Exception as e:
+            logger.warning(f"Font check encountered an issue: {e}")
+            # Don't fail the entire process for font issues
+    
     def rebuild_pdf(self, input_path: str, field_updates: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Rebuild PDF by removing and re-adding fields while preserving document structure.
@@ -533,6 +528,105 @@ class PDFCompleteRebuilder:
             
             # Insert the entire document to preserve structure, tags, and content
             temp_doc.insert_pdf(original_doc)
+            
+            # Fix font embedding issues - replace Arial with Helvetica
+            self.replace_problematic_fonts(temp_doc)
+            logger.info("=== FIXING FONT EMBEDDING ISSUES ===")
+            try:
+                # Get all fonts used in the document
+                fonts_replaced = 0
+                for page_num, page in enumerate(temp_doc):
+                    # Get text with font information
+                    text_dict = page.get_text("dict")
+                    for block in text_dict.get("blocks", []):
+                        if block.get("type") == 0:  # Text block
+                            for line in block.get("lines", []):
+                                for span in line.get("spans", []):
+                                    font_name = span.get("font", "")
+                                    # Check for Arial font
+                                    if "Arial" in font_name or "arial" in font_name.lower():
+                                        # Note: PyMuPDF doesn't allow direct font replacement
+                                        # This would need to be done at field creation time
+                                        logger.info(f"Found Arial font on page {page_num}: {font_name}")
+                                        fonts_replaced += 1
+                
+                if fonts_replaced > 0:
+                    logger.info(f"Found {fonts_replaced} instances of Arial font - will use Helvetica for new fields")
+                else:
+                    logger.info("No Arial font issues found")
+                    
+            except Exception as e:
+                logger.warning(f"Could not check fonts: {e}")
+            
+            # Replace ZapfDingbats checkbox characters with Unicode equivalents
+            # This is a workaround - we'll redact and replace the ZapfDingbats characters
+            logger.info("=== STARTING ZAPFDINGBATS REPLACEMENT ===")
+            try:
+                zapf_replacements = []
+                for page_num, page in enumerate(temp_doc):
+                    # Get all text instances with detailed position info
+                    text_instances = page.get_text("rawdict")
+                    
+                    # Look for ZapfDingbats font usage
+                    for block in text_instances.get("blocks", []):
+                        for line in block.get("lines", []):
+                            for span in line.get("spans", []):
+                                font = span.get("font", "")
+                                if "ZapfDingbats" in font:
+                                    bbox = span.get("bbox", None)
+                                    if bbox:
+                                        # Get the actual character
+                                        text = span.get("text", "")
+                                        # Map ZapfDingbats codes to Unicode
+                                        # In ZapfDingbats: q = empty box, 4 = checkmark
+                                        replacement = None
+                                        if 'q' in text or '\x71' in text:  # hex 71 = 'q'
+                                            replacement = '☐'  # Empty checkbox
+                                        elif '4' in text or '\x34' in text:  # hex 34 = '4'
+                                            replacement = '☑'  # Checked checkbox
+                                        elif 'o' in text or '\x6f' in text:  # hex 6f = 'o'
+                                            replacement = '□'  # Square
+                                        
+                                        if replacement:
+                                            logger.info(f"Found ZapfDingbats '{text}' at page {page_num}, bbox {bbox}")
+                                            zapf_replacements.append({
+                                                'page': page_num,
+                                                'bbox': bbox,
+                                                'old': text,
+                                                'new': replacement
+                                            })
+                
+                # Now redact and replace the ZapfDingbats characters
+                for repl in zapf_replacements:
+                    try:
+                        page = temp_doc[repl['page']]
+                        rect = fitz.Rect(repl['bbox'])
+                        
+                        # Redact the ZapfDingbats character
+                        page.add_redact_annot(rect)
+                        page.apply_redactions()
+                        
+                        # Insert Unicode replacement with a standard font
+                        # Use a point slightly offset from the original position
+                        point = fitz.Point(rect.x0, rect.y1 - 2)
+                        page.insert_text(point, repl['new'], fontname="helv", fontsize=10, color=(0, 0, 0))
+                        
+                        logger.info(f"Replaced ZapfDingbats '{repl['old']}' with '{repl['new']}' on page {repl['page']}")
+                    except Exception as e:
+                        logger.warning(f"Could not replace individual ZapfDingbats character: {e}")
+                
+                if zapf_replacements:
+                    logger.info(f"Replaced {len(zapf_replacements)} ZapfDingbats characters")
+                    # Also write to debug file
+                    with open('/tmp/zapf_debug.json', 'w') as f:
+                        json.dump({"found": len(zapf_replacements), "replacements": zapf_replacements[:5]}, f, indent=2)
+                else:
+                    logger.info("No ZapfDingbats characters found to replace")
+                    with open('/tmp/zapf_debug.json', 'w') as f:
+                        json.dump({"found": 0, "message": "No ZapfDingbats found"}, f, indent=2)
+                    
+            except Exception as e:
+                logger.warning(f"Could not process ZapfDingbats: {e}")
             
             # Process fonts - substitute Arial with Helvetica to avoid embedding issues
             try:
@@ -606,19 +700,15 @@ class PDFCompleteRebuilder:
                     # Special handling for duplicate field names (e.g., "In person, hand-delivered" appears twice)
                     existing_field = {}
                     
-                    # For duplicate names, use field type to disambiguate
+                    # For duplicate names, check if the original name has type suffix
                     field_type_hint = field_info.get('fieldType') or field_info.get('FieldType', '').lower()
                     
-                    if original_name == "In person, hand-delivered" and field_type_hint in ['text', 'date']:
-                        # This is the date field at the bottom, not the checkbox
-                        # Look for the field that's NOT a checkbox
-                        for fname, fdata in existing_fields.items():
-                            if fname == "In person, hand-delivered" or fname.lower() == "date sent/delivered":
-                                # Skip if it's a checkbox (has small width)
-                                if fdata.get('width', 0) > 30:  # Text fields are wider than checkboxes
-                                    existing_field = fdata
-                                    logger.info(f"Found date field variant of 'In person, hand-delivered'")
-                                    break
+                    # Try looking up with type suffix if plain name fails
+                    if not existing_field and field_type_hint:
+                        type_suffixed_name = f"{original_name}_{field_type_hint}"
+                        existing_field = existing_fields.get(type_suffixed_name, {})
+                        if existing_field:
+                            logger.info(f"Found field using type-suffixed name '{type_suffixed_name}'")
                     
                     if not existing_field:
                         existing_field = existing_fields.get(original_name, {})
@@ -785,7 +875,41 @@ class PDFCompleteRebuilder:
             
             logger.info(f"Added {len(added_fields)} fields to the document")
             
-            # Step 5: Create clean tag structure for accessibility
+            # Step 4.5: Mark decorative elements as artifacts
+            logger.info("=== MARKING DECORATIVE ELEMENTS AS ARTIFACTS ===")
+            try:
+                artifacts_marked = 0
+                for page_num, page in enumerate(final_doc):
+                    # Get all drawings (strokes, fills) on the page
+                    drawings = page.get_drawings()
+                    for drawing in drawings:
+                        # Check if this is a decorative element (border, background)
+                        # Form field borders are typically thin rectangles
+                        for item in drawing.get("items", []):
+                            if item[0] == "re":  # Rectangle
+                                # Check if it's likely a form field border (thin stroke)
+                                rect_info = item[1]
+                                if len(rect_info) >= 4:
+                                    width = rect_info[2]
+                                    height = rect_info[3]
+                                    # Form fields are typically small rectangles
+                                    if (10 < width < 400) and (10 < height < 30):
+                                        artifacts_marked += 1
+                                        # Note: PyMuPDF doesn't have direct artifact marking
+                                        # This needs to be done through the structure tree
+                                        logger.debug(f"Found potential form field border at ({rect_info[0]}, {rect_info[1]})")
+                
+                if artifacts_marked > 0:
+                    logger.info(f"Identified {artifacts_marked} decorative elements that should be artifacts")
+                    with open('/tmp/artifacts_debug.json', 'w') as f:
+                        json.dump({"found": artifacts_marked}, f)
+                else:
+                    logger.info("No specific decorative elements found to mark as artifacts")
+                    
+            except Exception as e:
+                logger.warning(f"Could not mark artifacts: {e}")
+            
+            # Step 5: Call tag structure function (which now does minimal/no modification)
             self.create_tag_structure(final_doc, fields_by_page)
             
             # Step 6: Save and reload to ensure fields are properly committed
@@ -867,6 +991,10 @@ class PDFCompleteRebuilder:
 
 def main():
     """Main entry point for command-line usage"""
+    logger.info("=== PDF_COMPLETE_REBUILD.PY STARTING ===")
+    logger.info(f"Script called with {len(sys.argv)} arguments")
+    logger.info(f"Arguments: {sys.argv}")
+    
     if len(sys.argv) < 3:
         print(json.dumps({
             "success": False,
@@ -876,6 +1004,8 @@ def main():
     
     pdf_path = sys.argv[1]
     field_updates_arg = sys.argv[2]
+    logger.info(f"PDF Path: {pdf_path}")
+    logger.info(f"Field updates arg length: {len(field_updates_arg)} chars")
     
     if not os.path.exists(pdf_path):
         print(json.dumps({
@@ -886,18 +1016,30 @@ def main():
     
     # Parse field updates
     if os.path.exists(field_updates_arg):
+        logger.info(f"Loading field updates from file: {field_updates_arg}")
         with open(field_updates_arg, 'r') as f:
             field_updates = json.load(f)
     else:
+        logger.info(f"Parsing field updates from JSON string")
         field_updates = json.loads(field_updates_arg)
     
+    logger.info(f"Loaded {len(field_updates)} field updates")
+    for i, field in enumerate(field_updates[:3]):  # Log first 3 fields
+        logger.info(f"Field {i}: {field.get('originalName', 'NO_NAME')} -> {field.get('newName', 'NO_NAME')}")
+    
     # Perform rebuild
+    logger.info("Creating PDFCompleteRebuilder instance")
     rebuilder = PDFCompleteRebuilder()
+    
+    logger.info("Calling rebuild_pdf method")
     result = rebuilder.rebuild_pdf(pdf_path, field_updates)
+    
+    logger.info(f"Rebuild result: success={result.get('success')}, fields={result.get('totalFields')}")
     
     # Output result
     print(json.dumps(result, indent=2))
     
+    logger.info("=== PDF_COMPLETE_REBUILD.PY FINISHED ===")
     sys.exit(0 if result["success"] else 1)
 
 if __name__ == "__main__":

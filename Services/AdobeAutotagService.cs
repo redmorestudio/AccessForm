@@ -10,6 +10,7 @@ using Adobe.PDFServicesSDK.pdfjobs.results;
 using Adobe.PDFServicesSDK.exception;
 using Adobe.PDFServicesSDK.pdfjobs.parameters.autotag;
 using Adobe.PDFServicesSDK.pdfjobs.parameters.ocr;
+using Adobe.PDFServicesSDK.pdfjobs.parameters.compresspdf;
 using System.Text.Json;
 
 namespace AccessFormServer.Services
@@ -161,6 +162,74 @@ namespace AccessFormServer.Services
         }
 
         /// <summary>
+        /// Compress and optimize PDF to embed fonts and reduce file size
+        /// </summary>
+        public async Task<byte[]> CompressPdfAsync(byte[] pdfBytes)
+        {
+            try
+            {
+                _logger.LogInformation($"Starting Adobe Compress PDF for {pdfBytes.Length} byte PDF to embed fonts");
+
+                // Create PDF Services instance
+                PDFServices pdfServices = new PDFServices(_credentials);
+
+                // Upload the PDF
+                using var inputStream = new MemoryStream(pdfBytes);
+                IAsset asset = pdfServices.Upload(inputStream, PDFServicesMediaType.PDF.GetMIMETypeValue());
+
+                // Create compression parameters - HIGH compression will embed fonts
+                var compressParams = CompressPDFParams.CompressPDFParamsBuilder()
+                    .WithCompressionLevel(CompressionLevel.HIGH)
+                    .Build();
+                
+                // Create compress job - this will optimize and embed fonts
+                CompressPDFJob compressJob = new CompressPDFJob(asset)
+                    .SetParams(compressParams);
+
+                // Submit the job
+                _logger.LogInformation("Submitting compress job to Adobe API");
+                string location = pdfServices.Submit(compressJob);
+                
+                // Wait for and get the result
+                PDFServicesResponse<CompressPDFResult> response = 
+                    pdfServices.GetJobResult<CompressPDFResult>(location, typeof(CompressPDFResult));
+
+                // Get the compressed PDF
+                IAsset compressedAsset = response.Result.Asset;
+                StreamAsset streamAsset = pdfServices.GetContent(compressedAsset);
+
+                // Read the result into a byte array
+                using var resultStream = new MemoryStream();
+                await streamAsset.Stream.CopyToAsync(resultStream);
+                var compressedPdfBytes = resultStream.ToArray();
+
+                _logger.LogInformation($"Adobe Compress successful, result is {compressedPdfBytes.Length} bytes (reduced from {pdfBytes.Length})");
+
+                return compressedPdfBytes;
+            }
+            catch (ServiceUsageException ex)
+            {
+                _logger.LogError(ex, "Adobe API service usage error during compression");
+                throw new InvalidOperationException($"Adobe API usage error: {ex.Message}", ex);
+            }
+            catch (ServiceApiException ex)
+            {
+                _logger.LogError(ex, "Adobe API service error during compression");
+                throw new InvalidOperationException($"Adobe API error: {ex.Message}", ex);
+            }
+            catch (SDKException ex)
+            {
+                _logger.LogError(ex, "Adobe SDK error during compression");
+                throw new InvalidOperationException($"Adobe SDK error: {ex.Message}", ex);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to compress PDF");
+                throw;
+            }
+        }
+
+        /// <summary>
         /// Apply OCR to PDF to ensure all fonts are properly embedded
         /// </summary>
         public async Task<byte[]> OcrPdfAsync(byte[] pdfBytes)
@@ -177,9 +246,10 @@ namespace AccessFormServer.Services
                 IAsset asset = pdfServices.Upload(inputStream, PDFServicesMediaType.PDF.GetMIMETypeValue());
 
                 // Create OCR parameters to ensure fonts are embedded
+                // Use SEARCHABLE_IMAGE to reconstruct text with embedded fonts
                 var ocrParams = OCRParams.OCRParamsBuilder()
                     .WithOcrLocale(OCRSupportedLocale.EN_US)
-                    .WithOcrType(OCRSupportedType.SEARCHABLE_IMAGE_EXACT)
+                    .WithOcrType(OCRSupportedType.SEARCHABLE_IMAGE)
                     .Build();
                 
                 // Create OCR job with parameters - this will recognize text and embed fonts properly

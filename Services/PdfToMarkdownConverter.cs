@@ -21,7 +21,7 @@ namespace AccessFormServer.Services
         
         public PdfToMarkdownConverter(ILogger<PdfToMarkdownConverter> logger)
         {
-            _logger = logger;
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger), "Logger cannot be null");
         }
         
         /// <summary>

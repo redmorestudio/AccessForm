@@ -19,15 +19,18 @@ namespace WordToPdfConverter.Services
         private readonly string _pythonScriptPath;
         private readonly AccessFormServer.Services.PassportPdfService? _passportPdfService;
         private readonly AccessFormServer.Services.AdobeAutotagService? _adobeAutotagService;
+        private readonly AccessFormServer.Services.AsposePdfService? _asposePdfService;
 
         public PdfCompleteRebuildService(
             ILogger<PdfCompleteRebuildService> logger, 
             AccessFormServer.Services.PassportPdfService? passportPdfService = null,
-            AccessFormServer.Services.AdobeAutotagService? adobeAutotagService = null)
+            AccessFormServer.Services.AdobeAutotagService? adobeAutotagService = null,
+            AccessFormServer.Services.AsposePdfService? asposePdfService = null)
         {
             _logger = logger;
             _passportPdfService = passportPdfService;
             _adobeAutotagService = adobeAutotagService;
+            _asposePdfService = asposePdfService;
             // Get the script path relative to the application directory
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
             _pythonScriptPath = Path.Combine(baseDir, "pdf_complete_rebuild.py");
@@ -123,17 +126,39 @@ namespace WordToPdfConverter.Services
                         // Read the rebuilt PDF
                         var rebuiltPdfBytes = await File.ReadAllBytesAsync(result.OutputPath);
                         
-                        // Apply Adobe OCR and autotag for full accessibility compliance
-                        if (_adobeAutotagService != null && _adobeAutotagService.IsConfigured())
+                        // Use Aspose for font embedding and optimization (local version, no RestSharp conflict)
+                        if (_asposePdfService != null && _asposePdfService.IsConfigured())
                         {
                             try
                             {
-                                // First apply OCR to ensure fonts are properly embedded
-                                _logger.LogInformation("Applying Adobe OCR to embed fonts...");
-                                rebuiltPdfBytes = await _adobeAutotagService.OcrPdfAsync(rebuiltPdfBytes);
-                                _logger.LogInformation("Adobe OCR applied successfully");
+                                _logger.LogInformation("Applying Aspose font embedding and optimization...");
+                                rebuiltPdfBytes = await _asposePdfService.OptimizePdfAsync(rebuiltPdfBytes);
+                                _logger.LogInformation("Aspose optimization applied successfully");
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "Failed to apply Aspose processing, trying Adobe as fallback");
                                 
-                                // Then apply autotag for accessibility
+                                // Fallback to Adobe if Aspose fails
+                                if (_adobeAutotagService != null && _adobeAutotagService.IsConfigured())
+                                {
+                                    try
+                                    {
+                                        _logger.LogInformation("Applying Adobe autotag as fallback...");
+                                        rebuiltPdfBytes = await _adobeAutotagService.AutotagPdfAsync(rebuiltPdfBytes, generateReport: false);
+                                        _logger.LogInformation("Adobe autotag applied successfully");
+                                    }
+                                    catch (Exception fallbackEx)
+                                    {
+                                        _logger.LogWarning(fallbackEx, "Adobe fallback also failed, continuing with basic PDF");
+                                    }
+                                }
+                            }
+                        }
+                        else if (_adobeAutotagService != null && _adobeAutotagService.IsConfigured())
+                        {
+                            try
+                            {
                                 _logger.LogInformation("Applying Adobe autotag for accessibility...");
                                 rebuiltPdfBytes = await _adobeAutotagService.AutotagPdfAsync(rebuiltPdfBytes, generateReport: false);
                                 _logger.LogInformation("Adobe autotag applied successfully");
@@ -145,7 +170,7 @@ namespace WordToPdfConverter.Services
                         }
                         else
                         {
-                            _logger.LogInformation("Adobe autotag service not configured, skipping accessibility tagging");
+                            _logger.LogInformation("No PDF optimization service configured");
                         }
                         
                         // Clean up output file

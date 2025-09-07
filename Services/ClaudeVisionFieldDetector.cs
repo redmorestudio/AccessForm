@@ -80,7 +80,7 @@ namespace WordToPdfConverter.Services
         /// <summary>
         /// Analyzes a PDF document page by page using Claude Vision to detect form fields
         /// </summary>
-        public async Task<List<VisualFieldDetectionResult>> AnalyzePdfWithVision(byte[] pdfBytes, int maxPages = 10)
+        public async Task<List<VisualFieldDetectionResult>> AnalyzePdfWithVision(byte[] pdfBytes, int maxPages = 10, string documentMarkdown = null)
         {
             var results = new List<VisualFieldDetectionResult>();
             
@@ -110,7 +110,7 @@ namespace WordToPdfConverter.Services
                         if (imageBytes != null && imageBytes.Length > 0)
                         {
                             // Send to Claude Vision for analysis
-                            var pageResult = await AnalyzePageImage(imageBytes, pageIndex + 1);
+                            var pageResult = await AnalyzePageImage(imageBytes, pageIndex + 1, documentMarkdown);
                             results.Add(pageResult);
                             
                             _logger.LogInformation($"Page {pageIndex + 1}: Detected {pageResult.Fields.Count} fields visually");
@@ -383,7 +383,7 @@ namespace WordToPdfConverter.Services
         /// <summary>
         /// Analyzes a page image using Claude Vision API
         /// </summary>
-        private async Task<VisualFieldDetectionResult> AnalyzePageImage(byte[] imageBytes, int pageNumber)
+        private async Task<VisualFieldDetectionResult> AnalyzePageImage(byte[] imageBytes, int pageNumber, string documentMarkdown = null)
         {
             var result = new VisualFieldDetectionResult
             {
@@ -396,32 +396,8 @@ namespace WordToPdfConverter.Services
                 // Convert image to base64
                 string base64Image = Convert.ToBase64String(imageBytes);
                 
-                // Prepare the Claude Vision API request
-                var requestBody = new
-                {
-                    model = "claude-3-5-sonnet-20241022",
-                    max_tokens = 4096,
-                    messages = new[]
-                    {
-                        new
-                        {
-                            role = "user",
-                            content = new object[]
-                            {
-                                new
-                                {
-                                    type = "image",
-                                    source = new
-                                    {
-                                        type = "base64",
-                                        media_type = "image/png",
-                                        data = base64Image
-                                    }
-                                },
-                                new
-                                {
-                                    type = "text",
-                                    text = @"CRITICAL: You MUST identify EVERY SINGLE fillable field on this form page, especially ALL checkboxes! Count them carefully!
+                // Build the prompt with optional markdown context
+                var promptText = @"CRITICAL: You MUST identify EVERY SINGLE fillable field on this form page, especially ALL checkboxes! Count them carefully!
 
 Analyze this government form image and identify ALL fillable fields. This form likely has 30-40+ fields including many checkboxes. You must detect ALL 33 field types defined in AccessForm specification:
 
@@ -515,7 +491,67 @@ Return JSON format:
   ],
   ""confidence"": ""high|medium|low"",
   ""notes"": ""Form observations and detected patterns""
-}"
+}";
+                
+                // Add markdown context if available to help with field naming
+                if (!string.IsNullOrEmpty(documentMarkdown))
+                {
+                    _logger.LogInformation($"Adding markdown context to Claude Vision prompt ({documentMarkdown.Length} characters)");
+                    
+                    // Debug: write markdown to file
+                    var debugPath = $"/tmp/claude_vision_markdown_page_{pageNumber}.md";
+                    System.IO.File.WriteAllText(debugPath, documentMarkdown);
+                    _logger.LogInformation($"Wrote markdown context for page {pageNumber} to {debugPath}");
+                    
+                    // Check for specific labels
+                    if (documentMarkdown.Contains("Date Sent") || documentMarkdown.Contains("Delivered"))
+                    {
+                        _logger.LogInformation("Markdown contains 'Date Sent/Delivered' label - Claude should detect this field correctly");
+                    }
+                    
+                    promptText = $@"DOCUMENT CONTEXT (extracted text to help with field naming):
+```markdown
+{documentMarkdown}
+```
+
+{promptText}
+
+IMPORTANT: Use the document context above to accurately name fields. For example:
+- If you see 'Date Sent/Delivered:' in the text near a date field, name it 'Date Sent/Delivered'
+- If you see checkbox labels like 'In person, hand-delivered', 'Mailed', 'Emailed', 'Faxed', use those exact labels
+- Match field names to the text labels shown in the document context";
+                }
+                else
+                {
+                    _logger.LogWarning("No markdown context available for Claude Vision - field naming may be less accurate");
+                }
+                
+                // Prepare the Claude Vision API request
+                var requestBody = new
+                {
+                    model = "claude-3-5-sonnet-20241022",
+                    max_tokens = 4096,
+                    messages = new[]
+                    {
+                        new
+                        {
+                            role = "user",
+                            content = new object[]
+                            {
+                                new
+                                {
+                                    type = "image",
+                                    source = new
+                                    {
+                                        type = "base64",
+                                        media_type = "image/png",
+                                        data = base64Image
+                                    }
+                                },
+                                new
+                                {
+                                    type = "text",
+                                    text = promptText
                                 }
                             }
                         }
