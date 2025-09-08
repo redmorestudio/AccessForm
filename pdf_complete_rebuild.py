@@ -563,6 +563,25 @@ class PDFCompleteRebuilder:
             logger.info("=== STARTING ZAPFDINGBATS REPLACEMENT ===")
             try:
                 zapf_replacements = []
+                zapf_widgets_cleaned = 0
+                
+                # First, clean all checkbox widgets to remove ZapfDingbats from appearance streams
+                for page_num, page in enumerate(temp_doc):
+                    for widget in page.widgets():
+                        if widget.field_type == fitz.PDF_WIDGET_TYPE_CHECKBOX:
+                            logger.info(f"Cleaning checkbox widget: {widget.field_name}")
+                            try:
+                                # Force checkbox to recreate its appearance without custom fonts
+                                widget.field_display = 0  # Hide field temporarily
+                                widget.update()
+                                widget.field_display = 1  # Show field again
+                                widget.update()
+                                zapf_widgets_cleaned += 1
+                            except Exception as e:
+                                logger.warning(f"Could not clean widget {widget.field_name}: {e}")
+                
+                logger.info(f"Cleaned {zapf_widgets_cleaned} checkbox widgets")
+                
                 for page_num, page in enumerate(temp_doc):
                     # Get all text instances with detailed position info
                     text_instances = page.get_text("rawdict")

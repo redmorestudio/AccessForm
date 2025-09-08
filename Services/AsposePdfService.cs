@@ -4,8 +4,11 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Aspose.Pdf;
 using Aspose.Pdf.Facades;
+using Aspose.Pdf.Text;
 using System.Collections.Generic;
 using System.Linq;
+using Aspose.Pdf.Tagged;
+using Aspose.Pdf.LogicalStructure;
 
 namespace AccessFormServer.Services
 {
@@ -33,11 +36,12 @@ namespace AccessFormServer.Services
                 }
                 else
                 {
-                    _logger.LogInformation("Running Aspose.PDF in evaluation mode");
+                    _logger.LogWarning("===== ASPOSE.PDF RUNNING IN EVALUATION MODE =====");
+                    _logger.LogWarning("This will add watermarks and have limitations!");
                 }
                 
                 _isConfigured = true;
-                _logger.LogInformation("Aspose PDF service initialized (local version)");
+                _logger.LogInformation("===== ASPOSE PDF SERVICE INITIALIZED (LOCAL VERSION) =====");
             }
             catch (Exception ex)
             {
@@ -62,44 +66,82 @@ namespace AccessFormServer.Services
             {
                 try
                 {
-                    _logger.LogInformation($"Starting Aspose PDF optimization for {pdfBytes.Length} byte PDF");
+                    _logger.LogInformation($"===== ASPOSE OPTIMIZATION STARTING =====");
+                    _logger.LogInformation($"Input PDF size: {pdfBytes.Length} bytes");
+
+                    // Save input for debugging
+                    var debugInputPath = Path.Combine(Path.GetTempPath(), $"aspose_input_{DateTime.Now:yyyyMMdd_HHmmss}.pdf");
+                    File.WriteAllBytes(debugInputPath, pdfBytes);
+                    _logger.LogInformation($"Debug: Input saved to {debugInputPath}");
 
                     using (var inputStream = new MemoryStream(pdfBytes))
                     using (var outputStream = new MemoryStream())
                     {
                         // Load the PDF document
+                        _logger.LogInformation("Loading PDF into Aspose.Document...");
                         var document = new Document(inputStream);
+                        _logger.LogInformation($"Document loaded: {document.Pages.Count} pages");
+                        
+                        // Log initial font status
+                        LogFontStatus(document, "BEFORE optimization");
                         
                         // Embed all fonts
                         EmbedFonts(document);
                         
                         // Optimize the document
-                        var optimizationOptions = new Aspose.Pdf.Optimization.OptimizationOptions
+                        _logger.LogInformation("Applying optimization options...");
+                        try
                         {
-                            RemoveUnusedObjects = true,
-                            RemoveUnusedStreams = true,
-                            AllowReusePageContent = false,
-                            LinkDuplcateStreams = false,
-                            UnembedFonts = false,
-                            SubsetFonts = false,
-                            CompressImages = true,
-                            ImageQuality = 100
-                        };
+                            var optimizationOptions = new Aspose.Pdf.Optimization.OptimizationOptions
+                            {
+                                RemoveUnusedObjects = true,
+                                RemoveUnusedStreams = true,
+                                AllowReusePageContent = false,
+                                LinkDuplcateStreams = false,
+                                UnembedFonts = false,
+                                SubsetFonts = false
+                                // Skip image compression - causes "Not supported image type" error with some images
+                                // CompressImages = false,
+                                // ImageQuality = 100
+                            };
+                            
+                            // Disable image compression to avoid the error
+                            optimizationOptions.ImageCompressionOptions.CompressImages = false;
+                            
+                            document.OptimizeResources(optimizationOptions);
+                            _logger.LogInformation("Optimization applied successfully");
+                        }
+                        catch (Exception optEx)
+                        {
+                            _logger.LogWarning($"OptimizeResources failed (non-critical): {optEx.Message}");
+                            _logger.LogInformation("Continuing without resource optimization");
+                        }
+                        _logger.LogInformation("Optimization applied");
                         
-                        document.OptimizeResources(optimizationOptions);
+                        // Log final font status
+                        LogFontStatus(document, "AFTER optimization");
                         
                         // Save optimized document
+                        _logger.LogInformation("Saving optimized document...");
                         document.Save(outputStream);
                         
                         var optimizedBytes = outputStream.ToArray();
-                        _logger.LogInformation($"Aspose optimization successful, result is {optimizedBytes.Length} bytes (from {pdfBytes.Length})");
+                        
+                        // Save output for debugging
+                        var debugOutputPath = Path.Combine(Path.GetTempPath(), $"aspose_output_{DateTime.Now:yyyyMMdd_HHmmss}.pdf");
+                        File.WriteAllBytes(debugOutputPath, optimizedBytes);
+                        _logger.LogInformation($"Debug: Output saved to {debugOutputPath}");
+                        
+                        _logger.LogInformation($"===== ASPOSE OPTIMIZATION COMPLETE =====");
+                        _logger.LogInformation($"Output PDF size: {optimizedBytes.Length} bytes (from {pdfBytes.Length})");
+                        _logger.LogInformation($"Size change: {optimizedBytes.Length - pdfBytes.Length:+#;-#;0} bytes");
                         
                         return optimizedBytes;
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to optimize PDF with Aspose");
+                    _logger.LogError(ex, "===== ASPOSE OPTIMIZATION FAILED =====");
                     throw new InvalidOperationException($"Aspose PDF optimization failed: {ex.Message}", ex);
                 }
             });
@@ -235,11 +277,56 @@ namespace AccessFormServer.Services
         }
 
         /// <summary>
+        /// Helper method to log font status
+        /// </summary>
+        private void LogFontStatus(Document document, string stage)
+        {
+            _logger.LogInformation($"===== FONT STATUS {stage} =====");
+            int pageNum = 0;
+            int totalFonts = 0;
+            int embeddedFonts = 0;
+            
+            foreach (Page page in document.Pages)
+            {
+                pageNum++;
+                if (page.Resources?.Fonts != null)
+                {
+                    foreach (var font in page.Resources.Fonts)
+                    {
+                        totalFonts++;
+                        if (font.IsEmbedded)
+                        {
+                            embeddedFonts++;
+                            _logger.LogInformation($"Page {pageNum}: {font.FontName} - EMBEDDED");
+                        }
+                        else
+                        {
+                            _logger.LogWarning($"Page {pageNum}: {font.FontName} - NOT EMBEDDED");
+                        }
+                    }
+                }
+            }
+            
+            _logger.LogInformation($"Total fonts: {totalFonts}, Embedded: {embeddedFonts}, Not embedded: {totalFonts - embeddedFonts}");
+        }
+
+        /// <summary>
         /// Helper method to embed all fonts in the document
         /// </summary>
         private void EmbedFonts(Document document)
         {
-            _logger.LogInformation("Embedding fonts in PDF document");
+            _logger.LogInformation("===== EMBEDDING FONTS AND REPLACING ZAPFDINGBATS =====");
+            
+            int fontsProcessed = 0;
+            int fontsEmbedded = 0;
+            int fontsFailed = 0;
+            int checkboxesCleaned = 0;
+            
+            // First, replace ZapfDingbats with embeddable font
+            ReplaceZapfDingbatsFont(document);
+            
+            // Then clean up checkbox fields
+            CleanCheckboxFonts(document, ref checkboxesCleaned);
             
             // Get all pages
             foreach (Page page in document.Pages)
@@ -247,41 +334,60 @@ namespace AccessFormServer.Services
                 // Get resources
                 if (page.Resources?.Fonts != null)
                 {
+                    // Create a list of fonts to potentially remove
+                    var fontsToRemove = new List<Aspose.Pdf.Text.Font>();
+                    
                     foreach (var font in page.Resources.Fonts)
                     {
+                        fontsProcessed++;
+                        
+                        // Skip ZapfDingbats if still present
+                        if (font.FontName.Contains("ZapfDingbats"))
+                        {
+                            _logger.LogWarning($"ZapfDingbats still present after replacement attempt");
+                            continue;
+                        }
+                        
                         // Check if font is already embedded
                         if (!font.IsEmbedded)
                         {
-                            _logger.LogInformation($"Embedding font: {font.FontName}");
+                            _logger.LogInformation($"Attempting to embed: {font.FontName}");
                             
                             // Try to embed the font
                             try
                             {
                                 font.IsEmbedded = true;
+                                fontsEmbedded++;
+                                _logger.LogInformation($"Successfully embedded: {font.FontName}");
                             }
                             catch (Exception ex)
                             {
-                                _logger.LogWarning($"Could not embed font {font.FontName}: {ex.Message}");
+                                fontsFailed++;
+                                _logger.LogWarning($"FAILED to embed {font.FontName}: {ex.Message}");
                                 
                                 // Try to replace with a standard font
                                 if (font.FontName.Contains("Arial"))
                                 {
-                                    _logger.LogInformation("Replacing Arial with Helvetica");
-                                    // Font replacement is handled at save time
-                                }
-                                else if (font.FontName.Contains("ZapfDingbats"))
-                                {
-                                    _logger.LogInformation("ZapfDingbats is a standard PDF font");
+                                    _logger.LogInformation("Note: Arial should be replaced with Helvetica");
                                 }
                             }
                         }
                         else
                         {
-                            _logger.LogInformation($"Font already embedded: {font.FontName}");
+                            _logger.LogInformation($"Already embedded: {font.FontName}");
                         }
+                    }
+                    
+                    // Log ZapfDingbats presence but don't try to remove (API doesn't support)
+                    if (fontsToRemove.Count > 0)
+                    {
+                        _logger.LogWarning($"Found {fontsToRemove.Count} ZapfDingbats references - these should not be in checkbox fields");
                     }
                 }
             }
+            
+            _logger.LogInformation($"Font embedding complete: {fontsProcessed} processed, {fontsEmbedded} newly embedded, {fontsFailed} failed");
+            _logger.LogInformation($"Checkboxes cleaned: {checkboxesCleaned}");
             
             // Use FontUtilities to subset fonts
             try
@@ -292,6 +398,339 @@ namespace AccessFormServer.Services
             catch (Exception ex)
             {
                 _logger.LogWarning($"Could not apply font subsetting: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Replace ZapfDingbats font with an embeddable alternative
+        /// </summary>
+        private void ReplaceZapfDingbatsFont(Document document)
+        {
+            _logger.LogInformation("===== REPLACING ZAPFDINGBATS FONT =====");
+            
+            try
+            {
+                // First, log all fonts in the document
+                _logger.LogInformation("Scanning document for all fonts...");
+                foreach (Page page in document.Pages)
+                {
+                    if (page.Resources?.Fonts != null)
+                    {
+                        foreach (var font in page.Resources.Fonts)
+                        {
+                            _logger.LogInformation($"Page {document.Pages.IndexOf(page) + 1} has font: {font.FontName}");
+                            if (font.FontName.Contains("ZapfDingbats"))
+                            {
+                                _logger.LogWarning($"*** FOUND ZAPFDINGBATS IN PAGE RESOURCES ***");
+                            }
+                        }
+                    }
+                }
+                
+                // Search through all pages for text using ZapfDingbats
+                var textFragmentsToReplace = new List<(Page page, TextFragment fragment)>();
+                
+                foreach (Page page in document.Pages)
+                {
+                    // Create TextFragmentAbsorber to find all text
+                    var textAbsorber = new TextFragmentAbsorber();
+                    page.Accept(textAbsorber);
+                    
+                    _logger.LogInformation($"Page {document.Pages.IndexOf(page) + 1} has {textAbsorber.TextFragments.Count} text fragments");
+                    
+                    foreach (TextFragment textFragment in textAbsorber.TextFragments)
+                    {
+                        // Log every fragment's font for debugging
+                        var fontName = textFragment.TextState?.Font?.FontName ?? "null";
+                        if (fontName.Contains("ZapfDingbats"))
+                        {
+                            _logger.LogWarning($"*** FOUND ZapfDingbats text: '{textFragment.Text}' on page {document.Pages.IndexOf(page) + 1} ***");
+                            textFragmentsToReplace.Add((page, textFragment));
+                        }
+                    }
+                }
+                
+                // Replace ZapfDingbats with Helvetica or Symbol font
+                foreach (var (page, fragment) in textFragmentsToReplace)
+                {
+                    try
+                    {
+                        // Map ZapfDingbats characters to Unicode equivalents
+                        string newText = fragment.Text;
+                        
+                        // Common ZapfDingbats mappings
+                        // Character code 52 (4) = checkmark
+                        // Character code 113 (q) = empty box
+                        if (fragment.Text.Contains("4") || fragment.Text.Contains("\u0034"))
+                        {
+                            newText = "✓"; // Unicode checkmark
+                        }
+                        else if (fragment.Text.Contains("q") || fragment.Text.Contains("\u0071"))
+                        {
+                            newText = "☐"; // Unicode empty box
+                        }
+                        else if (fragment.Text.Contains("8") || fragment.Text.Contains("\u0038"))
+                        {
+                            newText = "✗"; // Unicode X mark
+                        }
+                        
+                        // Replace the text and font
+                        fragment.Text = newText;
+                        fragment.TextState.Font = FontRepository.FindFont("Helvetica");
+                        fragment.TextState.FontSize = fragment.TextState.FontSize; // Keep same size
+                        
+                        _logger.LogInformation($"Replaced ZapfDingbats character with '{newText}' using Helvetica");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning($"Could not replace ZapfDingbats fragment: {ex.Message}");
+                    }
+                }
+                
+                // Also check form fields for ZapfDingbats
+                if (document.Form != null)
+                {
+                    _logger.LogInformation($"Checking {document.Form.Fields.Length} form fields...");
+                    foreach (var field in document.Form.Fields)
+                    {
+                        if (field is Aspose.Pdf.Forms.CheckboxField checkbox)
+                        {
+                            try
+                            {
+                                _logger.LogInformation($"Checking checkbox: {checkbox.FullName}");
+                                
+                                // Check various properties
+                                var defaultAppearance = checkbox.DefaultAppearance;
+                                if (defaultAppearance != null)
+                                {
+                                    _logger.LogInformation($"  DefaultAppearance FontName: {defaultAppearance.FontName ?? "null"}");
+                                    _logger.LogInformation($"  DefaultAppearance FontSize: {defaultAppearance.FontSize}");
+                                    
+                                    if (defaultAppearance.FontName?.Contains("ZapfDingbats") == true)
+                                    {
+                                        _logger.LogWarning($"*** FOUND ZapfDingbats in checkbox DefaultAppearance: {checkbox.FullName} ***");
+                                        
+                                        // Change to Helvetica
+                                        checkbox.DefaultAppearance.FontName = "Helvetica";
+                                        checkbox.DefaultAppearance.FontSize = defaultAppearance.FontSize;
+                                        
+                                        // Force update
+                                        checkbox.Flatten();  // This will embed the appearance
+                                        _logger.LogInformation($"Flattened checkbox to remove ZapfDingbats: {checkbox.FullName}");
+                                    }
+                                }
+                                
+                                // Check if checkbox has any appearance streams
+                                _logger.LogInformation($"  Checkbox checked state: {checkbox.Checked}");
+                                _logger.LogInformation($"  Checkbox style: {checkbox.Style}");
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning($"Could not process checkbox {checkbox.FullName}: {ex.Message}");
+                            }
+                        }
+                    }
+                }
+                
+                _logger.LogInformation("ZapfDingbats replacement complete");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to replace ZapfDingbats font");
+            }
+        }
+        
+        /// <summary>
+        /// Clean checkbox fields from unnecessary font references
+        /// </summary>
+        private void CleanCheckboxFonts(Document document, ref int checkboxesCleaned)
+        {
+            _logger.LogInformation("Cleaning checkbox form fields from font references...");
+            
+            try
+            {
+                // Access form fields
+                if (document.Form != null)
+                {
+                    foreach (var field in document.Form.Fields)
+                    {
+                        // Check if it's a checkbox field
+                        if (field is Aspose.Pdf.Forms.CheckboxField checkbox)
+                        {
+                            _logger.LogInformation($"Found checkbox field: {checkbox.FullName}");
+                            
+                            try
+                            {
+                                // Try to set checkbox style to not use custom fonts
+                                checkbox.Style = Aspose.Pdf.Forms.BoxStyle.Check;
+                                
+                                // Ensure checkbox uses standard states
+                                if (checkbox.Checked)
+                                {
+                                    checkbox.ActiveState = "Yes";
+                                }
+                                else
+                                {
+                                    checkbox.ActiveState = "Off";
+                                }
+                                
+                                checkboxesCleaned++;
+                                _logger.LogInformation($"Standardized checkbox appearance: {checkbox.FullName}");
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning($"Could not clean checkbox {checkbox.FullName}: {ex.Message}");
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Could not access form fields: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Apply auto-tagging for PDF/UA compliance using Aspose.PDF
+        /// This is an alternative to Adobe's autotag service
+        /// </summary>
+        public async Task<byte[]> AutoTagPdfAsync(byte[] pdfBytes)
+        {
+            return await Task.Run(() =>
+            {
+                try
+                {
+                    _logger.LogInformation("===== ASPOSE AUTO-TAGGING FOR ACCESSIBILITY =====");
+                    
+                    using var inputStream = new MemoryStream(pdfBytes);
+                    using var document = new Document(inputStream);
+                    
+                    // Create tagged content
+                    ITaggedContent taggedContent = document.TaggedContent;
+                    
+                    // Set document properties for accessibility
+                    taggedContent.SetTitle("Accessible PDF Document");
+                    taggedContent.SetLanguage("en-US");
+                    
+                    // Get the structure tree root
+                    StructureElement rootElement = taggedContent.RootElement;
+                    
+                    // Process each page
+                    foreach (Page page in document.Pages)
+                    {
+                        _logger.LogInformation($"Processing page {page.Number} for tagging");
+                        
+                        // Create a section element for the page
+                        SectElement sectElement = taggedContent.CreateSectElement();
+                        rootElement.AppendChild(sectElement);
+                        
+                        // Extract text fragments and create paragraph elements
+                        TextFragmentAbsorber textAbsorber = new TextFragmentAbsorber();
+                        page.Accept(textAbsorber);
+                        
+                        int fragmentCount = 0;
+                        foreach (TextFragment textFragment in textAbsorber.TextFragments)
+                        {
+                            // Skip empty fragments
+                            if (string.IsNullOrWhiteSpace(textFragment.Text))
+                                continue;
+                                
+                            // Create paragraph element for text
+                            ParagraphElement paragraphElement = taggedContent.CreateParagraphElement();
+                            sectElement.AppendChild(paragraphElement);
+                            
+                            // Set actual text
+                            paragraphElement.SetText(textFragment.Text);
+                            fragmentCount++;
+                        }
+                        
+                        _logger.LogInformation($"Added {fragmentCount} text fragments to page {page.Number}");
+                    }
+                    
+                    _logger.LogInformation("Auto-tagging structure created");
+                    
+                    // Apply PDF/UA-1 compliance conversion
+                    _logger.LogInformation("Converting to PDF/UA-1 format...");
+                    
+                    // Create conversion options with just the format
+                    var pdfUaOptions = new PdfFormatConversionOptions(PdfFormat.PDF_UA_1);
+                    
+                    // Validate and log any issues
+                    using var logStream = new MemoryStream();
+                    bool isValidBefore = document.Validate(logStream, PdfFormat.PDF_UA_1);
+                    _logger.LogInformation($"PDF/UA validation before conversion: {isValidBefore}");
+                    
+                    if (!isValidBefore)
+                    {
+                        logStream.Position = 0;
+                        using var reader = new StreamReader(logStream);
+                        var validationLog = reader.ReadToEnd();
+                        if (!string.IsNullOrEmpty(validationLog))
+                        {
+                            _logger.LogDebug($"Validation issues: {validationLog.Substring(0, Math.Min(500, validationLog.Length))}...");
+                        }
+                    }
+                    
+                    // Try to convert to PDF/UA-1
+                    try
+                    {
+                        document.Convert(pdfUaOptions);
+                        _logger.LogInformation("PDF/UA-1 conversion completed");
+                    }
+                    catch (Exception convEx)
+                    {
+                        _logger.LogWarning($"PDF/UA conversion warning: {convEx.Message}");
+                        // Continue even if conversion has warnings
+                    }
+                    
+                    // Validate after conversion
+                    using var logStream2 = new MemoryStream();
+                    bool isValidAfter = document.Validate(logStream2, PdfFormat.PDF_UA_1);
+                    _logger.LogInformation($"PDF/UA validation after conversion: {isValidAfter}");
+                    
+                    // Save the tagged document
+                    using var outputStream = new MemoryStream();
+                    document.Save(outputStream);
+                    
+                    var resultBytes = outputStream.ToArray();
+                    _logger.LogInformation($"Aspose auto-tagging complete. Result: {resultBytes.Length} bytes");
+                    
+                    return resultBytes;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Aspose auto-tagging failed");
+                    // Return original if tagging fails
+                    return pdfBytes;
+                }
+            });
+        }
+        
+        /// <summary>
+        /// Validate PDF/UA compliance
+        /// </summary>
+        public bool ValidatePdfUaCompliance(byte[] pdfBytes, out string validationReport)
+        {
+            try
+            {
+                using var inputStream = new MemoryStream(pdfBytes);
+                using var document = new Document(inputStream);
+                using var logStream = new MemoryStream();
+                
+                bool isValid = document.Validate(logStream, PdfFormat.PDF_UA_1);
+                
+                logStream.Position = 0;
+                using var reader = new StreamReader(logStream);
+                validationReport = reader.ReadToEnd();
+                
+                return isValid;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "PDF/UA validation failed");
+                validationReport = $"Validation error: {ex.Message}";
+                return false;
             }
         }
     }

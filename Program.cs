@@ -95,8 +95,9 @@ builder.Services.AddScoped<ITextFieldRebuildService>();
 builder.Services.AddScoped<AccessFormServer.Services.AdobeAutotagService>(provider =>
 {
     var logger = provider.GetRequiredService<ILogger<AccessFormServer.Services.AdobeAutotagService>>();
-    // Look for credentials in the adobe folder
-    var credentialsPath = Path.Combine(Directory.GetCurrentDirectory(), "../adobe/pdfservices-api-credentials.json");
+    // Use the new credentials path provided by the user
+    var credentialsPath = "/Users/sethredmore/Documents/Redmore Studio/AccessForm/PDFServicesAPI-Credentials/pdfservices-api-credentials.json";
+    logger.LogInformation($"Using Adobe credentials from: {credentialsPath}");
     return new AccessFormServer.Services.AdobeAutotagService(logger, credentialsPath);
 });
 
