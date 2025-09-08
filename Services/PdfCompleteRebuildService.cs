@@ -6,6 +6,11 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using iText.Kernel.Pdf;
+using iText.Kernel.Font;
+using iText.Forms;
+using iText.Forms.Fields;
+using iText.Kernel.Pdf.Annot;
 
 namespace WordToPdfConverter.Services
 {
@@ -95,7 +100,23 @@ namespace WordToPdfConverter.Services
         /// <summary>
         /// Completely rebuilds a PDF with clean structure and no ghost fields.
         /// </summary>
-        public async Task<RebuildResult> CompletelyRebuildPdfAsync(byte[] pdfBytes, List<FieldUpdate> fieldUpdates)
+        public class ServiceOptions
+        {
+            public bool UseAdobeAutotag { get; set; } = true;
+            public bool UseAsposeAutotag { get; set; } = false;
+            public bool UseAsposeFontEmbed { get; set; } = true;
+            public bool UsePassportPdf { get; set; } = false;
+        }
+        
+        public async Task<RebuildResult> CompletelyRebuildPdfAsync(byte[] pdfBytes, List<FieldUpdate> fieldUpdates, ServiceOptions? options = null)
+        {
+            // Use default options if not provided
+            options ??= new ServiceOptions();
+            
+            return await CompletelyRebuildPdfAsyncInternal(pdfBytes, fieldUpdates, options);
+        }
+        
+        private async Task<RebuildResult> CompletelyRebuildPdfAsyncInternal(byte[] pdfBytes, List<FieldUpdate> fieldUpdates, ServiceOptions options)
         {
             try
             {
@@ -126,52 +147,126 @@ namespace WordToPdfConverter.Services
                         // Read the rebuilt PDF
                         var rebuiltPdfBytes = await File.ReadAllBytesAsync(result.OutputPath);
                         
-                        // Use Aspose for font embedding and optimization (local version, no RestSharp conflict)
-                        if (_asposePdfService != null && _asposePdfService.IsConfigured())
+                        // Step 1: Remove ZapfDingbats from checkboxes
+                        try
+                        {
+                            _logger.LogInformation("===== STEP 1: REMOVING ZAPFDINGBATS WITH ITEXT =====");
+                            rebuiltPdfBytes = RemoveZapfDingbatsFromCheckboxes(rebuiltPdfBytes);
+                            _logger.LogInformation("===== ZAPFDINGBATS REMOVAL COMPLETE =====");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to remove ZapfDingbats with iText");
+                        }
+                        
+                        // Step 2: Use Aspose for font embedding and optimization (if enabled)
+                        if (options.UseAsposeFontEmbed && _asposePdfService != null && _asposePdfService.IsConfigured())
                         {
                             try
                             {
-                                _logger.LogInformation("Applying Aspose font embedding and optimization...");
+                                _logger.LogInformation("===== STEP 2: ASPOSE FONT EMBEDDING =====");
+                                _logger.LogInformation($"Sending {rebuiltPdfBytes.Length} bytes to Aspose...");
+                                var beforeAspose = rebuiltPdfBytes.Length;
+                                
                                 rebuiltPdfBytes = await _asposePdfService.OptimizePdfAsync(rebuiltPdfBytes);
-                                _logger.LogInformation("Aspose optimization applied successfully");
+                                
+                                _logger.LogInformation($"===== ASPOSE PROCESSING COMPLETE =====");
+                                _logger.LogInformation($"Received {rebuiltPdfBytes.Length} bytes from Aspose (was {beforeAspose})");
                             }
                             catch (Exception ex)
                             {
-                                _logger.LogWarning(ex, "Failed to apply Aspose processing, trying Adobe as fallback");
-                                
-                                // Fallback to Adobe if Aspose fails
-                                if (_adobeAutotagService != null && _adobeAutotagService.IsConfigured())
-                                {
-                                    try
-                                    {
-                                        _logger.LogInformation("Applying Adobe autotag as fallback...");
-                                        rebuiltPdfBytes = await _adobeAutotagService.AutotagPdfAsync(rebuiltPdfBytes, generateReport: false);
-                                        _logger.LogInformation("Adobe autotag applied successfully");
-                                    }
-                                    catch (Exception fallbackEx)
-                                    {
-                                        _logger.LogWarning(fallbackEx, "Adobe fallback also failed, continuing with basic PDF");
-                                    }
-                                }
+                                _logger.LogError(ex, "===== ASPOSE PROCESSING FAILED =====");
                             }
                         }
-                        else if (_adobeAutotagService != null && _adobeAutotagService.IsConfigured())
+                        else if (options.UseAsposeFontEmbed)
                         {
-                            try
-                            {
-                                _logger.LogInformation("Applying Adobe autotag for accessibility...");
-                                rebuiltPdfBytes = await _adobeAutotagService.AutotagPdfAsync(rebuiltPdfBytes, generateReport: false);
-                                _logger.LogInformation("Adobe autotag applied successfully");
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.LogWarning(ex, "Failed to apply Adobe processing, continuing with basic PDF");
-                            }
+                            _logger.LogWarning("Aspose font embedding requested but service not available");
                         }
                         else
                         {
-                            _logger.LogInformation("No PDF optimization service configured");
+                            _logger.LogInformation("Skipping Aspose font embedding (disabled by user)");
                         }
+                        
+                        // Step 3: ALWAYS run autotag LAST for proper accessibility tagging
+                        // Try Adobe first (if enabled), fallback to Aspose if Adobe fails or is unavailable
+                        bool autotagSuccessful = false;
+                        
+                        _logger.LogInformation($"===== CHECKING AUTOTAG SERVICES =====");
+                        _logger.LogInformation($"Adobe enabled: {options.UseAdobeAutotag}, Aspose enabled: {options.UseAsposeAutotag}");
+                        
+                        // Try Adobe autotag first (if enabled)
+                        if (options.UseAdobeAutotag && _adobeAutotagService != null)
+                        {
+                            var isConfigured = _adobeAutotagService.IsConfigured();
+                            _logger.LogInformation($"AdobeAutotagService.IsConfigured(): {isConfigured}");
+                            
+                            if (isConfigured)
+                            {
+                                try
+                                {
+                                    _logger.LogInformation("===== STEP 3A: ADOBE AUTOTAG FOR ACCESSIBILITY =====");
+                                    _logger.LogInformation($"Sending {rebuiltPdfBytes.Length} bytes to Adobe...");
+                                    var beforeAdobe = rebuiltPdfBytes.Length;
+                                    
+                                    rebuiltPdfBytes = await _adobeAutotagService.AutotagPdfAsync(rebuiltPdfBytes, generateReport: false);
+                                    
+                                    _logger.LogInformation($"===== ADOBE AUTOTAG COMPLETE =====");
+                                    _logger.LogInformation($"Received {rebuiltPdfBytes.Length} bytes from Adobe (was {beforeAdobe})");
+                                    autotagSuccessful = true;
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogWarning(ex, "Adobe autotag failed, will try Aspose fallback");
+                                }
+                            }
+                            else
+                            {
+                                _logger.LogWarning("Adobe autotag service is not configured");
+                            }
+                        }
+                        else if (options.UseAdobeAutotag)
+                        {
+                            _logger.LogWarning("Adobe autotag requested but service is NULL");
+                        }
+                        else
+                        {
+                            _logger.LogInformation("Adobe autotag disabled by user");
+                        }
+                        
+                        // Try Aspose auto-tagging if enabled and Adobe didn't succeed
+                        if (!autotagSuccessful && options.UseAsposeAutotag && _asposePdfService != null && _asposePdfService.IsConfigured())
+                        {
+                            try
+                            {
+                                _logger.LogInformation("===== STEP 3B: ASPOSE AUTOTAG FALLBACK =====");
+                                _logger.LogInformation($"Using Aspose.PDF auto-tagging as fallback...");
+                                var beforeAspose = rebuiltPdfBytes.Length;
+                                
+                                rebuiltPdfBytes = await _asposePdfService.AutoTagPdfAsync(rebuiltPdfBytes);
+                                
+                                _logger.LogInformation($"===== ASPOSE AUTOTAG COMPLETE =====");
+                                _logger.LogInformation($"Received {rebuiltPdfBytes.Length} bytes from Aspose (was {beforeAspose})");
+                                autotagSuccessful = true;
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "Aspose autotag also failed");
+                            }
+                        }
+                        
+                        if (!autotagSuccessful)
+                        {
+                            _logger.LogError("===== NO AUTOTAG SERVICE AVAILABLE - MISSING ACCESSIBILITY TAGS =====");
+                            _logger.LogError("Both Adobe and Aspose autotag services failed or unavailable!");
+                        }
+                        
+                        // STEP 4: Post-process to ensure form widgets are in Form structure elements
+                        _logger.LogInformation("===== STEP 4: ENSURING FORM WIDGETS ARE IN FORM STRUCTURE ELEMENTS =====");
+                        rebuiltPdfBytes = EnsureFormWidgetsInFormStructure(rebuiltPdfBytes);
+                        
+                        // STEP 5: Restore TWC logo alt-text
+                        _logger.LogInformation("===== STEP 5: RESTORING TWC LOGO ALT-TEXT =====");
+                        rebuiltPdfBytes = RestoreTwcLogoAltText(rebuiltPdfBytes);
                         
                         // Clean up output file
                         try { File.Delete(result.OutputPath); } catch { }
@@ -333,6 +428,142 @@ namespace WordToPdfConverter.Services
             }
         }
 
+        private byte[] EnsureFormWidgetsInFormStructure(byte[] pdfBytes)
+        {
+            try
+            {
+                using var inputStream = new MemoryStream(pdfBytes);
+                using var outputStream = new MemoryStream();
+                
+                using (var reader = new iText.Kernel.Pdf.PdfReader(inputStream))
+                using (var writer = new iText.Kernel.Pdf.PdfWriter(outputStream))
+                using (var pdfDoc = new iText.Kernel.Pdf.PdfDocument(reader, writer))
+                {
+                    // Ensure document is tagged
+                    pdfDoc.SetTagged();
+                    
+                    // Get the structure tree root
+                    var structTreeRoot = pdfDoc.GetStructTreeRoot();
+                    if (structTreeRoot == null)
+                    {
+                        _logger.LogWarning("No structure tree root found - creating one");
+                        structTreeRoot = pdfDoc.GetStructTreeRoot();
+                    }
+                    
+                    // Process each page
+                    for (int pageNum = 1; pageNum <= pdfDoc.GetNumberOfPages(); pageNum++)
+                    {
+                        var page = pdfDoc.GetPage(pageNum);
+                        var annotations = page.GetAnnotations();
+                        
+                        if (annotations == null || annotations.Count == 0)
+                            continue;
+                        
+                        _logger.LogInformation($"Processing {annotations.Count} annotations on page {pageNum}");
+                        
+                        foreach (var annot in annotations)
+                        {
+                            // Check if this is a widget annotation (form field)
+                            if (annot.GetSubtype() == iText.Kernel.Pdf.PdfName.Widget)
+                            {
+                                var widget = (iText.Kernel.Pdf.Annot.PdfWidgetAnnotation)annot;
+                                
+                                // Get field name from the widget's dictionary
+                                var fieldDict = widget.GetPdfObject();
+                                var fieldNameObj = fieldDict?.Get(iText.Kernel.Pdf.PdfName.T);
+                                var fieldName = fieldNameObj?.ToString() ?? "unnamed";
+                                
+                                _logger.LogDebug($"Processing widget: {fieldName}");
+                                
+                                // Check if widget already has a structure parent
+                                var structParent = annot.GetStructParentIndex();
+                                if (structParent == -1)
+                                {
+                                    _logger.LogInformation($"Widget '{fieldName}' has no structure parent - adding Form element");
+                                    
+                                    // Create a Form structure element
+                                    var formElem = new iText.Kernel.Pdf.Tagging.PdfStructElem(pdfDoc, iText.Kernel.Pdf.PdfName.Form);
+                                    
+                                    // Add the Form element to the structure tree root
+                                    structTreeRoot.AddKid(formElem);
+                                    
+                                    // Associate the widget with the Form structure element
+                                    var mcid = structTreeRoot.GetDocument().GetNextStructParentIndex();
+                                    annot.SetStructParentIndex(mcid);
+                                    formElem.AddKid(new iText.Kernel.Pdf.Tagging.PdfMcrNumber(page, formElem));
+                                    
+                                    _logger.LogDebug($"Added Form structure element for widget '{fieldName}'");
+                                }
+                                else
+                                {
+                                    _logger.LogDebug($"Widget '{fieldName}' already has structure parent: {structParent}");
+                                }
+                            }
+                        }
+                    }
+                    
+                    pdfDoc.Close();
+                }
+                
+                return outputStream.ToArray();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to ensure form widgets are in Form structure elements");
+                // Return original if processing fails
+                return pdfBytes;
+            }
+        }
+        
+        private byte[] RestoreTwcLogoAltText(byte[] pdfBytes)
+        {
+            try
+            {
+                using var inputStream = new MemoryStream(pdfBytes);
+                using var outputStream = new MemoryStream();
+                
+                using (var reader = new iText.Kernel.Pdf.PdfReader(inputStream))
+                using (var writer = new iText.Kernel.Pdf.PdfWriter(outputStream))
+                using (var pdfDoc = new iText.Kernel.Pdf.PdfDocument(reader, writer))
+                {
+                    // Look for images on the first page (TWC logo is typically at the top)
+                    var firstPage = pdfDoc.GetPage(1);
+                    var pageDict = firstPage.GetPdfObject();
+                    var resources = pageDict.GetAsDictionary(iText.Kernel.Pdf.PdfName.Resources);
+                    
+                    if (resources != null)
+                    {
+                        var xObject = resources.GetAsDictionary(iText.Kernel.Pdf.PdfName.XObject);
+                        if (xObject != null)
+                        {
+                            foreach (var entry in xObject.EntrySet())
+                            {
+                                var stream = entry.Value as iText.Kernel.Pdf.PdfStream;
+                                if (stream != null && stream.GetAsName(iText.Kernel.Pdf.PdfName.Subtype) == iText.Kernel.Pdf.PdfName.Image)
+                                {
+                                    // Check if this might be the TWC logo (usually the first/top image)
+                                    // Add alternate text
+                                    stream.Put(new iText.Kernel.Pdf.PdfName("Alt"), new iText.Kernel.Pdf.PdfString("Texas Workforce Commission Logo"));
+                                    _logger.LogInformation("Added alt-text to potential TWC logo image");
+                                    break; // Assume first image is the logo
+                                }
+                            }
+                        }
+                    }
+                    
+                    pdfDoc.Close();
+                }
+                
+                return outputStream.ToArray();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to restore TWC logo alt-text");
+                // Return original if processing fails
+                return pdfBytes;
+            }
+        }
+        
         private class PythonResult
         {
             public bool Success { get; set; }
@@ -342,6 +573,103 @@ namespace WordToPdfConverter.Services
             public int TotalFields { get; set; }
             public int TagElements { get; set; }
             public string? Message { get; set; }
+        }
+        
+        private byte[] RemoveZapfDingbatsFromCheckboxes(byte[] pdfBytes)
+        {
+            try
+            {
+                using (var inputStream = new MemoryStream(pdfBytes))
+                using (var outputStream = new MemoryStream())
+                {
+                    using (var reader = new PdfReader(inputStream))
+                    using (var writer = new PdfWriter(outputStream))
+                    using (var document = new PdfDocument(reader, writer))
+                    {
+                        // Get the form
+                        var form = PdfAcroForm.GetAcroForm(document, false);
+                        if (form != null)
+                        {
+                            var fields = form.GetAllFormFields();
+                            _logger.LogInformation($"iText: Found {fields.Count} form fields");
+                            
+                            foreach (var fieldEntry in fields)
+                            {
+                                var field = fieldEntry.Value;
+                                if (field is PdfButtonFormField buttonField)
+                                {
+                                    // Check if it's a checkbox (not radio button)
+                                    if (!buttonField.IsRadio())
+                                    {
+                                        _logger.LogInformation($"iText: Processing checkbox: {fieldEntry.Key}");
+                                        
+                                        // AGGRESSIVE APPROACH: Remove all appearance data
+                                        try
+                                        {
+                                            // Get the widgets (visual representations)
+                                            var widgets = field.GetWidgets();
+                                            foreach (var widget in widgets)
+                                            {
+                                                try
+                                                {
+                                                    var widgetDict = widget.GetPdfObject();
+                                                    
+                                                    // Remove the appearance dictionary completely
+                                                    if (widgetDict.ContainsKey(PdfName.AP))
+                                                    {
+                                                        _logger.LogInformation($"iText: Removing AP from checkbox widget");
+                                                        widgetDict.Remove(PdfName.AP);
+                                                    }
+                                                    
+                                                    // Remove any font references in DA
+                                                    if (widgetDict.ContainsKey(PdfName.DA))
+                                                    {
+                                                        var daValue = widgetDict.GetAsString(PdfName.DA);
+                                                        _logger.LogInformation($"iText: Found DA: {daValue}");
+                                                        widgetDict.Remove(PdfName.DA);
+                                                        // Set a simple DA without ZapfDingbats
+                                                        widgetDict.Put(PdfName.DA, new PdfString("0 g"));
+                                                    }
+                                                    
+                                                    // Remove MK (appearance characteristics) if it references fonts
+                                                    if (widgetDict.ContainsKey(PdfName.MK))
+                                                    {
+                                                        _logger.LogInformation($"iText: Removing MK from checkbox widget");
+                                                        widgetDict.Remove(PdfName.MK);
+                                                    }
+                                                    
+                                                    // Set border style to simple
+                                                    widget.SetBorderStyle(PdfAnnotation.STYLE_SOLID);
+                                                }
+                                                catch (Exception ex)
+                                                {
+                                                    _logger.LogWarning($"iText: Could not process widget: {ex.Message}");
+                                                }
+                                            }
+                                            
+                                            // Don't regenerate - let PDF viewer handle it
+                                            _logger.LogInformation($"iText: Cleared all appearance data for checkbox: {fieldEntry.Key}");
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            _logger.LogWarning($"iText: Could not process checkbox {fieldEntry.Key}: {ex.Message}");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        document.Close();
+                    }
+                    
+                    return outputStream.ToArray();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "iText: Failed to remove ZapfDingbats");
+                return pdfBytes; // Return original if we fail
+            }
         }
     }
 
