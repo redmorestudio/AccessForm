@@ -516,18 +516,18 @@ namespace WordToPdfConverter.Services
         private string CleanFieldName(string name)
         {
             if (string.IsNullOrEmpty(name))
-                return "Field";
-                
+                return $"Field_{++_fieldCounter}";
+
             // Remove common prefixes
             name = name.Replace("Textformfield", "")
                       .Replace("formfield", "")
                       .Replace("_", " ")
                       .Trim();
-            
+
             // If it's just a hash, make it more readable
             if (name.Length > 10 && !name.Contains(" "))
             {
-                name = "Field";
+                name = $"Field_{++_fieldCounter}";
             }
             
             return name;
@@ -1463,7 +1463,12 @@ Document:
                         }
                         else
                         {
-                            // No more labels available
+                            // No more labels available - ensure field has a reasonable name
+                            if (string.IsNullOrEmpty(sfField.FieldName) || sfField.FieldName == "Field")
+                            {
+                                // Generate a better default name based on type and position
+                                sfField.FieldName = $"{sfField.FieldType}_{enhancedFields.Count + 1}";
+                            }
                             sfField.Tooltip = FieldTooltipGenerator.GenerateTooltip(sfField.FieldType, sfField.FieldName);
                             enhancedFields.Add(sfField);
                         }
