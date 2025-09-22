@@ -2,50 +2,60 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Adobe.PDFServicesSDK;
-using Adobe.PDFServicesSDK.auth;
-using Adobe.PDFServicesSDK.io;
-using Adobe.PDFServicesSDK.pdfjobs.jobs;
-using Adobe.PDFServicesSDK.pdfjobs.results;
-using Adobe.PDFServicesSDK.exception;
-using Adobe.PDFServicesSDK.pdfjobs.parameters.autotag;
-using Adobe.PDFServicesSDK.pdfjobs.parameters.ocr;
-using Adobe.PDFServicesSDK.pdfjobs.parameters.compresspdf;
+/* TEMPORARILY DISABLED DUE TO RESTSHARP CONFLICT WITH PASSPORTPDF
+ * This service is fully functional but requires Adobe.PDFServicesSDK package
+ * which has a RestSharp version conflict with PassportPDF.
+ * To re-enable:
+ * 1. Uncomment Adobe.PDFServicesSDK in AccessFormServer.csproj
+ * 2. Uncomment the using statements and implementation below
+ * 3. Re-enable service registration in Program.cs
+ */
+// using Adobe.PDFServicesSDK;
+// using Adobe.PDFServicesSDK.auth;
+// using Adobe.PDFServicesSDK.io;
+// using Adobe.PDFServicesSDK.pdfjobs.jobs;
+// using Adobe.PDFServicesSDK.pdfjobs.results;
+// using Adobe.PDFServicesSDK.exception;
+// using Adobe.PDFServicesSDK.pdfjobs.parameters.autotag;
+// using Adobe.PDFServicesSDK.pdfjobs.parameters.ocr;
+// using Adobe.PDFServicesSDK.pdfjobs.parameters.compresspdf;
 using System.Text.Json;
 
 namespace AccessFormServer.Services
 {
     /// <summary>
     /// Service that uses Adobe Acrobat Services API to autotag PDFs for accessibility
+    /// TEMPORARILY DISABLED - See comments at top of file
     /// </summary>
     public class AdobeAutotagService
     {
         private readonly ILogger<AdobeAutotagService> _logger;
-        private readonly ICredentials _credentials;
+        // private readonly ICredentials _credentials;
         private readonly string _credentialsPath;
 
         public AdobeAutotagService(ILogger<AdobeAutotagService> logger, string? credentialsPath = null)
         {
             _logger = logger;
-            
+
             // Default to looking for credentials in the project directory
             _credentialsPath = credentialsPath ?? Path.Combine(
-                Directory.GetCurrentDirectory(), 
+                Directory.GetCurrentDirectory(),
                 "../adobe/pdfservices-api-credentials.json"
             );
 
+            /* TEMPORARILY DISABLED
             // Load credentials from JSON file
             if (File.Exists(_credentialsPath))
             {
                 _logger.LogInformation($"Loading Adobe credentials from: {_credentialsPath}");
                 var credJson = File.ReadAllText(_credentialsPath);
                 var creds = JsonDocument.Parse(credJson);
-                
+
                 var clientId = creds.RootElement
                     .GetProperty("client_credentials")
                     .GetProperty("client_id")
                     .GetString();
-                
+
                 var clientSecret = creds.RootElement
                     .GetProperty("client_credentials")
                     .GetProperty("client_secret")
@@ -63,6 +73,9 @@ namespace AccessFormServer.Services
                     Environment.GetEnvironmentVariable("PDF_SERVICES_CLIENT_SECRET") ?? ""
                 );
             }
+            */
+
+            _logger.LogWarning("AdobeAutotagService is temporarily disabled due to RestSharp version conflict with PassportPDF");
         }
 
         /// <summary>
@@ -70,6 +83,10 @@ namespace AccessFormServer.Services
         /// </summary>
         public async Task<byte[]> AutotagPdfAsync(byte[] pdfBytes, bool generateReport = false)
         {
+            _logger.LogWarning("AdobeAutotagService.AutotagPdfAsync is temporarily disabled");
+            throw new NotImplementedException("Adobe Autotag service is temporarily disabled due to RestSharp version conflict. Use PassportPDF service instead.");
+
+            /* ORIGINAL IMPLEMENTATION - PRESERVED FOR RE-ENABLING
             try
             {
                 _logger.LogInformation($"Starting Adobe autotag for {pdfBytes.Length} byte PDF");
@@ -83,7 +100,7 @@ namespace AccessFormServer.Services
 
                 // Create autotag job with options
                 AutotagPDFJob autotagJob;
-                
+
                 if (generateReport)
                 {
                     // Generate accessibility report along with tagged PDF
@@ -101,9 +118,9 @@ namespace AccessFormServer.Services
                 // Submit the job
                 _logger.LogInformation("Submitting autotag job to Adobe API");
                 string location = pdfServices.Submit(autotagJob);
-                
+
                 // Wait for and get the result
-                PDFServicesResponse<AutotagPDFResult> response = 
+                PDFServicesResponse<AutotagPDFResult> response =
                     pdfServices.GetJobResult<AutotagPDFResult>(location, typeof(AutotagPDFResult));
 
                 // Get the tagged PDF
@@ -124,11 +141,11 @@ namespace AccessFormServer.Services
                     {
                         IAsset reportAsset = response.Result.Report;
                         StreamAsset reportStream = pdfServices.GetContent(reportAsset);
-                        
+
                         var reportPath = Path.Combine(Path.GetTempPath(), $"accessibility_report_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx");
                         using var reportFile = File.OpenWrite(reportPath);
                         await reportStream.Stream.CopyToAsync(reportFile);
-                        
+
                         _logger.LogInformation($"Accessibility report saved to: {reportPath}");
                     }
                     catch (Exception ex)
@@ -159,6 +176,7 @@ namespace AccessFormServer.Services
                 _logger.LogError(ex, "Failed to autotag PDF");
                 throw;
             }
+            */
         }
 
         /// <summary>
@@ -166,6 +184,10 @@ namespace AccessFormServer.Services
         /// </summary>
         public async Task<byte[]> CompressPdfAsync(byte[] pdfBytes)
         {
+            _logger.LogWarning("AdobeAutotagService.CompressPdfAsync is temporarily disabled");
+            throw new NotImplementedException("Adobe Compress service is temporarily disabled due to RestSharp version conflict.");
+
+            /* ORIGINAL IMPLEMENTATION - PRESERVED FOR RE-ENABLING
             try
             {
                 _logger.LogInformation($"Starting Adobe Compress PDF for {pdfBytes.Length} byte PDF to embed fonts");
@@ -181,7 +203,7 @@ namespace AccessFormServer.Services
                 var compressParams = CompressPDFParams.CompressPDFParamsBuilder()
                     .WithCompressionLevel(CompressionLevel.HIGH)
                     .Build();
-                
+
                 // Create compress job - this will optimize and embed fonts
                 CompressPDFJob compressJob = new CompressPDFJob(asset)
                     .SetParams(compressParams);
@@ -189,9 +211,9 @@ namespace AccessFormServer.Services
                 // Submit the job
                 _logger.LogInformation("Submitting compress job to Adobe API");
                 string location = pdfServices.Submit(compressJob);
-                
+
                 // Wait for and get the result
-                PDFServicesResponse<CompressPDFResult> response = 
+                PDFServicesResponse<CompressPDFResult> response =
                     pdfServices.GetJobResult<CompressPDFResult>(location, typeof(CompressPDFResult));
 
                 // Get the compressed PDF
@@ -227,6 +249,7 @@ namespace AccessFormServer.Services
                 _logger.LogError(ex, "Failed to compress PDF");
                 throw;
             }
+            */
         }
 
         /// <summary>
@@ -234,6 +257,10 @@ namespace AccessFormServer.Services
         /// </summary>
         public async Task<byte[]> OcrPdfAsync(byte[] pdfBytes)
         {
+            _logger.LogWarning("AdobeAutotagService.OcrPdfAsync is temporarily disabled");
+            throw new NotImplementedException("Adobe OCR service is temporarily disabled due to RestSharp version conflict.");
+
+            /* ORIGINAL IMPLEMENTATION - PRESERVED FOR RE-ENABLING
             try
             {
                 _logger.LogInformation($"Starting Adobe OCR for {pdfBytes.Length} byte PDF to embed fonts");
@@ -251,16 +278,16 @@ namespace AccessFormServer.Services
                     .WithOcrLocale(OCRSupportedLocale.EN_US)
                     .WithOcrType(OCRSupportedType.SEARCHABLE_IMAGE)
                     .Build();
-                
+
                 // Create OCR job with parameters - this will recognize text and embed fonts properly
                 OCRJob ocrJob = new OCRJob(asset).SetParams(ocrParams);
 
                 // Submit the job
                 _logger.LogInformation("Submitting OCR job to Adobe API");
                 string location = pdfServices.Submit(ocrJob);
-                
+
                 // Wait for and get the result
-                PDFServicesResponse<OCRResult> response = 
+                PDFServicesResponse<OCRResult> response =
                     pdfServices.GetJobResult<OCRResult>(location, typeof(OCRResult));
 
                 // Get the OCR'd PDF
@@ -296,6 +323,7 @@ namespace AccessFormServer.Services
                 _logger.LogError(ex, "Failed to OCR PDF");
                 throw;
             }
+            */
         }
 
         /// <summary>
@@ -303,6 +331,10 @@ namespace AccessFormServer.Services
         /// </summary>
         public bool IsConfigured()
         {
+            // Service is temporarily disabled
+            return false;
+
+            /* ORIGINAL IMPLEMENTATION - PRESERVED FOR RE-ENABLING
             try
             {
                 // Try to create a PDF Services instance to validate credentials
@@ -313,6 +345,7 @@ namespace AccessFormServer.Services
             {
                 return false;
             }
+            */
         }
     }
 }
