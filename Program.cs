@@ -92,14 +92,15 @@ builder.Services.AddScoped<PdfFieldTagEditorService>();
 builder.Services.AddScoped<ITextFieldRebuildService>();
 
 // Add Adobe Autotag Service for accessibility
-builder.Services.AddScoped<AccessFormServer.Services.AdobeAutotagService>(provider =>
-{
-    var logger = provider.GetRequiredService<ILogger<AccessFormServer.Services.AdobeAutotagService>>();
-    // Use the new credentials path provided by the user
-    var credentialsPath = "/Users/sethredmore/Documents/Redmore Studio/AccessForm/PDFServicesAPI-Credentials/pdfservices-api-credentials.json";
-    logger.LogInformation($"Using Adobe credentials from: {credentialsPath}");
-    return new AccessFormServer.Services.AdobeAutotagService(logger, credentialsPath);
-});
+// TEMPORARILY DISABLED DUE TO RESTSHARP CONFLICT WITH PASSPORTPDF
+// builder.Services.AddScoped<AccessFormServer.Services.AdobeAutotagService>(provider =>
+// {
+//     var logger = provider.GetRequiredService<ILogger<AccessFormServer.Services.AdobeAutotagService>>();
+//     // Use the new credentials path provided by the user
+//     var credentialsPath = "/Users/sethredmore/Documents/Redmore Studio/AccessForm/PDFServicesAPI-Credentials/pdfservices-api-credentials.json";
+//     logger.LogInformation($"Using Adobe credentials from: {credentialsPath}");
+//     return new AccessFormServer.Services.AdobeAutotagService(logger, credentialsPath);
+// });
 
 // Add Aspose PDF Service for font embedding and optimization
 builder.Services.AddScoped<AccessFormServer.Services.AsposePdfService>(provider =>
@@ -119,11 +120,11 @@ builder.Services.AddScoped<PdfCompleteRebuildService>(provider =>
 {
     var logger = provider.GetRequiredService<ILogger<PdfCompleteRebuildService>>();
     var passportPdfService = provider.GetService<PassportPdfService>();
-    var adobeService = provider.GetService<AccessFormServer.Services.AdobeAutotagService>();
+    // var adobeService = provider.GetService<AccessFormServer.Services.AdobeAutotagService>();
     var asposeService = provider.GetService<AccessFormServer.Services.AsposePdfService>();
     // var formStructureService = provider.GetService<AccessFormServer.Services.PdfFormStructureService>();
     // var pythonFormFixService = provider.GetService<AccessFormServer.Services.PythonFormStructureFixService>();
-    return new PdfCompleteRebuildService(logger, passportPdfService, adobeService, asposeService); // , formStructureService, pythonFormFixService);
+    return new PdfCompleteRebuildService(logger, passportPdfService, null, asposeService); // Adobe temporarily null due to RestSharp conflict
 });
 
 // Add NLP services  

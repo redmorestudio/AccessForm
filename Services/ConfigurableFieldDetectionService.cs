@@ -781,8 +781,8 @@ namespace WordToPdfConverter.Services
                 switch (field.FieldType.ToLower())
                 {
                     case "checkbox":
-                        var checkField = new PdfCheckBoxField(pdfDoc.Pages[field.PageNumber - 1], 
-                            field.FieldName ?? field.ShortId);
+                        var checkField = new PdfCheckBoxField(pdfDoc.Pages[field.PageNumber - 1],
+                            field.FieldName);
                         checkField.Bounds = bounds;
                         checkField.ToolTip = tooltip;
                         pdfField = checkField;
@@ -790,7 +790,7 @@ namespace WordToPdfConverter.Services
                         
                     case "radio":
                         var radioField = new PdfRadioButtonListField(pdfDoc.Pages[field.PageNumber - 1],
-                            field.FieldName ?? field.ShortId);
+                            field.FieldName);
                         // Radio button list needs items, add a default one
                         var radioItem = new PdfRadioButtonListItem("Option1");
                         radioItem.Bounds = bounds;
@@ -802,7 +802,7 @@ namespace WordToPdfConverter.Services
                     case "signature":
                         // CREATE TEXT FIELD INSTEAD OF SIGNATURE FIELD TO PREVENT DOCUMENT LOCKING
                         var sigTextField = new PdfTextBoxField(pdfDoc.Pages[field.PageNumber - 1],
-                            field.FieldName ?? field.ShortId);
+                            field.FieldName);
                         sigTextField.Bounds = bounds;
                         sigTextField.ToolTip = tooltip + " (Signature)";
                         sigTextField.BackColor = new PdfColor(245, 245, 245); // Light gray background
@@ -812,10 +812,8 @@ namespace WordToPdfConverter.Services
                         
                     default:
                         // Create text field for all text-based types
-                        // Include the field type in the name for downstream processing
-                        var fieldNameWithType = $"{field.FieldName ?? field.ShortId}[{field.FieldType}]";
                         var textField = new PdfTextBoxField(pdfDoc.Pages[field.PageNumber - 1],
-                            fieldNameWithType);
+                            field.FieldName);
                         textField.Bounds = bounds;
                         
                         // Apply field-type specific formatting and validation
