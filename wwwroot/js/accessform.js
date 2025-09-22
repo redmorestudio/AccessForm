@@ -83,33 +83,99 @@ window.accessForm = {
                     let timerInterval = null;
                     
                     if (isAiMode) {
+                        // AI Processing stages
+                        const aiStages = [
+                            { name: 'Uploading document', time: 2 },
+                            { name: 'Initial document analysis', time: 3 },
+                            { name: 'Claude AI field detection', time: 15 },
+                            { name: 'Field validation and optimization', time: 8 },
+                            { name: 'Creating interactive form fields', time: 5 },
+                            { name: 'Final quality check', time: 2 }
+                        ];
+
+                        let currentStage = 0;
+                        let stageProgress = 0;
+                        const totalTime = aiStages.reduce((sum, s) => sum + s.time, 0);
+
                         overlay.innerHTML = `
-                            <div style="background:white;padding:30px;border-radius:10px;text-align:center;min-width:400px">
-                                <div class="spinner-border text-primary" style="width:3rem;height:3rem" role="status">
+                            <div style="background:white;padding:30px;border-radius:10px;text-align:center;min-width:500px;max-width:600px">
+                                <div class="spinner-border text-primary mb-3" style="width:3rem;height:3rem" role="status">
                                     <span class="visually-hidden">Processing...</span>
                                 </div>
-                                <h4 class="mt-3">Processing Your Document</h4>
-                                <div class="alert alert-info mt-3">
+                                <h4>AI Document Processing</h4>
+
+                                <div class="fs-1 fw-bold text-primary mt-3" id="timer-display">0:00</div>
+
+                                <div class="alert alert-info mt-3 mb-3">
                                     <p class="mb-2">🤖 <strong>Anthropic Claude AI Analysis</strong></p>
-                                    <p class="mb-1">Analyzing document structure and identifying form fields...</p>
-                                    <p class="text-muted small">This can take up to 2 minutes for complex documents</p>
-                                    <div class="fs-1 fw-bold text-primary mt-3" id="timer-display">
-                                        ⏱️ 0:00
+                                    <p class="mb-1" id="stage-name">Initializing...</p>
+                                    <p class="text-muted small mb-0">Advanced form field detection and optimization</p>
+                                </div>
+
+                                <div class="progress mb-3" style="height: 25px;">
+                                    <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                                         role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                                        <span id="progress-text">0%</span>
                                     </div>
+                                </div>
+
+                                <div class="small text-muted">
+                                    Stage <span id="stage-num">1</span> of ${aiStages.length}
                                 </div>
                             </div>
                         `;
-                        
+
                         // Start timer
+                        const startTime = Date.now();
                         timerInterval = setInterval(() => {
-                            seconds++;
-                            const minutes = Math.floor(seconds / 60);
-                            const secs = seconds % 60;
+                            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                            const minutes = Math.floor(elapsed / 60);
+                            const seconds = elapsed % 60;
                             const display = document.getElementById('timer-display');
                             if (display) {
-                                display.textContent = `⏱️ ${minutes}:${secs.toString().padStart(2, '0')}`;
+                                display.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
                             }
-                        }, 1000);
+                        }, 100);
+
+                        // Simulate progress through stages
+                        let progressInterval = setInterval(() => {
+                            if (currentStage < aiStages.length) {
+                                stageProgress += 100 / (aiStages[currentStage].time * 10); // Update every 100ms
+
+                                if (stageProgress >= 100) {
+                                    currentStage++;
+                                    stageProgress = 0;
+                                }
+
+                                if (currentStage < aiStages.length) {
+                                    // Update stage display
+                                    const stageEl = document.getElementById('stage-name');
+                                    if (stageEl) stageEl.textContent = aiStages[currentStage].name + '...';
+
+                                    const stageNumEl = document.getElementById('stage-num');
+                                    if (stageNumEl) stageNumEl.textContent = (currentStage + 1).toString();
+
+                                    // Calculate overall progress
+                                    const completedTime = aiStages.slice(0, currentStage).reduce((sum, s) => sum + s.time, 0);
+                                    const currentTime = aiStages[currentStage].time * (stageProgress / 100);
+                                    const overallProgress = ((completedTime + currentTime) / totalTime) * 100;
+
+                                    const progressBar = document.getElementById('progress-bar');
+                                    if (progressBar) {
+                                        progressBar.style.width = overallProgress + '%';
+                                        progressBar.setAttribute('aria-valuenow', overallProgress.toString());
+                                    }
+
+                                    const progressText = document.getElementById('progress-text');
+                                    if (progressText) {
+                                        progressText.textContent = Math.round(overallProgress) + '%';
+                                    }
+                                }
+                            }
+                        }, 100);
+
+                        // Store progress interval for cleanup
+                        window.aiProgressInterval = progressInterval;
                     } else {
                         overlay.innerHTML = `
                             <div style="background:white;padding:30px;border-radius:10px;text-align:center">
@@ -148,10 +214,23 @@ window.accessForm = {
                     }
                     
                     const result = await window.accessForm.uploadOriginalFile(endpoint, file, config);
-                    
+
+                    // Clean up intervals and overlay
+                    if (timerInterval) {
+                        clearInterval(timerInterval);
+                    }
+                    if (window.aiProgressInterval) {
+                        clearInterval(window.aiProgressInterval);
+                        window.aiProgressInterval = null;
+                    }
+                    const overlayToRemove = document.getElementById('processing-overlay');
+                    if (overlayToRemove) {
+                        overlayToRemove.remove();
+                    }
+
                     if (result) {
                         console.log('Upload successful, calling Blazor to show results');
-                        
+
                         // Log the result to see if it contains debugId
                         console.log('Result from server:', result);
                         try {
@@ -165,7 +244,7 @@ window.accessForm = {
                         } catch (e) {
                             console.log('Could not parse result as JSON:', e);
                         }
-                        
+
                         const fileData = {
                             name: file.name,
                             size: file.size,
@@ -173,7 +252,7 @@ window.accessForm = {
                             lastModified: file.lastModified,
                             data: '' // No base64 data needed
                         };
-                        
+
                         await dotnetHelper.invokeMethodAsync('OnFileProcessedDirectly', fileData, result);
                     } else {
                         alert('File processing failed. Please try again.');
@@ -181,6 +260,19 @@ window.accessForm = {
                 } catch (error) {
                     console.error('Error in file processing:', error);
                     alert('Error processing file: ' + error.message);
+
+                    // Clean up intervals and overlay on error
+                    if (timerInterval) {
+                        clearInterval(timerInterval);
+                    }
+                    if (window.aiProgressInterval) {
+                        clearInterval(window.aiProgressInterval);
+                        window.aiProgressInterval = null;
+                    }
+                    const overlayToRemove = document.getElementById('processing-overlay');
+                    if (overlayToRemove) {
+                        overlayToRemove.remove();
+                    }
                 }
             }
         }, false);
@@ -506,33 +598,99 @@ window.accessForm = {
                         let timerInterval = null;
                         
                         if (isAiMode) {
+                            // AI Processing stages
+                            const aiStages = [
+                                { name: 'Uploading document', time: 2 },
+                                { name: 'Initial document analysis', time: 3 },
+                                { name: 'Claude AI field detection', time: 15 },
+                                { name: 'Field validation and optimization', time: 8 },
+                                { name: 'Creating interactive form fields', time: 5 },
+                                { name: 'Final quality check', time: 2 }
+                            ];
+
+                            let currentStage = 0;
+                            let stageProgress = 0;
+                            const totalTime = aiStages.reduce((sum, s) => sum + s.time, 0);
+
                             overlay.innerHTML = `
-                                <div style="background:white;padding:30px;border-radius:10px;text-align:center;min-width:400px">
-                                    <div class="spinner-border text-primary" style="width:3rem;height:3rem" role="status">
+                                <div style="background:white;padding:30px;border-radius:10px;text-align:center;min-width:500px;max-width:600px">
+                                    <div class="spinner-border text-primary mb-3" style="width:3rem;height:3rem" role="status">
                                         <span class="visually-hidden">Processing...</span>
                                     </div>
-                                    <h4 class="mt-3">Processing Your Document</h4>
-                                    <div class="alert alert-info mt-3">
+                                    <h4>AI Document Processing</h4>
+
+                                    <div class="fs-1 fw-bold text-primary mt-3" id="timer-display">0:00</div>
+
+                                    <div class="alert alert-info mt-3 mb-3">
                                         <p class="mb-2">🤖 <strong>Anthropic Claude AI Analysis</strong></p>
-                                        <p class="mb-1">Analyzing document structure and identifying form fields...</p>
-                                        <p class="text-muted small">This can take up to 2 minutes for complex documents</p>
-                                        <div class="fs-1 fw-bold text-primary mt-3" id="timer-display">
-                                            ⏱️ 0:00
+                                        <p class="mb-1" id="stage-name">Initializing...</p>
+                                        <p class="text-muted small mb-0">Advanced form field detection and optimization</p>
+                                    </div>
+
+                                    <div class="progress mb-3" style="height: 25px;">
+                                        <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                                             role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                                            <span id="progress-text">0%</span>
                                         </div>
+                                    </div>
+
+                                    <div class="small text-muted">
+                                        Stage <span id="stage-num">1</span> of ${aiStages.length}
                                     </div>
                                 </div>
                             `;
-                            
+
                             // Start timer
+                            const startTime = Date.now();
                             timerInterval = setInterval(() => {
-                                seconds++;
-                                const minutes = Math.floor(seconds / 60);
-                                const secs = seconds % 60;
+                                const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                                const minutes = Math.floor(elapsed / 60);
+                                const seconds = elapsed % 60;
                                 const display = document.getElementById('timer-display');
                                 if (display) {
-                                    display.textContent = `⏱️ ${minutes}:${secs.toString().padStart(2, '0')}`;
+                                    display.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
                                 }
-                            }, 1000);
+                            }, 100);
+
+                            // Simulate progress through stages
+                            let progressInterval = setInterval(() => {
+                                if (currentStage < aiStages.length) {
+                                    stageProgress += 100 / (aiStages[currentStage].time * 10); // Update every 100ms
+
+                                    if (stageProgress >= 100) {
+                                        currentStage++;
+                                        stageProgress = 0;
+                                    }
+
+                                    if (currentStage < aiStages.length) {
+                                        // Update stage display
+                                        const stageEl = document.getElementById('stage-name');
+                                        if (stageEl) stageEl.textContent = aiStages[currentStage].name + '...';
+
+                                        const stageNumEl = document.getElementById('stage-num');
+                                        if (stageNumEl) stageNumEl.textContent = (currentStage + 1).toString();
+
+                                        // Calculate overall progress
+                                        const completedTime = aiStages.slice(0, currentStage).reduce((sum, s) => sum + s.time, 0);
+                                        const currentTime = aiStages[currentStage].time * (stageProgress / 100);
+                                        const overallProgress = ((completedTime + currentTime) / totalTime) * 100;
+
+                                        const progressBar = document.getElementById('progress-bar');
+                                        if (progressBar) {
+                                            progressBar.style.width = overallProgress + '%';
+                                            progressBar.setAttribute('aria-valuenow', overallProgress.toString());
+                                        }
+
+                                        const progressText = document.getElementById('progress-text');
+                                        if (progressText) {
+                                            progressText.textContent = Math.round(overallProgress) + '%';
+                                        }
+                                    }
+                                }
+                            }, 100);
+
+                            // Store progress interval for cleanup
+                            window.aiProgressInterval = progressInterval;
                         } else {
                             overlay.innerHTML = `
                                 <div style="background:white;padding:30px;border-radius:10px;text-align:center">
@@ -572,9 +730,13 @@ window.accessForm = {
                         
                         const result = await window.accessForm.uploadOriginalFile(endpoint, file, config);
                         
-                        // Remove processing overlay
+                        // Remove processing overlay and clean up intervals
                         if (timerInterval) {
                             clearInterval(timerInterval);
+                        }
+                        if (window.aiProgressInterval) {
+                            clearInterval(window.aiProgressInterval);
+                            window.aiProgressInterval = null;
                         }
                         const overlayToRemove = document.getElementById('processing-overlay');
                         if (overlayToRemove) {
@@ -603,13 +765,20 @@ window.accessForm = {
                         }
                     } catch (error) {
                         console.error('Error processing browse button file:', error);
-                        
-                        // Remove processing overlay on error
+
+                        // Remove processing overlay and clean up intervals on error
+                        if (timerInterval) {
+                            clearInterval(timerInterval);
+                        }
+                        if (window.aiProgressInterval) {
+                            clearInterval(window.aiProgressInterval);
+                            window.aiProgressInterval = null;
+                        }
                         const overlayToRemove = document.getElementById('processing-overlay');
                         if (overlayToRemove) {
                             overlayToRemove.remove();
                         }
-                        
+
                         alert('Error processing file: ' + error.message);
                     }
                 }
