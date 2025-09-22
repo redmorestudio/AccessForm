@@ -37,25 +37,24 @@
                         <table class="table table-sm table-hover">
                             <thead class="sticky-top bg-white">
                                 <tr>
-                                    <th width="5%">#</th>
-                                    <th width="20%">Field Name</th>
+                                    <th width="25%">Field Name</th>
                                     <th width="15%">Type</th>
                                     <th width="10%">Page</th>
                                     <th width="10%">X</th>
                                     <th width="10%">Y</th>
                                     <th width="10%">Width</th>
                                     <th width="10%">Height</th>
+                                    <th width="5%">ID</th>
                                     <th width="5%">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @foreach (var field in Fields)
                                 {
-                                    <tr class="@(field.IsSelected ? "table-primary" : "")" 
+                                    <tr class="@(field.IsSelected ? "table-primary" : "")"
                                         @onclick="() => SelectField(field)">
-                                        <td>@field.ShortId</td>
                                         <td>
-                                            <input type="text" class="form-control form-control-sm" 
+                                            <input type="text" class="form-control form-control-sm"
                                                    @bind="field.FieldName" @bind:event="oninput"
                                                    @onchange="() => MarkAsChanged(field)" />
                                         </td>
@@ -90,12 +89,13 @@
                                                    @onchange="() => MarkAsChanged(field)" />
                                         </td>
                                         <td>
-                                            <input type="number" class="form-control form-control-sm" 
+                                            <input type="number" class="form-control form-control-sm"
                                                    @bind="field.Height" @bind:event="oninput" step="0.5"
                                                    @onchange="() => MarkAsChanged(field)" />
                                         </td>
+                                        <td class="text-muted" style="font-size: 0.8em;">@field.ShortId</td>
                                         <td>
-                                            <button class="btn btn-sm btn-danger" 
+                                            <button class="btn btn-sm btn-danger"
                                                     @onclick="() => RemoveField(field)"
                                                     @onclick:stopPropagation="true">
                                                 <i class="bi bi-trash"></i>
