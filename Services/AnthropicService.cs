@@ -222,5 +222,104 @@ namespace AccessFormServer.Services
                 AccessibilityLabel = string.Empty;
             }
         }
+        
+        public async Task<string> AnalyzeImageForAltText(byte[] imageBytes)
+        {
+            try
+            {
+                _logger.LogInformation($"Analyzing image for alt-text generation ({imageBytes.Length} bytes)");
+                
+                // Convert image bytes to base64
+                var base64Image = Convert.ToBase64String(imageBytes);
+                
+                // Determine image type (assuming JPEG for now, but could be improved)
+                var mediaType = "image/jpeg";
+                if (imageBytes.Length > 4)
+                {
+                    // Check for PNG signature
+                    if (imageBytes[0] == 0x89 && imageBytes[1] == 0x50 && imageBytes[2] == 0x4E && imageBytes[3] == 0x47)
+                    {
+                        mediaType = "image/png";
+                    }
+                }
+                
+                var request = new
+                {
+                    model = "claude-3-opus-20240229",
+                    max_tokens = 500,
+                    messages = new[]
+                    {
+                        new
+                        {
+                            role = "user",
+                            content = new object[]
+                            {
+                                new
+                                {
+                                    type = "text",
+                                    text = @"You are an accessibility expert generating alt-text for images in PDF documents.
+                                    Analyze this image and provide a concise, descriptive alt-text that would help someone using a screen reader understand what the image contains.
+                                    
+                                    Guidelines:
+                                    - Be descriptive but concise (typically 125 characters or less)
+                                    - Focus on the essential information conveyed by the image
+                                    - If it's a logo, identify the organization if possible
+                                    - If it's a diagram or chart, describe its purpose and key information
+                                    - If it's decorative, you can say 'Decorative image' or describe it briefly
+                                    - Do not start with 'Image of' or 'Picture of'
+                                    
+                                    Respond with ONLY the alt-text, nothing else."
+                                },
+                                new
+                                {
+                                    type = "image",
+                                    source = new
+                                    {
+                                        type = "base64",
+                                        media_type = mediaType,
+                                        data = base64Image
+                                    }
+                                }
+                            }
+                        }
+                    }
+                };
+
+                var json = JsonSerializer.Serialize(request);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.PostAsync("v1/messages", content);
+                response.EnsureSuccessStatusCode();
+
+                var responseJson = await response.Content.ReadAsStringAsync();
+                _logger.LogInformation($"Claude vision response: {responseJson.Substring(0, Math.Min(500, responseJson.Length))}...");
+
+                using var doc = JsonDocument.Parse(responseJson);
+                var root = doc.RootElement;
+                
+                if (root.TryGetProperty("content", out var contentArray) && 
+                    contentArray.GetArrayLength() > 0)
+                {
+                    var firstContent = contentArray[0];
+                    if (firstContent.TryGetProperty("text", out var textElement))
+                    {
+                        var altText = textElement.GetString()?.Trim();
+                        if (!string.IsNullOrEmpty(altText))
+                        {
+                            _logger.LogInformation($"Generated alt-text: {altText}");
+                            return altText;
+                        }
+                    }
+                }
+
+                _logger.LogWarning("Could not extract alt-text from Claude response");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error analyzing image for alt-text");
+                return null;
+            }
+        }
     }
 }

@@ -1,0 +1,17 @@
+{
+  "name": "accessform-converter",
+  "version": "1.0.0",
+  "description": "Word to Accessible PDF Converter",
+  "scripts": {
+    "install-dotnet": "brew install dotnet-sdk",
+    "restore": "dotnet restore",
+    "build": "dotnet build -c Release",
+    "publish": "dotnet publish -c Release",
+    "dev": "dotnet watch run",
+    "serve": "dotnet run",
+    "clean": "dotnet clean && rm -rf bin obj"
+  },
+  "keywords": ["pdf", "accessibility", "forms", "converter"],
+  "author": "AccessForm",
+  "license": "MIT"
+}

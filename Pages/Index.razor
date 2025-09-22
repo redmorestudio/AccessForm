@@ -752,8 +752,8 @@
     private bool showFieldIds = true;
     
     // Accessibility services configuration
-    private bool useAdobeAutotag = true;  // Default to true, but will fallback if quota exceeded
-    private bool useAsposeAutotag = false;  // Can be enabled as primary or fallback
+    private bool useAdobeAutotag = false;  // Disabled by default (too expensive)
+    private bool useAsposeAutotag = true;  // Default to Aspose for autotagging
     private bool useAsposeFontEmbed = true;  // Default to true for font fixing
     private bool usePassportPdf = false;  // Optional OCR service
     

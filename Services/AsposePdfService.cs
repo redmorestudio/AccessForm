@@ -348,8 +348,39 @@ namespace AccessFormServer.Services
                             continue;
                         }
                         
+                        // Special handling for Times-Roman which causes issues with whitespace
+                        if (font.FontName == "Times-Roman" || font.FontName == "TimesNewRomanPSMT" || 
+                            font.FontName == "TimesNewRoman" || font.FontName.Contains("Times"))
+                        {
+                            _logger.LogWarning($"Found Times font that may cause issues: {font.FontName}");
+                            
+                            try
+                            {
+                                // Force embed Times fonts
+                                font.IsEmbedded = true;
+                                fontsEmbedded++;
+                                _logger.LogInformation($"Force embedded Times font: {font.FontName}");
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning($"Could not embed Times font {font.FontName}: {ex.Message}");
+                                
+                                // Try to replace Times with Helvetica for better compatibility
+                                try
+                                {
+                                    // This is a workaround - we can't directly replace the font
+                                    // but we can flag it for replacement in text fragments
+                                    _logger.LogWarning($"Times font {font.FontName} should be replaced with Helvetica in text");
+                                    fontsFailed++;
+                                }
+                                catch
+                                {
+                                    // Ignore replacement errors
+                                }
+                            }
+                        }
                         // Check if font is already embedded
-                        if (!font.IsEmbedded)
+                        else if (!font.IsEmbedded)
                         {
                             _logger.LogInformation($"Attempting to embed: {font.FontName}");
                             
@@ -389,6 +420,9 @@ namespace AccessFormServer.Services
             _logger.LogInformation($"Font embedding complete: {fontsProcessed} processed, {fontsEmbedded} newly embedded, {fontsFailed} failed");
             _logger.LogInformation($"Checkboxes cleaned: {checkboxesCleaned}");
             
+            // Replace Times-Roman text with Helvetica for whitespace
+            ReplaceTimesRomanWhitespace(document);
+            
             // Use FontUtilities to subset fonts
             try
             {
@@ -398,6 +432,55 @@ namespace AccessFormServer.Services
             catch (Exception ex)
             {
                 _logger.LogWarning($"Could not apply font subsetting: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Replace Times-Roman whitespace with embedded font
+        /// </summary>
+        private void ReplaceTimesRomanWhitespace(Document document)
+        {
+            try
+            {
+                _logger.LogInformation("===== REPLACING TIMES-ROMAN WHITESPACE =====");
+                int replacements = 0;
+                
+                foreach (Page page in document.Pages)
+                {
+                    // Find all text fragments
+                    var textAbsorber = new TextFragmentAbsorber();
+                    page.Accept(textAbsorber);
+                    
+                    foreach (TextFragment textFragment in textAbsorber.TextFragments)
+                    {
+                        // Check if using Times font and is whitespace
+                        var fontName = textFragment.TextState?.Font?.FontName ?? "";
+                        if ((fontName.Contains("Times") || fontName == "Times-Roman") && 
+                            string.IsNullOrWhiteSpace(textFragment.Text))
+                        {
+                            try
+                            {
+                                // Replace with Helvetica which embeds properly
+                                textFragment.TextState.Font = FontRepository.FindFont("Helvetica");
+                                replacements++;
+                                _logger.LogDebug($"Replaced Times whitespace with Helvetica");
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogDebug($"Could not replace Times whitespace: {ex.Message}");
+                            }
+                        }
+                    }
+                }
+                
+                if (replacements > 0)
+                {
+                    _logger.LogInformation($"Replaced {replacements} Times-Roman whitespace fragments with Helvetica");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Could not replace Times-Roman whitespace: {ex.Message}");
             }
         }
         
