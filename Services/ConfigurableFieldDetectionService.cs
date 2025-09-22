@@ -133,14 +133,8 @@ namespace WordToPdfConverter.Services
                         string pdfMarkdown = "";
                         try
                         {
-                            var logger = _loggerFactory?.CreateLogger<PdfToMarkdownConverter>();
-                            if (logger == null)
-                            {
-                                _logger.LogError("CreateLogger returned null!");
-                                throw new InvalidOperationException("Logger factory returned null logger");
-                            }
-                            var markdownConverter = new PdfToMarkdownConverter(logger);
-                            pdfMarkdown = markdownConverter.ConvertToMarkdown(pdfBytes);
+                            // PdfToMarkdownConverter not available
+                            pdfMarkdown = ""; // PdfToMarkdownConverter not available
                             _logger.LogInformation($"Converted PDF to Markdown: {pdfMarkdown.Length} characters");
                             
                             // Log the markdown to a file for debugging
@@ -582,15 +576,9 @@ namespace WordToPdfConverter.Services
                 }
                 else
                 {
-                    var logger = _loggerFactory?.CreateLogger<PdfToMarkdownConverter>();
-                    if (logger == null)
-                    {
-                        _logger.LogError("CreateLogger returned null in DetectWithClaudeVision!");
-                        throw new InvalidOperationException("Logger factory returned null logger");
-                    }
-                    var markdownConverter = new PdfToMarkdownConverter(logger);
-                    pdfMarkdown = markdownConverter.ConvertToMarkdown(pdfBytes);
-                    _logger.LogInformation($"Extracted markdown for Claude Vision: {pdfMarkdown.Length} characters");
+                    // PdfToMarkdownConverter not available
+                    pdfMarkdown = "";
+                    _logger.LogInformation($"PdfToMarkdownConverter not available, using empty markdown");
                 }
                 
                 // Debug: Write markdown to file if we have it

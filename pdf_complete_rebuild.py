@@ -785,7 +785,19 @@ class PDFCompleteRebuilder:
                     if page_num is None and existing_field:
                         page_num = existing_field.get('page', 0) + 1  # Convert to 1-based for consistency
                     if page_num is None or page_num < 1:
-                        page_num = 1
+                        # For new fields without page info, determine page based on Y coordinate
+                        y = field_info.get('Y') or field_info.get('y', 0)
+                        # Standard letter page is ~792 points tall
+                        # PDF Y coordinates start at bottom of page, so larger Y means higher on page
+                        # For multi-page docs, Y coordinates continue across pages:
+                        # Page 1: Y = 0 to 792
+                        # Page 2: Y = 792 to 1584
+                        # Page 3: Y = 1584 to 2376, etc.
+                        if y <= 0:
+                            page_num = 1
+                        else:
+                            page_num = int(y / 792) + 1 if y % 792 != 0 else int(y / 792)
+                        logger.info(f"Field '{new_name}' at Y={y} assigned to page {page_num} (auto-detected)")
                     
                     # ALWAYS use existing field positions when available
                     # Field updates should ONLY change name, type, and tooltip
@@ -874,56 +886,76 @@ class PDFCompleteRebuilder:
             with open('/tmp/pdf_rebuild_debug2.json', 'w') as f:
                 json.dump(debug_info, f, indent=2)
             
-            # Add fields to each page
-            added_fields = []
-            used_field_names = set()  # Track used field names to avoid duplicates
-            
+            # Collect all fields from all pages for global sorting and tab order
+            all_fields = []
             for page_num, fields in fields_by_page.items():
                 if page_num >= len(final_doc):
                     logger.warning(f"Page {page_num} does not exist, skipping fields")
                     continue
-                
-                page = final_doc[page_num]
-                
-                # Sort fields by Y then X for proper tab order
-                fields.sort(key=lambda f: (-f.get('y', 0), f.get('x', 0)))
-                
-                # Track positions to handle duplicate fields at same location
-                used_positions = {}
-                
                 for field_def in fields:
-                    orig_name = field_def['name']
-                    
-                    # Check if this is a duplicate field at the same position
-                    pos_key = f"{field_def.get('x', 0):.1f},{field_def.get('y', 0):.1f}"
-                    
-                    # Don't check for overlaps - trust the positions from the JSON
-                    # The front-end has already arranged the fields correctly
-                    
-                    # Handle duplicate field names (different positions)
-                    field_name = orig_name
-                    counter = 2
-                    while field_name in used_field_names:
-                        # Special case: if it's an unnamed field that got a nearby name, rename it
-                        if orig_name.lower() in ['in person, hand-delivered', 'mailed', 'emailed', 'faxed'] and field_def.get('type') == 'text':
-                            field_name = f"Date_Sent_{orig_name.replace(' ', '_').replace(',', '').replace('-', '_')}"
-                            logger.info(f"Renaming likely mislabeled field from '{orig_name}' to '{field_name}'")
-                            break
-                        else:
-                            field_name = f"{orig_name}_{counter}"
-                            counter += 1
-                    
-                    field_def['name'] = field_name
-                    used_field_names.add(field_name)
-                    used_positions[pos_key] = field_name
-                    
-                    widget = self.add_form_field(page, field_def)
-                    if widget:
-                        added_fields.append({
-                            'name': field_def['name'],
-                            'type': field_def['type'],
-                            'page': page_num + 1
-                        })
+                    field_def['page_num'] = page_num
+                    all_fields.append(field_def)
+
+            # Sort all fields globally: by page, then by Y (with row tolerance), then by X
+            # This ensures proper tab order
+            def sort_key(f):
+                page = f.get('page_num', 0)
+                y = f.get('y', 0)
+                x = f.get('x', 0)
+                # Round Y to nearest 10 points to group fields on same row
+                y_rounded = round(y / 10) * 10
+                return (page, -y_rounded, x)  # -y because higher Y = higher on page in PDF coords
+
+            all_fields.sort(key=sort_key)
+
+            # Check if fields already have sequential naming (SF1, SF2, etc.)
+            # If not, we'll rename them sequentially
+            has_sequential_names = all([
+                field.get('name', '').startswith('SF') and
+                field.get('name', '')[2:].isdigit()
+                for field in all_fields
+            ])
+
+            # Only rename if fields don't already have sequential names
+            if not has_sequential_names:
+                logger.info("Fields don't have sequential names, will assign them")
+                field_counter = 1
+                used_names = set()
+                for field_def in all_fields:
+                    original_name = field_def.get('name', f'Field_{field_counter}')
+
+                    # Store original name for reference
+                    field_def['original_name'] = original_name
+
+                    # Assign sequential name
+                    new_name = f"SF{field_counter}"
+                    while new_name in used_names:
+                        field_counter += 1
+                        new_name = f"SF{field_counter}"
+
+                    field_def['name'] = new_name
+                    used_names.add(new_name)
+                    field_counter += 1
+
+                    logger.debug(f"Renamed field from '{original_name}' to '{new_name}'")
+            else:
+                logger.info("Fields already have sequential names, keeping them")
+
+            # Add fields to each page
+            added_fields = []
+
+            for field_def in all_fields:
+                page_num = field_def['page_num']
+                page = final_doc[page_num]
+
+                widget = self.add_form_field(page, field_def)
+                if widget:
+                    added_fields.append({
+                        'name': field_def['name'],
+                        'type': field_def['type'],
+                        'page': page_num + 1,
+                        'original_name': field_def.get('original_name', field_def['name'])
+                    })
             
             logger.info(f"Added {len(added_fields)} fields to the document")
             

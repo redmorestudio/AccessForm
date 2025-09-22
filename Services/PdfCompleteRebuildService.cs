@@ -25,23 +25,23 @@ namespace WordToPdfConverter.Services
         private readonly AccessFormServer.Services.PassportPdfService? _passportPdfService;
         private readonly AccessFormServer.Services.AdobeAutotagService? _adobeAutotagService;
         private readonly AccessFormServer.Services.AsposePdfService? _asposePdfService;
-        private readonly AccessFormServer.Services.PdfFormStructureService? _formStructureService;
-        private readonly AccessFormServer.Services.PythonFormStructureFixService? _pythonFormFixService;
+        // private readonly AccessFormServer.Services.PdfFormStructureService? _formStructureService;
+        // private readonly AccessFormServer.Services.PythonFormStructureFixService? _pythonFormFixService;
 
         public PdfCompleteRebuildService(
             ILogger<PdfCompleteRebuildService> logger, 
             AccessFormServer.Services.PassportPdfService? passportPdfService = null,
             AccessFormServer.Services.AdobeAutotagService? adobeAutotagService = null,
-            AccessFormServer.Services.AsposePdfService? asposePdfService = null,
-            AccessFormServer.Services.PdfFormStructureService? formStructureService = null,
-            AccessFormServer.Services.PythonFormStructureFixService? pythonFormFixService = null)
+            AccessFormServer.Services.AsposePdfService? asposePdfService = null)
+            // AccessFormServer.Services.PdfFormStructureService? formStructureService = null,
+            // AccessFormServer.Services.PythonFormStructureFixService? pythonFormFixService = null
         {
             _logger = logger;
             _passportPdfService = passportPdfService;
             _adobeAutotagService = adobeAutotagService;
             _asposePdfService = asposePdfService;
-            _formStructureService = formStructureService;
-            _pythonFormFixService = pythonFormFixService;
+            // _formStructureService = formStructureService;
+            // _pythonFormFixService = pythonFormFixService;
             // Get the script path relative to the application directory
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
             _pythonScriptPath = Path.Combine(baseDir, "pdf_complete_rebuild.py");
@@ -439,10 +439,11 @@ namespace WordToPdfConverter.Services
             try
             {
                 // First try the Python service if available (more reliable)
-                if (_pythonFormFixService != null && _pythonFormFixService.IsAvailable)
+                if (false) // _pythonFormFixService != null && _pythonFormFixService.IsAvailable)
                 {
                     _logger.LogInformation("Using PythonFormStructureFixService to ensure Form elements");
-                    var fixedBytes = _pythonFormFixService.FixFormStructureAsync(pdfBytes).GetAwaiter().GetResult();
+                    // var fixedBytes = _pythonFormFixService.FixFormStructureAsync(pdfBytes).GetAwaiter().GetResult();
+                    var fixedBytes = pdfBytes; // Service not available
                     
                     // Check if the Python service actually made changes
                     if (fixedBytes.Length != pdfBytes.Length)
@@ -457,10 +458,11 @@ namespace WordToPdfConverter.Services
                 }
                 
                 // Fall back to iText-based service if Python not available or didn't make changes
-                if (_formStructureService != null)
+                if (false) // _formStructureService != null)
                 {
                     _logger.LogInformation("Using PdfFormStructureService (iText) to ensure Form elements");
-                    return _formStructureService.EnsureFormStructure(pdfBytes);
+                    // return _formStructureService.EnsureFormStructure(pdfBytes);
+                    return pdfBytes; // Service not available
                 }
                 else
                 {
@@ -479,13 +481,14 @@ namespace WordToPdfConverter.Services
         {
             try
             {
-                if (_formStructureService != null)
+                if (false) // _formStructureService != null)
                 {
                     _logger.LogInformation("Using PdfFormStructureService to add image alt-text");
                     // This is synchronous for now, but could be made async
-                    var task = _formStructureService.AddImageAltText(pdfBytes);
-                    task.Wait();
-                    return task.Result;
+                    // var task = _formStructureService.AddImageAltText(pdfBytes);
+                    // task.Wait();
+                    // return task.Result;
+                    return pdfBytes; // Service not available
                 }
                 else
                 {
