@@ -25,17 +25,23 @@ namespace WordToPdfConverter.Services
         private readonly AccessFormServer.Services.PassportPdfService? _passportPdfService;
         private readonly AccessFormServer.Services.AdobeAutotagService? _adobeAutotagService;
         private readonly AccessFormServer.Services.AsposePdfService? _asposePdfService;
+        private readonly AccessFormServer.Services.PdfFormStructureService? _formStructureService;
+        private readonly AccessFormServer.Services.PythonFormStructureFixService? _pythonFormFixService;
 
         public PdfCompleteRebuildService(
             ILogger<PdfCompleteRebuildService> logger, 
             AccessFormServer.Services.PassportPdfService? passportPdfService = null,
             AccessFormServer.Services.AdobeAutotagService? adobeAutotagService = null,
-            AccessFormServer.Services.AsposePdfService? asposePdfService = null)
+            AccessFormServer.Services.AsposePdfService? asposePdfService = null,
+            AccessFormServer.Services.PdfFormStructureService? formStructureService = null,
+            AccessFormServer.Services.PythonFormStructureFixService? pythonFormFixService = null)
         {
             _logger = logger;
             _passportPdfService = passportPdfService;
             _adobeAutotagService = adobeAutotagService;
             _asposePdfService = asposePdfService;
+            _formStructureService = formStructureService;
+            _pythonFormFixService = pythonFormFixService;
             // Get the script path relative to the application directory
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
             _pythonScriptPath = Path.Combine(baseDir, "pdf_complete_rebuild.py");
@@ -432,85 +438,39 @@ namespace WordToPdfConverter.Services
         {
             try
             {
-                using var inputStream = new MemoryStream(pdfBytes);
-                using var outputStream = new MemoryStream();
-                
-                using (var reader = new iText.Kernel.Pdf.PdfReader(inputStream))
-                using (var writer = new iText.Kernel.Pdf.PdfWriter(outputStream))
-                using (var pdfDoc = new iText.Kernel.Pdf.PdfDocument(reader, writer))
+                // First try the Python service if available (more reliable)
+                if (_pythonFormFixService != null && _pythonFormFixService.IsAvailable)
                 {
-                    // Ensure document is tagged
-                    pdfDoc.SetTagged();
+                    _logger.LogInformation("Using PythonFormStructureFixService to ensure Form elements");
+                    var fixedBytes = _pythonFormFixService.FixFormStructureAsync(pdfBytes).GetAwaiter().GetResult();
                     
-                    // Get the structure tree root
-                    var structTreeRoot = pdfDoc.GetStructTreeRoot();
-                    if (structTreeRoot == null)
+                    // Check if the Python service actually made changes
+                    if (fixedBytes.Length != pdfBytes.Length)
                     {
-                        _logger.LogWarning("No structure tree root found - creating one");
-                        structTreeRoot = pdfDoc.GetStructTreeRoot();
+                        _logger.LogInformation("Python service successfully modified Form structure");
+                        return fixedBytes;
                     }
-                    
-                    // Process each page
-                    for (int pageNum = 1; pageNum <= pdfDoc.GetNumberOfPages(); pageNum++)
+                    else
                     {
-                        var page = pdfDoc.GetPage(pageNum);
-                        var annotations = page.GetAnnotations();
-                        
-                        if (annotations == null || annotations.Count == 0)
-                            continue;
-                        
-                        _logger.LogInformation($"Processing {annotations.Count} annotations on page {pageNum}");
-                        
-                        foreach (var annot in annotations)
-                        {
-                            // Check if this is a widget annotation (form field)
-                            if (annot.GetSubtype() == iText.Kernel.Pdf.PdfName.Widget)
-                            {
-                                var widget = (iText.Kernel.Pdf.Annot.PdfWidgetAnnotation)annot;
-                                
-                                // Get field name from the widget's dictionary
-                                var fieldDict = widget.GetPdfObject();
-                                var fieldNameObj = fieldDict?.Get(iText.Kernel.Pdf.PdfName.T);
-                                var fieldName = fieldNameObj?.ToString() ?? "unnamed";
-                                
-                                _logger.LogDebug($"Processing widget: {fieldName}");
-                                
-                                // Check if widget already has a structure parent
-                                var structParent = annot.GetStructParentIndex();
-                                if (structParent == -1)
-                                {
-                                    _logger.LogInformation($"Widget '{fieldName}' has no structure parent - adding Form element");
-                                    
-                                    // Create a Form structure element
-                                    var formElem = new iText.Kernel.Pdf.Tagging.PdfStructElem(pdfDoc, iText.Kernel.Pdf.PdfName.Form);
-                                    
-                                    // Add the Form element to the structure tree root
-                                    structTreeRoot.AddKid(formElem);
-                                    
-                                    // Associate the widget with the Form structure element
-                                    var mcid = structTreeRoot.GetDocument().GetNextStructParentIndex();
-                                    annot.SetStructParentIndex(mcid);
-                                    formElem.AddKid(new iText.Kernel.Pdf.Tagging.PdfMcrNumber(page, formElem));
-                                    
-                                    _logger.LogDebug($"Added Form structure element for widget '{fieldName}'");
-                                }
-                                else
-                                {
-                                    _logger.LogDebug($"Widget '{fieldName}' already has structure parent: {structParent}");
-                                }
-                            }
-                        }
+                        _logger.LogInformation("Python service completed but no changes were needed");
                     }
-                    
-                    pdfDoc.Close();
                 }
                 
-                return outputStream.ToArray();
+                // Fall back to iText-based service if Python not available or didn't make changes
+                if (_formStructureService != null)
+                {
+                    _logger.LogInformation("Using PdfFormStructureService (iText) to ensure Form elements");
+                    return _formStructureService.EnsureFormStructure(pdfBytes);
+                }
+                else
+                {
+                    _logger.LogWarning("No Form structure service available - Form structure elements may be missing");
+                    return pdfBytes;
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to ensure form widgets are in Form structure elements");
-                // Return original if processing fails
                 return pdfBytes;
             }
         }
@@ -519,47 +479,23 @@ namespace WordToPdfConverter.Services
         {
             try
             {
-                using var inputStream = new MemoryStream(pdfBytes);
-                using var outputStream = new MemoryStream();
-                
-                using (var reader = new iText.Kernel.Pdf.PdfReader(inputStream))
-                using (var writer = new iText.Kernel.Pdf.PdfWriter(outputStream))
-                using (var pdfDoc = new iText.Kernel.Pdf.PdfDocument(reader, writer))
+                if (_formStructureService != null)
                 {
-                    // Look for images on the first page (TWC logo is typically at the top)
-                    var firstPage = pdfDoc.GetPage(1);
-                    var pageDict = firstPage.GetPdfObject();
-                    var resources = pageDict.GetAsDictionary(iText.Kernel.Pdf.PdfName.Resources);
-                    
-                    if (resources != null)
-                    {
-                        var xObject = resources.GetAsDictionary(iText.Kernel.Pdf.PdfName.XObject);
-                        if (xObject != null)
-                        {
-                            foreach (var entry in xObject.EntrySet())
-                            {
-                                var stream = entry.Value as iText.Kernel.Pdf.PdfStream;
-                                if (stream != null && stream.GetAsName(iText.Kernel.Pdf.PdfName.Subtype) == iText.Kernel.Pdf.PdfName.Image)
-                                {
-                                    // Check if this might be the TWC logo (usually the first/top image)
-                                    // Add alternate text
-                                    stream.Put(new iText.Kernel.Pdf.PdfName("Alt"), new iText.Kernel.Pdf.PdfString("Texas Workforce Commission Logo"));
-                                    _logger.LogInformation("Added alt-text to potential TWC logo image");
-                                    break; // Assume first image is the logo
-                                }
-                            }
-                        }
-                    }
-                    
-                    pdfDoc.Close();
+                    _logger.LogInformation("Using PdfFormStructureService to add image alt-text");
+                    // This is synchronous for now, but could be made async
+                    var task = _formStructureService.AddImageAltText(pdfBytes);
+                    task.Wait();
+                    return task.Result;
                 }
-                
-                return outputStream.ToArray();
+                else
+                {
+                    _logger.LogWarning("PdfFormStructureService not available - image alt-text may be missing");
+                    return pdfBytes;
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to restore TWC logo alt-text");
-                // Return original if processing fails
                 return pdfBytes;
             }
         }

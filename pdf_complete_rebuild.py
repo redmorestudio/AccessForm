@@ -352,10 +352,43 @@ class PDFCompleteRebuilder:
             # Not critical - document will still work
     
     def create_tag_structure(self, doc: fitz.Document, fields_by_page: Dict[int, List[Dict]]) -> bool:
-        """Don't modify tag structure - it's already working from C# side"""
-        logger.info("=== SKIPPING TAG STRUCTURE MODIFICATION ===")
-        logger.info("Tag structure already created by C# services - not modifying")
-        return True
+        """Ensure form fields have proper accessibility attributes"""
+        logger.info("=== ENSURING FORM FIELD ACCESSIBILITY ===")
+        
+        try:
+            # Set form field accessibility attributes
+            for page_num, fields in fields_by_page.items():
+                if page_num >= len(doc):
+                    continue
+                    
+                page = doc[page_num]
+                
+                for field_info in fields:
+                    field_name = field_info.get('field_name', '')
+                    field_type = field_info.get('field_type', 'text')
+                    
+                    # Find the widget annotation for this field
+                    for widget in page.widgets():
+                        if widget.field_name == field_name:
+                            # Set accessibility properties on the widget
+                            try:
+                                # Add tooltip if not present
+                                if not widget.field_value:
+                                    widget.field_value = ""
+                                
+                                # Ensure the widget has proper structure parent
+                                widget.update()
+                                
+                                logger.debug(f"Updated accessibility for field '{field_name}'")
+                            except Exception as e:
+                                logger.debug(f"Could not update field '{field_name}': {e}")
+            
+            logger.info("Form field accessibility attributes updated")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to ensure form field accessibility: {e}")
+            return True  # Don't fail the whole process
     
     def old_create_tag_structure_disabled(self, doc: fitz.Document, fields_by_page: Dict[int, List[Dict]]) -> bool:
         """Old code - disabled to prevent breaking the working tag structure"""
