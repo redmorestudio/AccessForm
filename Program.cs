@@ -15,6 +15,11 @@ using Microsoft.Extensions.Caching.Memory;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure URLs - use environment variable or default to port 5001
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5001";
+var urls = Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? $"http://localhost:{port}";
+builder.WebHost.UseUrls(urls);
+
 // Configure Kestrel to accept larger request bodies
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
@@ -108,12 +113,6 @@ builder.Services.AddScoped<AccessFormServer.Services.AsposePdfService>(provider 
     return new AccessFormServer.Services.AsposePdfService(logger);
 });
 
-// Add PDF Form Structure service
-builder.Services.AddScoped<AccessFormServer.Services.PdfFormStructureService>();
-
-// Add Python Form Structure Fix service (optional)
-builder.Services.AddScoped<AccessFormServer.Services.PythonFormStructureFixService>();
-
 // Add complete PDF rebuild service to eliminate ghost fields with Adobe autotag support
 builder.Services.AddScoped<PdfCompleteRebuildService>(provider =>
 {
@@ -121,9 +120,7 @@ builder.Services.AddScoped<PdfCompleteRebuildService>(provider =>
     var passportPdfService = provider.GetService<PassportPdfService>();
     var adobeService = provider.GetService<AccessFormServer.Services.AdobeAutotagService>();
     var asposeService = provider.GetService<AccessFormServer.Services.AsposePdfService>();
-    var formStructureService = provider.GetService<AccessFormServer.Services.PdfFormStructureService>();
-    var pythonFormFixService = provider.GetService<AccessFormServer.Services.PythonFormStructureFixService>();
-    return new PdfCompleteRebuildService(logger, passportPdfService, adobeService, asposeService, formStructureService, pythonFormFixService);
+    return new PdfCompleteRebuildService(logger, passportPdfService, adobeService, asposeService);
 });
 
 // Add NLP services  
@@ -1120,30 +1117,7 @@ app.MapPost("/api/convert-with-ai", async (
                 }
             }
             
-            // Check if autotagging is requested from the form
-            var useAdobeAutotag = request.Form.ContainsKey("useAdobeAutotag") && 
-                                  request.Form["useAdobeAutotag"] == "true";
-            var useAsposeAutotag = request.Form.ContainsKey("useAsposeAutotag") && 
-                                   request.Form["useAsposeAutotag"] == "true";
-            var useAsposeFontEmbed = request.Form.ContainsKey("useAsposeFontEmbed") && 
-                                      request.Form["useAsposeFontEmbed"] == "true";
-            var usePassportPdf = request.Form.ContainsKey("usePassportPdf") && 
-                                 request.Form["usePassportPdf"] == "true";
-            
-            // Create service options based on form inputs
-            var serviceOptions = new PdfCompleteRebuildService.ServiceOptions
-            {
-                UseAdobeAutotag = useAdobeAutotag,
-                UseAsposeAutotag = useAsposeAutotag,
-                UseAsposeFontEmbed = useAsposeFontEmbed,
-                UsePassportPdf = usePassportPdf
-            };
-            
-            logger.LogInformation($"Rebuild options: Adobe={useAdobeAutotag}, Aspose={useAsposeAutotag}, FontEmbed={useAsposeFontEmbed}, PassportPdf={usePassportPdf}");
-            
-            // Call the rebuild method with the service options
-            var rebuildResult = await completeRebuildService.CompletelyRebuildPdfAsync(normalPdfBytes, fieldUpdates, serviceOptions);
-            
+            var rebuildResult = await completeRebuildService.CompletelyRebuildPdfAsync(normalPdfBytes, fieldUpdates);
             if (rebuildResult.Success && rebuildResult.PdfBytes != null)
             {
                 logger.LogInformation($"PDF rebuild successful: {rebuildResult.TotalFields} fields, {rebuildResult.TagElements} tag elements");
