@@ -908,17 +908,26 @@ class PDFCompleteRebuilder:
 
             all_fields.sort(key=sort_key)
 
-            # Check if fields already have sequential naming (SF1, SF2, etc.)
-            # If not, we'll rename them sequentially
-            has_sequential_names = all([
-                field.get('name', '').startswith('SF') and
-                field.get('name', '')[2:].isdigit()
+            # Check if fields have human-readable names or sequential SF names
+            has_human_readable_names = any([
+                field.get('name', '') and
+                not field.get('name', '').startswith('SF') and
+                not field.get('name', '').startswith('Field_') and
+                len(field.get('name', '').strip()) > 2
                 for field in all_fields
             ])
 
-            # Only rename if fields don't already have sequential names
-            if not has_sequential_names:
-                logger.info("Fields don't have sequential names, will assign them")
+            # Only use SF sequential naming if we don't have human-readable names
+            if has_human_readable_names:
+                logger.info("Fields have human-readable names, preserving them for screen reader accessibility")
+                # Store original names and ensure they're preserved
+                for field_def in all_fields:
+                    original_name = field_def.get('name', '')
+                    field_def['original_name'] = original_name
+                    # Keep the human-readable name as-is
+                    logger.debug(f"Preserving human-readable field name: '{original_name}'")
+            else:
+                logger.info("Fields don't have human-readable names, will assign sequential SF names")
                 field_counter = 1
                 used_names = set()
                 for field_def in all_fields:
@@ -938,8 +947,6 @@ class PDFCompleteRebuilder:
                     field_counter += 1
 
                     logger.debug(f"Renamed field from '{original_name}' to '{new_name}'")
-            else:
-                logger.info("Fields already have sequential names, keeping them")
 
             # Add fields to each page
             added_fields = []

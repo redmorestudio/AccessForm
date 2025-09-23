@@ -79,14 +79,20 @@ namespace WordToPdfConverter.Services
                     .ToList();
                 _logger.LogInformation($"Syncfusion field types: {string.Join(", ", syncfusionFieldTypes)}");
             }
-            
+
             // Step 1: Process Syncfusion results FIRST (they have the most accurate positioning for Word fields)
             if (syncfusionResults != null && syncfusionResults.Count > 0)
             {
                 _logger.LogInformation($"Starting with {syncfusionResults.Count} Syncfusion fields as base");
-                
+
                 foreach (var sfField in syncfusionResults)
                 {
+                    _logger.LogInformation($"[COMBINER] Processing Syncfusion field:");
+                    _logger.LogInformation($"[COMBINER]   - Name: '{sfField.Name}'");
+                    _logger.LogInformation($"[COMBINER]   - Type: '{sfField.Type}'");
+                    _logger.LogInformation($"[COMBINER]   - Page: {sfField.PageNumber}");
+                    _logger.LogInformation($"[COMBINER]   - Bounds: X={sfField.Bounds.X:F1}, Y={sfField.Bounds.Y:F1}, W={sfField.Bounds.Width:F1}, H={sfField.Bounds.Height:F1}");
+
                     var combined = new CombinedField
                     {
                         FieldName = sfField.Name,
@@ -97,9 +103,10 @@ namespace WordToPdfConverter.Services
                         Source = "Syncfusion",
                         Confidence = 0.9f // High confidence for Syncfusion
                     };
-                    
+
                     combinedFields.Add(combined);
                     _logger.LogDebug($"Added Syncfusion field: {sfField.Name} ({sfField.Type}) at page {sfField.PageNumber}");
+                    _logger.LogInformation($"[COMBINER] Added field '{combined.FieldName}' to combined list (total: {combinedFields.Count})");
                 }
             }
             
@@ -128,15 +135,23 @@ namespace WordToPdfConverter.Services
                         if (existingField != null)
                         {
                             // Enhance existing field with Vision data - PRESERVE the better name/description
-                            
+                            _logger.LogInformation($"[COMBINER] Found existing field for Vision field '{visionField.FieldName}':");
+                            _logger.LogInformation($"[COMBINER]   - Existing name: '{existingField.FieldName}'");
+                            _logger.LogInformation($"[COMBINER]   - Vision name: '{visionField.FieldName}'");
+
                             // Use Vision's name if it's more descriptive than Syncfusion's generic names
-                            if (!string.IsNullOrEmpty(visionField.FieldName) && 
-                                (existingField.FieldName.StartsWith("Text") || 
+                            if (!string.IsNullOrEmpty(visionField.FieldName) &&
+                                (existingField.FieldName.StartsWith("Text") ||
                                  existingField.FieldName.StartsWith("Check") ||
+                                 existingField.FieldName.StartsWith("SF") ||
                                  visionField.FieldName.Length > existingField.FieldName.Length))
                             {
-                                _logger.LogDebug($"Updating field name from '{existingField.FieldName}' to '{visionField.FieldName}'");
+                                _logger.LogInformation($"[COMBINER] UPDATING field name from '{existingField.FieldName}' to '{visionField.FieldName}' (Vision has better name)");
                                 existingField.FieldName = visionField.FieldName;
+                            }
+                            else
+                            {
+                                _logger.LogInformation($"[COMBINER] KEEPING existing field name '{existingField.FieldName}' (better than Vision's '{visionField.FieldName}')");
                             }
                             
                             // Always use Vision's description if available - it's usually better
@@ -421,8 +436,9 @@ namespace WordToPdfConverter.Services
         
         private List<CombinedField> RemoveDuplicates(List<CombinedField> fields)
         {
+            _logger.LogInformation($"[DEDUP] Starting duplicate removal for {fields.Count} fields");
             var unique = new List<CombinedField>();
-            
+
             // Group by page for more efficient processing
             var fieldsByPage = fields.GroupBy(f => f.PageNumber);
             
@@ -450,13 +466,19 @@ namespace WordToPdfConverter.Services
                     
                     if (duplicate != null)
                     {
+                        _logger.LogInformation($"[DEDUP] Found duplicate for field '{field.FieldName}':");
+                        _logger.LogInformation($"[DEDUP]   - Existing: '{duplicate.FieldName}' (confidence: {duplicate.Confidence}, source: {duplicate.Source})");
+                        _logger.LogInformation($"[DEDUP]   - New: '{field.FieldName}' (confidence: {field.Confidence}, source: {field.Source})");
+                        _logger.LogInformation($"[DEDUP]   - Existing bounds: X={duplicate.Bounds.X:F1}, Y={duplicate.Bounds.Y:F1}");
+                        _logger.LogInformation($"[DEDUP]   - New bounds: X={field.Bounds.X:F1}, Y={field.Bounds.Y:F1}");
+
                         // Merge the duplicate into the existing field
                         if (field.Confidence > duplicate.Confidence)
                         {
                             // Replace with higher confidence field
                             unique.Remove(duplicate);
                             unique.Add(field);
-                            _logger.LogDebug($"Replaced lower confidence duplicate: {duplicate.FieldName} with {field.FieldName} on page {field.PageNumber}");
+                            _logger.LogInformation($"[DEDUP] REPLACED lower confidence duplicate: '{duplicate.FieldName}' with '{field.FieldName}' on page {field.PageNumber}");
                         }
                         else
                         {
@@ -522,8 +544,8 @@ namespace WordToPdfConverter.Services
         
         private List<CombinedField> FixOverlappingFields(List<CombinedField> fields)
         {
-            _logger.LogInformation("Checking for overlapping fields...");
-            
+            _logger.LogInformation($"[OVERLAP] Checking for overlapping fields among {fields.Count} fields...");
+
             var corrected = new List<CombinedField>(fields);
             var overlapsFound = 0;
             
@@ -544,8 +566,10 @@ namespace WordToPdfConverter.Services
                         if (AreBoundsOverlapping(field1.Bounds, field2.Bounds))
                         {
                             overlapsFound++;
-                            _logger.LogWarning($"Overlap detected between '{field1.FieldName}' and '{field2.FieldName}' on page {field1.PageNumber}");
-                            
+                            _logger.LogWarning($"[OVERLAP] Overlap detected between fields on page {field1.PageNumber}:");
+                            _logger.LogWarning($"[OVERLAP]   - Field 1: '{field1.FieldName}' ({field1.FieldType}) at X={field1.Bounds.X:F1}, Y={field1.Bounds.Y:F1}, W={field1.Bounds.Width:F1}, H={field1.Bounds.Height:F1}");
+                            _logger.LogWarning($"[OVERLAP]   - Field 2: '{field2.FieldName}' ({field2.FieldType}) at X={field2.Bounds.X:F1}, Y={field2.Bounds.Y:F1}, W={field2.Bounds.Width:F1}, H={field2.Bounds.Height:F1}");
+
                             // Fix the overlap based on field types and positions
                             FixOverlap(field1, field2);
                         }
