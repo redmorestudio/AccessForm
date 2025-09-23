@@ -770,50 +770,68 @@ namespace WordToPdfConverter.Services
                 // pdfY -= 10;
                 
                 var bounds = new RectangleF(field.X, pdfY, field.Width, field.Height);
-                
+
+                // Get intelligent field name for accessibility
+                string intelligentFieldName = GetIntelligentFieldName(field);
+
                 // Apply smart sizing based on field type
-                bounds = ApplySmartFieldSizing(bounds, field.FieldType, field.FieldName);
-                
+                bounds = ApplySmartFieldSizing(bounds, field.FieldType, intelligentFieldName);
+
                 // Add the field based on type
                 PdfField pdfField = null;
                 string tooltip = GetFieldTooltip(field);
                 
+                _logger.LogInformation($"[PDF FIELD CREATION] Creating field type: {field.FieldType}");
+                _logger.LogInformation($"[PDF FIELD CREATION] Original ShortId: {field.ShortId}");
+                _logger.LogInformation($"[PDF FIELD CREATION] Original FieldName: {field.FieldName}");
+                _logger.LogInformation($"[PDF FIELD CREATION] Intelligent name to use: {intelligentFieldName}");
+                _logger.LogInformation($"[PDF FIELD CREATION] Tooltip: {tooltip}");
+                _logger.LogInformation($"[PDF FIELD CREATION] Source: {field.Source}");
+                _logger.LogInformation($"[PDF FIELD CREATION] Page: {field.PageNumber}, X: {field.X}, Y: {field.Y}");
+
                 switch (field.FieldType.ToLower())
                 {
                     case "checkbox":
+                        _logger.LogInformation($"[CHECKBOX CREATION] Creating checkbox with name: '{intelligentFieldName}'");
                         var checkField = new PdfCheckBoxField(pdfDoc.Pages[field.PageNumber - 1],
-                            field.FieldName);
+                            intelligentFieldName);
                         checkField.Bounds = bounds;
                         checkField.ToolTip = tooltip;
                         pdfField = checkField;
+                        _logger.LogInformation($"[CHECKBOX CREATED] Name set to: '{checkField.Name}'");
                         break;
                         
                     case "radio":
+                        _logger.LogInformation($"[RADIO CREATION] Creating radio with name: '{intelligentFieldName}'");
                         var radioField = new PdfRadioButtonListField(pdfDoc.Pages[field.PageNumber - 1],
-                            field.FieldName);
+                            intelligentFieldName);
                         // Radio button list needs items, add a default one
                         var radioItem = new PdfRadioButtonListItem("Option1");
                         radioItem.Bounds = bounds;
                         radioField.Items.Add(radioItem);
                         radioField.ToolTip = tooltip;
                         pdfField = radioField;
+                        _logger.LogInformation($"[RADIO CREATED] Name set to: '{radioField.Name}'");
                         break;
                         
                     case "signature":
+                        _logger.LogInformation($"[SIGNATURE CREATION] Creating signature field with name: '{intelligentFieldName}'");
                         // CREATE TEXT FIELD INSTEAD OF SIGNATURE FIELD TO PREVENT DOCUMENT LOCKING
                         var sigTextField = new PdfTextBoxField(pdfDoc.Pages[field.PageNumber - 1],
-                            field.FieldName);
+                            intelligentFieldName);
                         sigTextField.Bounds = bounds;
                         sigTextField.ToolTip = tooltip + " (Signature)";
                         sigTextField.BackColor = new PdfColor(245, 245, 245); // Light gray background
                         pdfField = sigTextField;
-                        _logger.LogInformation($"Created text field instead of signature field for '{field.FieldName}' to prevent locking");
+                        _logger.LogInformation($"[SIGNATURE CREATED] Text field created instead with name: '{sigTextField.Name}'");
                         break;
                         
                     default:
+                        _logger.LogInformation($"[TEXT FIELD CREATION] Creating text field with name: '{intelligentFieldName}' for type: {field.FieldType}");
                         // Create text field for all text-based types
                         var textField = new PdfTextBoxField(pdfDoc.Pages[field.PageNumber - 1],
-                            field.FieldName);
+                            intelligentFieldName);
+                        _logger.LogInformation($"[TEXT FIELD CREATED] Name after creation: '{textField.Name}'");
                         textField.Bounds = bounds;
                         
                         // Apply field-type specific formatting and validation
@@ -837,14 +855,39 @@ namespace WordToPdfConverter.Services
                 
                 if (pdfField != null)
                 {
+                    _logger.LogInformation($"[FIELD ADDITION] About to add field to PDF form");
+                    _logger.LogInformation($"[FIELD ADDITION] Field name before adding: '{pdfField.Name}'");
+
                     // Add debug info to tooltip if in debug mode
                     if (config.ShowFieldIds)
                     {
                         var currentTooltip = GetFieldTooltipFromPdfField(pdfField);
-                        SetFieldTooltip(pdfField, $"[{field.ShortId}] {field.Source} | Type: {field.FieldType} | {currentTooltip}");
+                        var debugTooltip = $"[{field.ShortId}] {field.Source} | Type: {field.FieldType} | {currentTooltip}";
+                        _logger.LogInformation($"[DEBUG TOOLTIP] Adding debug tooltip: {debugTooltip}");
+                        SetFieldTooltip(pdfField, debugTooltip);
                     }
-                    
+
+                    // Store the name before adding
+                    string nameBeforeAdd = pdfField.Name;
+                    _logger.LogInformation($"[PRE-ADD] Field name before adding to form: '{nameBeforeAdd}'");
+
                     pdfDoc.Form.Fields.Add(pdfField);
+
+                    // Verify name after adding
+                    string nameAfterAdd = pdfField.Name;
+                    _logger.LogInformation($"[POST-ADD] Field name after adding to form: '{nameAfterAdd}'");
+
+                    if (nameBeforeAdd != nameAfterAdd)
+                    {
+                        _logger.LogWarning($"[NAME CHANGED] Field name changed during add: '{nameBeforeAdd}' -> '{nameAfterAdd}'");
+                    }
+
+                    _logger.LogInformation($"[FIELD ADDED] Successfully added field '{pdfField.Name}' to PDF form");
+                    _logger.LogInformation($"[FIELD ADDED] Total fields in form: {pdfDoc.Form.Fields.Count}");
+
+                    // Double-check by retrieving the field back
+                    var lastField = pdfDoc.Form.Fields[pdfDoc.Form.Fields.Count - 1];
+                    _logger.LogInformation($"[VERIFY] Last field in form has name: '{lastField.Name}'");
                 }
             }
             
@@ -1023,6 +1066,60 @@ namespace WordToPdfConverter.Services
             }
         }
         
+        private string GetIntelligentFieldName(FieldDetectionResult field)
+        {
+            // If the field already has an intelligent name (not starting with SF), use it
+            if (!string.IsNullOrEmpty(field.FieldName) && !field.FieldName.StartsWith("SF"))
+            {
+                _logger.LogInformation($"Field already has intelligent name: '{field.FieldName}'");
+                return field.FieldName;
+            }
+
+            // If the field has a ShortId but the FieldName is different, it's already enhanced
+            if (!string.IsNullOrEmpty(field.ShortId) && field.ShortId != field.FieldName)
+            {
+                _logger.LogInformation($"Field {field.ShortId} already enhanced with name: '{field.FieldName}'");
+                return field.FieldName;
+            }
+
+            // Try to generate intelligent field name with NLP generator
+            if (_nlpGenerator != null)
+            {
+                try
+                {
+                    var context = new FieldContext
+                    {
+                        UseAI = false, // Keep it fast for real-time use
+                        IsRequired = field.IsValid
+                    };
+
+                    var labelResult = _nlpGenerator.GenerateLabelsAsync(field.FieldName, field.FieldType, context).Result;
+
+                    if (labelResult.Success && !string.IsNullOrEmpty(labelResult.ProgrammaticName))
+                    {
+                        _logger.LogInformation($"Generated intelligent name '{labelResult.ProgrammaticName}' for field '{field.FieldName}'");
+                        // Return the intelligent programmatic name for the field
+                        return labelResult.ProgrammaticName;
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"No intelligent name generated for field '{field.FieldName}' - using original");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning($"Failed to generate intelligent field name for {field.FieldName}: {ex.Message}");
+                }
+            }
+            else
+            {
+                _logger.LogWarning("NLP generator is null - cannot generate intelligent field names");
+            }
+
+            // Fallback to original name if NLP generation fails
+            return field.FieldName;
+        }
+
         private string GetFieldTooltip(FieldDetectionResult field)
         {
             // Try to generate intelligent tooltip with NLP generator
@@ -1035,13 +1132,13 @@ namespace WordToPdfConverter.Services
                         UseAI = false, // Keep it fast for real-time use
                         IsRequired = field.IsValid
                     };
-                    
+
                     var labelResult = _nlpGenerator.GenerateLabelsAsync(field.FieldName, field.FieldType, context).Result;
-                    
+
                     if (labelResult.Success && labelResult.Tooltip != null)
                     {
                         var tooltipText = labelResult.Tooltip.Primary;
-                        
+
                         // Add format hint if available
                         if (!string.IsNullOrEmpty(labelResult.Tooltip.FormatHint))
                         {
@@ -1378,6 +1475,12 @@ Document:
                         if (checkboxMatch != null)
                         {
                             // Keep it as checkbox but use Claude's label
+                            _logger.LogInformation($"[ENHANCEMENT] Checkbox {sfField.ShortId} enhancement starting:");
+                            _logger.LogInformation($"[ENHANCEMENT]   - Original ShortId: {sfField.ShortId}");
+                            _logger.LogInformation($"[ENHANCEMENT]   - Original FieldName: {sfField.FieldName}");
+                            _logger.LogInformation($"[ENHANCEMENT]   - Claude match FieldName: {checkboxMatch.FieldName}");
+                            _logger.LogInformation($"[ENHANCEMENT]   - Position: X={sfField.X}, Y={sfField.Y}, W={sfField.Width}, H={sfField.Height}");
+
                             var enhanced = new FieldDetectionResult
                             {
                                 ShortId = sfField.ShortId,
@@ -1393,8 +1496,13 @@ Document:
                                 IsValid = sfField.IsValid,
                                 Tooltip = FieldTooltipGenerator.GenerateTooltip("checkbox", checkboxMatch.FieldName)
                             };
+
+                            _logger.LogInformation($"[ENHANCEMENT]   - Enhanced field created with name: '{enhanced.FieldName}'");
+                            _logger.LogInformation($"[ENHANCEMENT]   - Enhanced field tooltip: '{enhanced.Tooltip}'");
+
                             enhancedFields.Add(enhanced);
                             _logger.LogDebug($"Enhanced checkbox {sfField.ShortId} at Y={sfField.Y}: label → '{checkboxMatch.FieldName}'");
+                            _logger.LogInformation($"[ENHANCEMENT] Checkbox {sfField.ShortId} enhancement complete");
                             
                             // Don't mark as used for checkboxes - allow reuse
                         }
@@ -1433,16 +1541,26 @@ Document:
                         
                         if (bestMatch != null)
                         {
+                            _logger.LogInformation($"[ENHANCEMENT] Text field {sfField.ShortId} enhancement starting:");
+                            _logger.LogInformation($"[ENHANCEMENT]   - Original ShortId: {sfField.ShortId}");
+                            _logger.LogInformation($"[ENHANCEMENT]   - Original FieldName: {sfField.FieldName}");
+                            _logger.LogInformation($"[ENHANCEMENT]   - Original FieldType: {sfField.FieldType}");
+                            _logger.LogInformation($"[ENHANCEMENT]   - Best match FieldName: {bestMatch.FieldName}");
+                            _logger.LogInformation($"[ENHANCEMENT]   - Best match FieldType: {bestMatch.FieldType}");
+                            _logger.LogInformation($"[ENHANCEMENT]   - Position: X={sfField.X}, Y={sfField.Y}, W={sfField.Width}, H={sfField.Height}");
+
                             // Create enhanced field with intelligent type detection
                             var detectedType = FieldTypeDetector.DetectFieldType(bestMatch.FieldName, null, bestMatch.FieldType);
-                            
+                            _logger.LogInformation($"[ENHANCEMENT]   - Detected type from name: {detectedType}");
+
                             // Validate the type conversion is compatible
                             var compatibleType = FieldTypeCompatibilityChecker.GetCompatibleType(sfField.FieldType, detectedType);
                             if (compatibleType != detectedType)
                             {
                                 _logger.LogWarning($"Prevented invalid conversion for {sfField.ShortId}: {sfField.FieldType} → {detectedType}, using {compatibleType} instead");
                             }
-                            
+                            _logger.LogInformation($"[ENHANCEMENT]   - Compatible type: {compatibleType}");
+
                             var enhanced = new FieldDetectionResult
                             {
                                 ShortId = sfField.ShortId,
@@ -1458,6 +1576,11 @@ Document:
                                 IsValid = sfField.IsValid,
                                 Tooltip = FieldTooltipGenerator.GenerateTooltip(compatibleType, bestMatch.FieldName)
                             };
+
+                            _logger.LogInformation($"[ENHANCEMENT]   - Enhanced field created with name: '{enhanced.FieldName}'");
+                            _logger.LogInformation($"[ENHANCEMENT]   - Enhanced field type: '{enhanced.FieldType}'");
+                            _logger.LogInformation($"[ENHANCEMENT]   - Enhanced field tooltip: '{enhanced.Tooltip}'");
+                            _logger.LogInformation($"[ENHANCEMENT] Text field {sfField.ShortId} enhancement complete");
                             enhancedFields.Add(enhanced);
                             _logger.LogDebug($"Enhanced field {sfField.ShortId}: '{sfField.FieldName}' → '{bestMatch.FieldName}' (type: {compatibleType})");
                         }

@@ -1078,10 +1078,18 @@ app.MapPost("/api/convert-with-ai", async (
                 
                 if (pdfDoc.Form != null && pdfDoc.Form.Fields != null)
                 {
+                    logger.LogInformation($"[READING PDF FIELDS] Total fields in PDF: {pdfDoc.Form.Fields.Count}");
+                    int fieldIndex = 0;
                     foreach (PdfLoadedField field in pdfDoc.Form.Fields)
                     {
+                        fieldIndex++;
+                        logger.LogInformation($"[FIELD {fieldIndex}] Reading field from PDF:");
+                        logger.LogInformation($"[FIELD {fieldIndex}] - Raw Name: '{field.Name}'");
+                        logger.LogInformation($"[FIELD {fieldIndex}] - Type: {field.GetType().Name}");
+
                         // Clean field names by removing type suffixes like [name], [checkbox], etc.
                         var cleanName = System.Text.RegularExpressions.Regex.Replace(field.Name, @"\[(name|text|textarea|checkbox|radio|dropdown|date|email|phone|signature|number)\]$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                        logger.LogInformation($"[FIELD {fieldIndex}] - Cleaned Name: '{cleanName}'");
                         
                         // Generate appropriate tooltip based on field name
                         string tooltip = cleanName;
@@ -3245,10 +3253,153 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                 return a.x.CompareTo(b.x); // Left to right
             });
 
-            // Now assign sequential SF numbers
+            // Helper function to generate human-readable field names
+            Func<dynamic, int, int, string> GenerateHumanReadableName = (field, index, totalFields) =>
+            {
+                string baseName = field.originalName as string ?? "";
+                string fieldType = field.type as string ?? "text";
+                int page = field.page;
+                float x = field.x;
+                float y = field.y;
+
+                // First, try to use the original name if it's already human-readable
+                if (!string.IsNullOrEmpty(baseName) && !baseName.StartsWith("SF") && !baseName.Contains("502fba303ae4"))
+                {
+                    // Clean up the name but keep it readable
+                    baseName = System.Text.RegularExpressions.Regex.Replace(baseName, @"\[.*?\]$", ""); // Remove type suffix
+                    baseName = baseName.Replace("_", " ").Trim();
+
+                    // If it's a meaningful name, use it
+                    if (baseName.Length > 2 && !System.Text.RegularExpressions.Regex.IsMatch(baseName, @"^(Text|Check|Radio|Field)\d*$"))
+                    {
+                        return baseName;
+                    }
+                }
+
+                // Analyze field position and context
+                string position = "";
+                string pagePosition = page == 1 ? "Header" : $"Page {page}";
+
+                // Determine vertical position
+                if (y < 150)
+                    position = "Top";
+                else if (y > 600)
+                    position = "Bottom";
+                else
+                    position = "Middle";
+
+                // Determine horizontal position
+                if (x < 200)
+                    position += " Left";
+                else if (x > 400)
+                    position += " Right";
+                else
+                    position += " Center";
+
+                // Look for common patterns in the original name or tooltip
+                string tooltip = field.tooltip as string ?? "";
+                string nameHint = (baseName + " " + tooltip).ToLower();
+
+                // Detect common field patterns
+                if (nameHint.Contains("signature") || fieldType == "signature")
+                    return page == 1 ? "Signature" : $"Signature Page {page}";
+
+                if (nameHint.Contains("date") || nameHint.Contains("dated"))
+                    return page == 1 ? "Date" : $"Date Page {page}";
+
+                if (nameHint.Contains("email") || nameHint.Contains("e-mail"))
+                    return "Email Address";
+
+                if (nameHint.Contains("phone") || nameHint.Contains("tel"))
+                    return "Phone Number";
+
+                if (nameHint.Contains("name"))
+                {
+                    if (nameHint.Contains("first"))
+                        return "First Name";
+                    if (nameHint.Contains("last"))
+                        return "Last Name";
+                    if (nameHint.Contains("organization") || nameHint.Contains("company"))
+                        return "Organization Name";
+                    return "Full Name";
+                }
+
+                if (nameHint.Contains("address"))
+                {
+                    if (nameHint.Contains("street"))
+                        return "Street Address";
+                    if (nameHint.Contains("city"))
+                        return "City";
+                    if (nameHint.Contains("state"))
+                        return "State";
+                    if (nameHint.Contains("zip") || nameHint.Contains("postal"))
+                        return "Zip Code";
+                    return "Address";
+                }
+
+                if (nameHint.Contains("title"))
+                    return page == 1 ? "Title" : $"Title Page {page}";
+
+                if (nameHint.Contains("department") || nameHint.Contains("dept"))
+                    return "Department";
+
+                if (nameHint.Contains("contact"))
+                    return "Contact Person";
+
+                if (nameHint.Contains("amount") || nameHint.Contains("total") || nameHint.Contains("price"))
+                    return "Amount";
+
+                if (nameHint.Contains("description") || nameHint.Contains("comments") || nameHint.Contains("notes"))
+                    return "Description";
+
+                // Generate name based on field type and position
+                switch (fieldType.ToLower())
+                {
+                    case "checkbox":
+                        if (index == 0)
+                            return "Agreement Checkbox";
+                        else if (position.Contains("Bottom"))
+                            return $"Confirmation {index + 1}";
+                        else
+                            return $"Option {index + 1}";
+
+                    case "radio":
+                        return $"Selection {index + 1}";
+
+                    case "dropdown":
+                    case "listbox":
+                        return $"{position} Selection";
+
+                    case "signature":
+                        return page == 1 ? "Signature Field" : $"Signature Page {page}";
+
+                    case "date":
+                        return page == 1 ? "Date Field" : $"Date Page {page}";
+
+                    case "email":
+                        return "Email Field";
+
+                    case "phone":
+                        return "Phone Field";
+
+                    default:
+                        // For text fields, use position-based naming
+                        if (index < 5 && page == 1)
+                        {
+                            string[] commonFields = { "Organization Name", "Contact Person", "Email Address", "Phone Number", "Date Submitted" };
+                            if (index < commonFields.Length)
+                                return commonFields[index];
+                        }
+
+                        return $"{pagePosition} {position} Field";
+                }
+            };
+
+            // Now assign human-readable names with tab order
             var formFields = fieldList.Select((field, index) => new
             {
-                name = $"SF{index + 1}", // Sequential numbering
+                name = GenerateHumanReadableName(field, index, fieldList.Count),
+                tabOrder = index + 1, // Sequential tab order for proper navigation
                 originalName = field.originalName,
                 type = field.type,
                 tooltip = field.tooltip,
