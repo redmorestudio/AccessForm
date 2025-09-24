@@ -157,7 +157,7 @@ namespace WordToPdfConverter.Services
                         HasDescription = !string.IsNullOrEmpty(field.ToolTip),
                         TabIndex = field.TabIndex,
                         IsRequired = field.Required,
-                        PageNumber = 1 // Simplified - actual implementation would determine real page
+                        PageNumber = GetFieldPageNumber(field, document)
                     });
                 }
                 catch (Exception ex)
@@ -338,6 +338,38 @@ namespace WordToPdfConverter.Services
                 PdfLoadedSignatureField => "Signature",
                 _ => "Form Field"
             };
+        }
+
+        /// <summary>
+        /// Determines which page a field is on based on Y coordinate
+        /// </summary>
+        private int GetFieldPageNumber(PdfLoadedField field, PdfLoadedDocument document)
+        {
+            try
+            {
+                // Get the field bounds
+                RectangleF bounds;
+                if (field is PdfLoadedTextBoxField textField)
+                    bounds = textField.Bounds;
+                else if (field is PdfLoadedCheckBoxField checkField)
+                    bounds = checkField.Bounds;
+                else if (field is PdfLoadedRadioButtonListField radioField && radioField.Items.Count > 0)
+                    bounds = radioField.Items[0].Bounds;
+                else if (field is PdfLoadedComboBoxField comboField)
+                    bounds = comboField.Bounds;
+                else
+                    return 1; // Default fallback
+
+                // Standard letter page height is ~792 points
+                const float pageHeight = 792f;
+                var calculatedPage = Math.Max(1, (int)(bounds.Y / pageHeight) + 1);
+                var pageNum = Math.Max(1, Math.Min(calculatedPage, document.Pages.Count));
+                return pageNum;
+            }
+            catch
+            {
+                return 1; // Safe fallback
+            }
         }
     }
 }

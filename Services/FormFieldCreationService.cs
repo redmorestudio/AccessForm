@@ -102,19 +102,37 @@ namespace WordToPdfConverter.Services
                 document.Pages.Add();
             }
 
-            var page = document.Pages[0] as PdfPage;
-            float currentY = page.Size.Height - _margin - 50;
+            // Group fields by page number to handle multi-page placement correctly
+            var fieldsByPage = detectedFields.GroupBy(f => f.PageNumber).OrderBy(g => g.Key);
             int tabIndex = 1;
 
-            foreach (var fieldData in detectedFields)
+            foreach (var pageGroup in fieldsByPage)
             {
-                try
+                int pageNum = pageGroup.Key;
+                _logger.LogInformation($"Processing {pageGroup.Count()} fields for page {pageNum}");
+
+                // Ensure we have enough pages in the document
+                while (document.Pages.Count < pageNum)
                 {
-                    CreateFieldInNewDocument(page, fieldData, ref currentY, tabIndex++, document, detectedFields);
+                    document.Pages.Add();
+                    _logger.LogInformation($"Added page {document.Pages.Count} to accommodate field placement");
                 }
-                catch (Exception ex)
+
+                // Get the correct page (1-based page number, 0-based array index)
+                var page = document.Pages[pageNum - 1] as PdfPage;
+                float currentY = page.Size.Height - _margin - 50;
+
+                foreach (var fieldData in pageGroup)
                 {
-                    _logger.LogError(ex, $"Failed to create field '{fieldData.FieldName}'");
+                    try
+                    {
+                        _logger.LogInformation($"[PAGINATION FIX] Creating field '{fieldData.FieldName}' on page {pageNum}");
+                        CreateFieldInNewDocument(page, fieldData, ref currentY, tabIndex++, document, detectedFields);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"Failed to create field '{fieldData.FieldName}' on page {pageNum}");
+                    }
                 }
             }
         }

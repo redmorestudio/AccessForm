@@ -196,6 +196,7 @@ namespace AccessFormServer.Services
             public string FieldName { get; set; }
             public string FieldType { get; set; }
             public bool IsRequired { get; set; }
+            public int PageNumber { get; set; } = 1;
             
             public FieldAnalysisResult()
             {

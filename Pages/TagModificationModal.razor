@@ -705,9 +705,16 @@
                 var json = System.Text.Json.JsonDocument.Parse(result);
                 
                 CurrentPageImage = json.RootElement.GetProperty("imageData").GetString();
-                
+
                 // Update fields for current page
+                await JSRuntime.InvokeVoidAsync("console.log", $"[PAGINATION DEBUG] Filtering fields for page {pageNumber}");
+                await JSRuntime.InvokeVoidAsync("console.log", $"[PAGINATION DEBUG] Total EditableFields: {EditableFields.Count}");
+                foreach (var field in EditableFields)
+                {
+                    await JSRuntime.InvokeVoidAsync("console.log", $"[PAGINATION DEBUG] Field '{field.Name}' has Page={field.Page}");
+                }
                 CurrentPageFields = EditableFields.Where(f => f.Page == pageNumber).ToList();
+                await JSRuntime.InvokeVoidAsync("console.log", $"[PAGINATION DEBUG] Found {CurrentPageFields.Count} fields for page {pageNumber}");
             }
         }
         catch (Exception ex)
@@ -799,7 +806,14 @@
                 }
                 
                 // Update fields for current page
+                await JSRuntime.InvokeVoidAsync("console.log", $"[PAGINATION DEBUG 2] Filtering fields for page {pageNumber}");
+                await JSRuntime.InvokeVoidAsync("console.log", $"[PAGINATION DEBUG 2] Total EditableFields: {EditableFields.Count}");
+                foreach (var field in EditableFields)
+                {
+                    await JSRuntime.InvokeVoidAsync("console.log", $"[PAGINATION DEBUG 2] Field '{field.Name}' has Page={field.Page}");
+                }
                 CurrentPageFields = EditableFields.Where(f => f.Page == pageNumber).ToList();
+                await JSRuntime.InvokeVoidAsync("console.log", $"[PAGINATION DEBUG 2] Found {CurrentPageFields.Count} fields for page {pageNumber}");
             }
         }
         catch (Exception ex)
