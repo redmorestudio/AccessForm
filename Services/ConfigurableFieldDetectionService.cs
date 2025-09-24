@@ -55,6 +55,11 @@ namespace WordToPdfConverter.Services
             _googleAiService = googleAiService;
             _boundingBoxValidator = boundingBoxValidator;
             _nlpGenerator = nlpGenerator;
+
+            // DEBUG: Log service initialization status
+            _logger.LogInformation($"[SERVICE-INIT] ClaudeVisionFieldDetector: {(_visionDetector != null ? "Available" : "NULL")}");
+            _logger.LogInformation($"[SERVICE-INIT] GoogleDocumentAiService: {(_googleAiService != null ? "Available" : "NULL")}");
+            _logger.LogInformation($"[SERVICE-INIT] AnthropicService: {(_anthropicService != null ? "Available" : "NULL")}");
         }
 
         /// <summary>
@@ -90,6 +95,8 @@ namespace WordToPdfConverter.Services
                 _logger.LogWarning($"Failed to extract text from Word: {ex.Message}");
             }
             
+            _logger.LogInformation($"[MODE-CHECK] Processing mode: {config.Mode}, Sequential: {(config.Mode == ProcessingMode.Sequential)}, SyncfusionWithValidation: {(config.Mode == ProcessingMode.SyncfusionWithValidation)}");
+
             if (config.Mode == ProcessingMode.Sequential || config.Mode == ProcessingMode.SyncfusionWithValidation)
             {
                 // PHASE 1: Get base detections from Syncfusion and/or Google
@@ -123,6 +130,7 @@ namespace WordToPdfConverter.Services
                 }
                 
                 // PHASE 3: Add Claude Vision detection if requested
+                _logger.LogInformation($"[PHASE-3-CHECK] UseClaudeVision={config.Services.UseClaudeVision}, VisionDetector={(_visionDetector != null ? "Available" : "NULL")}");
                 if (config.Services.UseClaudeVision && _visionDetector != null)
                 {
                     // If we have Syncfusion fields, use Claude for labeling only
@@ -269,17 +277,31 @@ namespace WordToPdfConverter.Services
                         // Use Syncfusion's OFFICIAL recommended method for page detection
                         _logger.LogInformation($"[SYNCFUSION-OFFICIAL] Using official Syncfusion page detection for '{field.Name}'");
 
-                        // OVERRIDE: Syncfusion's page references are wrong during Word-to-PDF conversion
-                        // Force fallback to coordinate detection for all fields
+                        // Use Syncfusion's official page reference when available
                         bool pageFound = false;
-                        _logger.LogInformation($"[SYNCFUSION-OVERRIDE] Skipping official method - page references are unreliable during Word conversion");
+                        if (field.Page != null)
+                        {
+                            try
+                            {
+                                // Get page index from Syncfusion's page reference
+                                var pageIndex = pdfDoc.Pages.IndexOf(field.Page);
+                                if (pageIndex >= 0)
+                                {
+                                    pageNum = pageIndex + 1; // Convert 0-based to 1-based
+                                    pageFound = true;
+                                    _logger.LogInformation($"[SYNCFUSION-OFFICIAL] Field '{field.Name}' found on page {pageNum} using official method");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning($"[SYNCFUSION-OFFICIAL] Exception getting page for '{field.Name}': {ex.Message}");
+                            }
+                        }
 
-                        // If official method fails, fall back to coordinate detection
+                        // Only fall back to coordinate detection if official method truly fails
                         if (!pageFound)
                         {
-                            _logger.LogWarning($"[FALLBACK] Official Syncfusion method failed for '{field.Name}', using coordinate detection");
-
-                            // Use our coordinate-based page detection as fallback
+                            _logger.LogWarning($"[FALLBACK] Official Syncfusion method unavailable for '{field.Name}', using coordinate detection as last resort");
                             pageNum = PdfCoordinateConverter.FindPageContainingField(field, pdfDoc, _logger);
                             _logger.LogInformation($"[FALLBACK] Field '{field.Name}' (Y={bounds.Y}) assigned to page {pageNum} via coordinate detection");
                         }
@@ -637,6 +659,9 @@ namespace WordToPdfConverter.Services
                     
                     _logger.LogDebug($"Claude field '{vField.FieldName}' bounds: X={vField.Bounds.X:F1}, Y={vField.Bounds.Y:F1}, W={vField.Bounds.Width:F1}, H={vField.Bounds.Height:F1}");
                     
+                    // [CLAUDE_VISION_DEBUG] - Log page transfer - EASY TO REMOVE
+                    _logger.LogInformation($"[CLAUDE_VISION_DEBUG] Transferring field '{vField.FieldName}' from page {vField.PageNumber} to FieldDetectionResult with page {page.PageNumber}");
+
                     fields.Add(new FieldDetectionResult
                     {
                         ShortId = shortId,
@@ -822,9 +847,9 @@ namespace WordToPdfConverter.Services
                         var checkField = new PdfCheckBoxField(pdfDoc.Pages[field.PageNumber - 1],
                             intelligentFieldName);
                         checkField.Bounds = bounds;
-                        checkField.ToolTip = tooltip;
+                        checkField.ToolTip = $"[PAGE:{field.PageNumber}] {tooltip}";
                         pdfField = checkField;
-                        _logger.LogInformation($"[CHECKBOX CREATED] Name set to: '{checkField.Name}'");
+                        _logger.LogInformation($"[CHECKBOX CREATED] Name set to: '{checkField.Name}', Page stored in ToolTip");
                         break;
                         
                     case "radio":
@@ -866,8 +891,8 @@ namespace WordToPdfConverter.Services
                         // Set tooltip with type-specific guidance
                         textField.ToolTip = FieldTooltipGenerator.GenerateTooltip(field.FieldType, field.FieldName);
                         
-                        // Store the field type in the field's export value for processing
-                        textField.DefaultValue = $"";
+                        // Store page info in DefaultValue for PassportPDF (not accessible to screen readers)
+                        textField.DefaultValue = $"PAGE:{field.PageNumber}";
                         
                         // Add field type to the field's appearance
                         if (!string.IsNullOrEmpty(FieldTooltipGenerator.GetFormatHint(field.FieldType)))
@@ -1521,6 +1546,9 @@ Document:
                             _logger.LogInformation($"[ENHANCEMENT]   - Claude match FieldName: {checkboxMatch.FieldName}");
                             _logger.LogInformation($"[ENHANCEMENT]   - Position: X={sfField.X}, Y={sfField.Y}, W={sfField.Width}, H={sfField.Height}");
 
+                            // [CLAUDE_VISION_DEBUG] - Log checkbox merge - EASY TO REMOVE
+                            _logger.LogInformation($"[CLAUDE_VISION_DEBUG] CHECKBOX MERGE: SF field '{sfField.FieldName}' (page {sfField.PageNumber}) + Claude '{checkboxMatch.FieldName}' (page {checkboxMatch.PageNumber}) -> Using Claude name + Claude page {(checkboxMatch.PageNumber > 0 ? checkboxMatch.PageNumber : 1)}");
+
                             var enhanced = new FieldDetectionResult
                             {
                                 ShortId = sfField.ShortId,
@@ -1530,11 +1558,11 @@ Document:
                                 Y = sfField.Y,
                                 Width = sfField.Width,
                                 Height = sfField.Height,
-                                PageNumber = sfField.PageNumber,
+                                PageNumber = checkboxMatch.PageNumber > 0 ? checkboxMatch.PageNumber : 1, // Trust Claude Vision, fallback to page 1 (NOT Syncfusion's broken detection)
                                 Source = "Syncfusion+Claude",
                                 Confidence = sfField.Confidence,
                                 IsValid = sfField.IsValid,
-                                Tooltip = FieldTooltipGenerator.GenerateTooltip("checkbox", checkboxMatch.FieldName)
+                                Tooltip = FieldTooltipGenerator.GenerateTooltip("checkbox", checkboxMatch.FieldName, checkboxMatch.PageNumber > 0 ? checkboxMatch.PageNumber : 1) // Trust Claude Vision, fallback to page 1 (NOT broken Syncfusion detection)
                             };
 
                             _logger.LogInformation($"[ENHANCEMENT]   - Enhanced field created with name: '{enhanced.FieldName}'");
@@ -1601,6 +1629,9 @@ Document:
                             }
                             _logger.LogInformation($"[ENHANCEMENT]   - Compatible type: {compatibleType}");
 
+                            // [CLAUDE_VISION_DEBUG] - Log general field merge - EASY TO REMOVE
+                            _logger.LogInformation($"[CLAUDE_VISION_DEBUG] FIELD MERGE: SF field '{sfField.FieldName}' (page {sfField.PageNumber}) + Claude '{bestMatch.FieldName}' (page {bestMatch.PageNumber}) -> Using Claude name + Claude page {(bestMatch.PageNumber > 0 ? bestMatch.PageNumber : 1)}");
+
                             var enhanced = new FieldDetectionResult
                             {
                                 ShortId = sfField.ShortId,
@@ -1610,11 +1641,11 @@ Document:
                                 Y = sfField.Y,
                                 Width = sfField.Width,
                                 Height = sfField.Height,
-                                PageNumber = sfField.PageNumber,
+                                PageNumber = bestMatch.PageNumber > 0 ? bestMatch.PageNumber : 1, // Trust Claude Vision, fallback to page 1 (NOT Syncfusion's broken detection)
                                 Source = "Syncfusion+Claude",
                                 Confidence = Math.Max(sfField.Confidence, bestMatch.Confidence),
                                 IsValid = sfField.IsValid,
-                                Tooltip = FieldTooltipGenerator.GenerateTooltip(compatibleType, bestMatch.FieldName)
+                                Tooltip = FieldTooltipGenerator.GenerateTooltip(compatibleType, bestMatch.FieldName, bestMatch.PageNumber > 0 ? bestMatch.PageNumber : 1) // Trust Claude Vision, fallback to page 1 (NOT broken Syncfusion detection)
                             };
 
                             _logger.LogInformation($"[ENHANCEMENT]   - Enhanced field created with name: '{enhanced.FieldName}'");
@@ -1688,6 +1719,9 @@ Document:
                 
                 if (bestMatch != null)
                 {
+                    // [CLAUDE_VISION_DEBUG] - Log third merge point - EASY TO REMOVE
+                    _logger.LogInformation($"[CLAUDE_VISION_DEBUG] THIRD MERGE: SF field '{sfField.FieldName}' (page {sfField.PageNumber}) + Claude '{bestMatch.FieldName}' (page {bestMatch.PageNumber}) -> Using Claude name + Claude page {(bestMatch.PageNumber > 0 ? bestMatch.PageNumber : 1)}");
+
                     // Create enhanced field: Syncfusion position + Claude intelligence
                     var enhancedField = new FieldDetectionResult
                     {
@@ -1698,7 +1732,7 @@ Document:
                         Y = sfField.Y,
                         Width = sfField.Width,
                         Height = sfField.Height,
-                        PageNumber = sfField.PageNumber,
+                        PageNumber = bestMatch.PageNumber > 0 ? bestMatch.PageNumber : 1, // Trust Claude Vision, fallback to page 1 (NOT Syncfusion's broken detection)
                         Source = "Syncfusion+Claude",
                         Confidence = Math.Max(sfField.Confidence, bestMatch.Confidence),
                         IsValid = sfField.IsValid,
