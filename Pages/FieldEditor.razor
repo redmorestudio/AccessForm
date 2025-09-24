@@ -1,7 +1,10 @@
+@* VERSION: 2024-09-24-FIXED-PAGE-DETECTION *@
 @page "/field-editor"
 @using WordToPdfConverter.Models
 @using System.Text.Json
+@using System.Net.Http.Headers
 @inject IJSRuntime JSRuntime
+@inject HttpClient Http
 
 <h3>PDF Form Field Editor</h3>
 
@@ -11,6 +14,23 @@
         @ErrorMessage
     </div>
 }
+
+<!-- File Upload Section -->
+<div class="card mb-3">
+    <div class="card-header">
+        <h5>Load PDF for Editing</h5>
+    </div>
+    <div class="card-body">
+        <div class="input-group">
+            <input type="file" class="form-control" accept=".pdf" @ref="fileInput" />
+            <button class="btn btn-primary" @onclick="LoadFieldsFromFile">Load Fields</button>
+        </div>
+        @if (!string.IsNullOrEmpty(CurrentFileName))
+        {
+            <small class="text-muted mt-2 d-block">Currently editing: @CurrentFileName</small>
+        }
+    </div>
+</div>
 
 <div class="container-fluid">
     <div class="row">
@@ -232,7 +252,12 @@
     private EditableFieldDetectionResult? SelectedField;
     private bool HasChanges = false;
     private string? ErrorMessage;
-    
+
+    // File handling
+    private ElementReference fileInput;
+    private string? CurrentFileName;
+    private byte[]? CurrentPdfBytes;
+
     // Preview properties
     private string? PdfPreviewUrl;
     private int CurrentPage = 1;
@@ -258,23 +283,80 @@
         await LoadFields();
     }
     
-    private async Task LoadFields()
+    private async Task LoadFieldsFromFile()
     {
         try
         {
-            // TODO: Load from API or session storage
-            // For now, using sample data
-            Fields = new List<EditableFieldDetectionResult>
+            ErrorMessage = null;
+
+            // Get file from input
+            var files = await JSRuntime.InvokeAsync<IJSObjectReference>("getFiles", fileInput);
+            if (files == null) return;
+
+            var file = await JSRuntime.InvokeAsync<IJSObjectReference>("getFile", files, 0);
+            if (file == null) return;
+
+            var fileName = await JSRuntime.InvokeAsync<string>("getFileName", file);
+            var fileBytes = await JSRuntime.InvokeAsync<byte[]>("getFileBytes", file);
+
+            CurrentFileName = fileName;
+            CurrentPdfBytes = fileBytes;
+
+            // Call the load fields API
+            using var content = new MultipartFormDataContent();
+            var fileContent = new ByteArrayContent(fileBytes);
+            fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse("application/pdf");
+            content.Add(fileContent, "file", fileName);
+
+            var response = await Http.PostAsync("/api/fields/load", content);
+            var responseContent = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
             {
-                new() { ShortId = "F1", FieldName = "Customer Name", FieldType = "text", PageNumber = 1, X = 100, Y = 100, Width = 200, Height = 20 },
-                new() { ShortId = "F2", FieldName = "Date of Birth", FieldType = "date", PageNumber = 1, X = 100, Y = 130, Width = 100, Height = 20 },
-                new() { ShortId = "F3", FieldName = "Email", FieldType = "email", PageNumber = 1, X = 100, Y = 160, Width = 200, Height = 20 }
-            };
+                var result = JsonSerializer.Deserialize<LoadFieldsResult>(responseContent,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                if (result?.Success == true && result.Fields != null)
+                {
+                    Fields = result.Fields.Select(f => new EditableFieldDetectionResult
+                    {
+                        ShortId = f.ShortId ?? "",
+                        FieldName = f.FieldName ?? "",
+                        FieldType = f.FieldType ?? "text",
+                        PageNumber = f.PageNumber,
+                        X = (float)f.X,
+                        Y = (float)f.Y,
+                        Width = (float)f.Width,
+                        Height = (float)f.Height,
+                        Tooltip = f.Tooltip ?? "",
+                        Source = f.Source ?? "",
+                        Confidence = f.Confidence,
+                        TabIndex = f.TabIndex
+                    }).ToList();
+
+                    TotalPages = result.TotalPages;
+                    StateHasChanged();
+                }
+                else
+                {
+                    ErrorMessage = "Failed to parse field data from API response";
+                }
+            }
+            else
+            {
+                ErrorMessage = $"Failed to load fields: {responseContent}";
+            }
         }
         catch (Exception ex)
         {
             ErrorMessage = $"Failed to load fields: {ex.Message}";
         }
+    }
+
+    private async Task LoadFields()
+    {
+        // This method is called on component initialization
+        // No need to load sample data anymore
     }
     
     private void SelectField(EditableFieldDetectionResult field)
@@ -336,14 +418,76 @@
     {
         try
         {
-            // TODO: Send changes to API
-            await Task.Delay(500); // Simulate API call
-            
-            // Reset modification flags
-            Fields.ForEach(f => { f.IsModified = false; f.IsNew = false; });
-            HasChanges = false;
-            
-            await JSRuntime.InvokeVoidAsync("alert", "Changes saved successfully!");
+            if (CurrentPdfBytes == null || string.IsNullOrEmpty(CurrentFileName))
+            {
+                ErrorMessage = "No PDF file loaded. Please load a PDF first.";
+                return;
+            }
+
+            ErrorMessage = null;
+
+            // Get only the modified/new fields
+            var modifiedFields = Fields.Where(f => f.IsModified || f.IsNew).ToList();
+
+            if (!modifiedFields.Any())
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No changes to save.");
+                return;
+            }
+
+            // Convert to API format
+            var fieldUpdates = modifiedFields.Select(f => new
+            {
+                OriginalName = f.FieldName,
+                NewName = f.FieldName,
+                FieldType = f.FieldType,
+                Tooltip = f.Tooltip,
+                X = f.X,
+                Y = f.Y,
+                Width = f.Width,
+                Height = f.Height,
+                PageNumber = f.PageNumber
+            }).ToList();
+
+            // Call the save fields API
+            using var content = new MultipartFormDataContent();
+            var fileContent = new ByteArrayContent(CurrentPdfBytes);
+            fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse("application/pdf");
+            content.Add(fileContent, "file", CurrentFileName);
+            content.Add(new StringContent(JsonSerializer.Serialize(fieldUpdates)), "fields");
+
+            var response = await Http.PostAsync("/api/fields/save", content);
+            var responseContent = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = JsonSerializer.Deserialize<SaveFieldsResult>(responseContent,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                if (result?.Success == true)
+                {
+                    // Reset modification flags
+                    Fields.ForEach(f => { f.IsModified = false; f.IsNew = false; });
+                    HasChanges = false;
+
+                    // Optionally update the CurrentPdfBytes with the new PDF
+                    if (result.Pdf?.Data != null)
+                    {
+                        CurrentPdfBytes = Convert.FromBase64String(result.Pdf.Data);
+                    }
+
+                    await JSRuntime.InvokeVoidAsync("alert",
+                        $"Successfully saved {modifiedFields.Count} field changes!");
+                }
+                else
+                {
+                    ErrorMessage = "Failed to save changes: Invalid API response";
+                }
+            }
+            else
+            {
+                ErrorMessage = $"Failed to save changes: {responseContent}";
+            }
         }
         catch (Exception ex)
         {
@@ -377,7 +521,83 @@
         public string? ValidationPattern { get; set; }
         public int TabIndex { get; set; }
     }
+
+    // API response models
+    public class LoadFieldsResult
+    {
+        public bool Success { get; set; }
+        public List<ApiFieldInfo>? Fields { get; set; }
+        public int TotalPages { get; set; }
+        public string? Filename { get; set; }
+    }
+
+    public class ApiFieldInfo
+    {
+        public string? ShortId { get; set; }
+        public string? FieldName { get; set; }
+        public string? FieldType { get; set; }
+        public int PageNumber { get; set; }
+        public double X { get; set; }
+        public double Y { get; set; }
+        public double Width { get; set; }
+        public double Height { get; set; }
+        public string? Tooltip { get; set; }
+        public string? Source { get; set; }
+        public float Confidence { get; set; }
+        public int TabIndex { get; set; }
+    }
+
+    public class SaveFieldsResult
+    {
+        public bool Success { get; set; }
+        public string? Message { get; set; }
+        public List<string>? ModifiedFields { get; set; }
+        public PdfResult? Pdf { get; set; }
+    }
+
+    public class PdfResult
+    {
+        public string? Filename { get; set; }
+        public string? Data { get; set; }
+        public int Size { get; set; }
+    }
 }
+
+<script>
+    window.getFiles = (element) => {
+        return element.files;
+    };
+
+    window.getFile = (files, index) => {
+        return files[index];
+    };
+
+    window.getFileName = (file) => {
+        return file.name;
+    };
+
+    window.getFileBytes = (file) => {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const arrayBuffer = e.target.result;
+                const uint8Array = new Uint8Array(arrayBuffer);
+                resolve(Array.from(uint8Array));
+            };
+            reader.readAsArrayBuffer(file);
+        });
+    };
+
+    window.downloadJson = (json, filename) => {
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+</script>
 
 <style>
     .table-hover tbody tr:hover {

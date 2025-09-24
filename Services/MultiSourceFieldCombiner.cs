@@ -159,12 +159,17 @@ namespace WordToPdfConverter.Services
                                 existingField.Description = visionField.Description;
                             }
 
-                            // CRITICAL FIX: Trust Vision's page assignment since it analyzes each page separately
-                            // Syncfusion often has null field.Page resulting in wrong page assignments
-                            if (visionField.PageNumber > 0 && visionField.PageNumber != existingField.PageNumber)
+                            // CRITICAL FIX REVERSED: Trust Syncfusion's page assignment over Vision's
+                            // Syncfusion has direct PDF structure access, Vision is guessing from images
+                            // Only use Vision's page if Syncfusion doesn't have a valid page number
+                            if (existingField.PageNumber <= 0 && visionField.PageNumber > 0)
                             {
-                                _logger.LogInformation($"[COMBINER] CORRECTING page number for field '{existingField.FieldName}' from {existingField.PageNumber} to {visionField.PageNumber} based on Vision analysis");
+                                _logger.LogInformation($"[COMBINER] USING Vision page number {visionField.PageNumber} for field '{existingField.FieldName}' (Syncfusion had no page info)");
                                 existingField.PageNumber = visionField.PageNumber;
+                            }
+                            else if (visionField.PageNumber > 0 && visionField.PageNumber != existingField.PageNumber)
+                            {
+                                _logger.LogInformation($"[COMBINER] KEEPING Syncfusion page number {existingField.PageNumber} for field '{existingField.FieldName}' over Vision's {visionField.PageNumber} (Syncfusion is more reliable)");
                             }
 
                             if (visionField.IsRequired)

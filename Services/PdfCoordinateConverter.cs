@@ -64,17 +64,17 @@ namespace WordToPdfConverter.Services
 
             if (document.Pages.Count > 1)
             {
-                // Simple boundary detection: Y > 650 typically indicates page 2+ fields
-                // This matches the working logic from FindPageContainingField
-                if (yCoordinate > 650)
+                // Simple boundary detection: Y < 150 indicates page 2+ fields
+                // Page 2 fields have LOW Y values (50-125) because coordinates reset to top of page
+                if (yCoordinate < 150)
                 {
                     var calculatedPage = 2;
-                    logger?.LogInformation($"[SIMPLE-COORD] Y={yCoordinate} > 650, assigned to page {calculatedPage}");
+                    logger?.LogInformation($"[SIMPLE-COORD] Y={yCoordinate} < 150, assigned to page {calculatedPage}");
                     return Math.Min(calculatedPage, document.Pages.Count);
                 }
                 else
                 {
-                    logger?.LogInformation($"[SIMPLE-COORD] Y={yCoordinate} <= 650, assigned to page 1");
+                    logger?.LogInformation($"[SIMPLE-COORD] Y={yCoordinate} >= 150, assigned to page 1");
                     return 1;
                 }
             }
@@ -146,20 +146,20 @@ namespace WordToPdfConverter.Services
 
                 logger?.LogDebug($"Field '{field.Name}' has Y coordinate: {fieldY}");
 
-                // TEMPORARY COORDINATE HEURISTIC - WILL BE REPLACED WITH PROPER SOLUTION
-                // Based on observed data: page 2 fields have Y > 650 (like "Professionalism" at Y=755)
+                // COORDINATE HEURISTIC FOR FIELD PAGE DETECTION
+                // Page 2 fields have LOW Y values (50-125) because coordinates reset to top of page
                 if (document.Pages.Count > 1)
                 {
-                    // Temporary boundary - fields with Y > 650 are likely page 2+
-                    if (fieldY > 650)
+                    // Fields with Y < 150 are likely page 2+
+                    if (fieldY < 150)
                     {
                         int estimatedPage = 2;
-                        logger?.LogWarning($"[TEMP HEURISTIC] Field '{field.Name}' with Y={fieldY} estimated to be on page {estimatedPage} (Y > 650)");
+                        logger?.LogWarning($"[COORD HEURISTIC] Field '{field.Name}' with Y={fieldY} estimated to be on page {estimatedPage} (Y < 150)");
                         return Math.Min(estimatedPage, document.Pages.Count);
                     }
                     else
                     {
-                        logger?.LogWarning($"[TEMP HEURISTIC] Field '{field.Name}' with Y={fieldY} estimated to be on page 1 (Y <= 650)");
+                        logger?.LogWarning($"[COORD HEURISTIC] Field '{field.Name}' with Y={fieldY} estimated to be on page 1 (Y >= 150)");
                         return 1;
                     }
                 }

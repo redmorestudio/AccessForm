@@ -5,6 +5,8 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningsAsErrors />
+    <NoWarn>CS8632;CS8669;CS0108;CS1998;CS4014;CS0649;CS0414;CA1416;ASP0016;NU1603</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

@@ -594,11 +594,17 @@ IMPORTANT: Use the document context above to accurately name fields. For example
                 {
                     var apiResponse = JsonSerializer.Deserialize<JsonElement>(responseContent);
                     var content = apiResponse.GetProperty("content")[0].GetProperty("text").GetString();
-                    
+
+                    // [CLAUDE_VISION_DEBUG] - Log ENTIRE raw response - EASY TO REMOVE
+                    _logger.LogInformation($"[CLAUDE_VISION_DEBUG] === RAW API RESPONSE FOR PAGE {pageNumber} ===");
+                    _logger.LogInformation($"[CLAUDE_VISION_DEBUG] Full Response:\n{responseContent}");
+                    _logger.LogInformation($"[CLAUDE_VISION_DEBUG] Content Text:\n{content}");
+                    _logger.LogInformation($"[CLAUDE_VISION_DEBUG] === END RAW RESPONSE ===");
+
                     result.RawAnalysis = content;
                     result.Fields = ParseVisionResponse(content, pageNumber);
                     result.Success = true;
-                    
+
                     _logger.LogInformation($"Claude Vision detected {result.Fields.Count} fields on page {pageNumber}");
                 }
                 else
@@ -671,6 +677,8 @@ IMPORTANT: Use the document context above to accurately name fields. For example
                                 }
                                 
                                 fields.Add(field);
+                                // [CLAUDE_VISION_DEBUG] - Log EACH parsed field - EASY TO REMOVE
+                                _logger.LogInformation($"[CLAUDE_VISION_DEBUG] Parsed field: '{field.FieldName}' ({field.FieldType}) on PAGE {pageNumber}");
                                 _logger.LogDebug($"Parsed field: {field.FieldName} ({field.FieldType}) at page {pageNumber}");
                             }
                             catch (Exception ex)
