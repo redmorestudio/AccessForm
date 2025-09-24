@@ -155,13 +155,51 @@ namespace AccessFormServer.Services
                             {
                                 metadata.FieldType = "text";
                                 metadata.Bounds = textField.Bounds;
-                                metadata.PageIndex = GetPageIndex(pdfDoc, textField.Page);
+
+                                // PRIORITY 1: Extract page number from DefaultValue (Claude Vision's detection)
+                                var defaultValuePage = AccessFormServer.Services.FieldTooltipGenerator.ExtractPageFromDefaultValue(textField.DefaultValue);
+                                if (defaultValuePage > 0)
+                                {
+                                    metadata.PageIndex = defaultValuePage - 1; // Convert to 0-based
+                                    _logger.LogInformation($"[DEFAULTVALUE-PAGE] Text field '{field.Name}' using page {defaultValuePage} from Claude Vision DefaultValue: '{textField.DefaultValue}'");
+                                    // Clear the DefaultValue after extracting page info
+                                    textField.DefaultValue = "";
+                                }
+                                else
+                                {
+                                    // FALLBACK 1: Extract page number from tooltip (legacy)
+                                    var tooltipPage = AccessFormServer.Services.FieldTooltipGenerator.ExtractPageFromTooltip(textField.ToolTip);
+                                    if (tooltipPage > 0)
+                                    {
+                                        metadata.PageIndex = tooltipPage - 1; // Convert to 0-based
+                                        _logger.LogInformation($"[TOOLTIP-PAGE] Text field '{field.Name}' using page {tooltipPage} from legacy tooltip: '{textField.ToolTip}'");
+                                    }
+                                    else
+                                    {
+                                        // FALLBACK 2: Use coordinate detection
+                                        metadata.PageIndex = WordToPdfConverter.Services.PdfCoordinateConverter.FindPageContainingField(textField, pdfDoc, _logger) - 1; // Convert to 0-based
+                                        _logger.LogInformation($"[COORDINATE-FALLBACK] Text field '{field.Name}' using page {metadata.PageIndex + 1} from coordinate detection");
+                                    }
+                                }
                             }
                             else if (field is PdfLoadedCheckBoxField checkField)
                             {
                                 metadata.FieldType = "checkbox";
                                 metadata.Bounds = checkField.Bounds;
-                                metadata.PageIndex = GetPageIndex(pdfDoc, checkField.Page);
+
+                                // PRIORITY 1: Extract page number from ToolTip (Claude Vision stores page info here for checkboxes)
+                                var tooltipPage = AccessFormServer.Services.FieldTooltipGenerator.ExtractPageFromTooltip(checkField.ToolTip);
+                                if (tooltipPage > 0)
+                                {
+                                    metadata.PageIndex = tooltipPage - 1; // Convert to 0-based
+                                    _logger.LogInformation($"[TOOLTIP-PAGE] Checkbox field '{field.Name}' using page {tooltipPage} from Claude Vision tooltip");
+                                }
+                                else
+                                {
+                                    // FALLBACK: Use coordinate detection
+                                    metadata.PageIndex = WordToPdfConverter.Services.PdfCoordinateConverter.FindPageContainingField(checkField, pdfDoc, _logger) - 1; // Convert to 0-based
+                                    _logger.LogInformation($"[COORDINATE-FALLBACK] Checkbox field '{field.Name}' using page {metadata.PageIndex + 1} from coordinate detection");
+                                }
                             }
                             else if (field is PdfLoadedRadioButtonListField radioField)
                             {
@@ -169,14 +207,40 @@ namespace AccessFormServer.Services
                                 if (radioField.Items.Count > 0)
                                 {
                                     metadata.Bounds = radioField.Items[0].Bounds;
-                                    metadata.PageIndex = GetPageIndex(pdfDoc, radioField.Items[0].Page);
+
+                                    // PRIORITY 1: Extract page number from tooltip (Claude Vision's detection)
+                                    var tooltipPage = AccessFormServer.Services.FieldTooltipGenerator.ExtractPageFromTooltip(radioField.ToolTip);
+                                    if (tooltipPage > 0)
+                                    {
+                                        metadata.PageIndex = tooltipPage - 1; // Convert to 0-based
+                                        _logger.LogInformation($"[TOOLTIP-PAGE] Radio field '{field.Name}' using page {tooltipPage} from Claude Vision tooltip: '{radioField.ToolTip}'");
+                                    }
+                                    else
+                                    {
+                                        // FALLBACK: Use coordinate detection
+                                        metadata.PageIndex = WordToPdfConverter.Services.PdfCoordinateConverter.FindPageContainingField(radioField, pdfDoc, _logger) - 1; // Convert to 0-based
+                                        _logger.LogInformation($"[COORDINATE-FALLBACK] Radio field '{field.Name}' using page {metadata.PageIndex + 1} from coordinate detection");
+                                    }
                                 }
                             }
                             else if (field is PdfLoadedSignatureField sigField)
                             {
                                 metadata.FieldType = "signature";
                                 metadata.Bounds = sigField.Bounds;
-                                metadata.PageIndex = GetPageIndex(pdfDoc, sigField.Page);
+
+                                // PRIORITY 1: Extract page number from tooltip (Claude Vision's detection)
+                                var tooltipPage = AccessFormServer.Services.FieldTooltipGenerator.ExtractPageFromTooltip(sigField.ToolTip);
+                                if (tooltipPage > 0)
+                                {
+                                    metadata.PageIndex = tooltipPage - 1; // Convert to 0-based
+                                    _logger.LogInformation($"[TOOLTIP-PAGE] Signature field '{field.Name}' using page {tooltipPage} from Claude Vision tooltip: '{sigField.ToolTip}'");
+                                }
+                                else
+                                {
+                                    // FALLBACK: Use coordinate detection
+                                    metadata.PageIndex = WordToPdfConverter.Services.PdfCoordinateConverter.FindPageContainingField(sigField, pdfDoc, _logger) - 1; // Convert to 0-based
+                                    _logger.LogInformation($"[COORDINATE-FALLBACK] Signature field '{field.Name}' using page {metadata.PageIndex + 1} from coordinate detection");
+                                }
                             }
                             
                             fieldMetadata.Add(metadata);
@@ -290,15 +354,6 @@ namespace AccessFormServer.Services
             }
         }
         
-        private int GetPageIndex(PdfLoadedDocument doc, PdfPageBase page)
-        {
-            for (int i = 0; i < doc.Pages.Count; i++)
-            {
-                if (doc.Pages[i] == page)
-                    return i;
-            }
-            return 0;
-        }
         
         private class FieldMetadata
         {

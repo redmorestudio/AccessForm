@@ -133,5 +133,39 @@ namespace AccessFormServer.Services
 
             return 0; // No page information found
         }
+
+        /// <summary>
+        /// Extract page number from DefaultValue property (accessibility-friendly storage)
+        /// </summary>
+        public static int ExtractPageFromDefaultValue(string defaultValue)
+        {
+            if (string.IsNullOrEmpty(defaultValue))
+                return 0;
+
+            var match = System.Text.RegularExpressions.Regex.Match(defaultValue, @"PAGE:(\d+)");
+            if (match.Success && int.TryParse(match.Groups[1].Value, out int pageNumber))
+            {
+                return pageNumber;
+            }
+
+            return 0; // No page information found
+        }
+
+        /// <summary>
+        /// Extract page number from ExportValue property (for checkboxes - accessibility-friendly storage)
+        /// </summary>
+        public static int ExtractPageFromExportValue(string exportValue)
+        {
+            if (string.IsNullOrEmpty(exportValue))
+                return 0;
+
+            var match = System.Text.RegularExpressions.Regex.Match(exportValue, @"PAGE:(\d+)");
+            if (match.Success && int.TryParse(match.Groups[1].Value, out int pageNumber))
+            {
+                return pageNumber;
+            }
+
+            return 0; // No page information found
+        }
     }
 }

@@ -1,3 +1,4 @@
+@* VERSION: 2024-09-24-FIXED-PAGE-DETECTION *@
 @page "/field-editor-modal"
 @using System.Text.Json
 @using WordToPdfConverter.Models
@@ -218,7 +219,12 @@
                             var index = i;
                             <tr>
                                 <td>@(i + 1)</td>
-                                <td>@field.PageNumber</td>
+                                <td>
+                                    <input type="number" @bind="field.PageNumber"
+                                           @bind:event="oninput" class="form-control form-control-sm"
+                                           style="width: 60px" min="1"
+                                           @onchange="@(() => MarkFieldModified(index))" />
+                                </td>
                                 <td>
                                     <input type="text" @bind="field.FieldName" 
                                            placeholder="Enter field name"

@@ -283,8 +283,16 @@ namespace WordToPdfConverter.Services
                         {
                             try
                             {
-                                // Get page index from Syncfusion's page reference
-                                var pageIndex = pdfDoc.Pages.IndexOf(field.Page);
+                                // Find page index by iterating through pages
+                                var pageIndex = -1;
+                                for (int pageIdx = 0; pageIdx < pdfDoc.Pages.Count; pageIdx++)
+                                {
+                                    if (pdfDoc.Pages[pageIdx] == field.Page)
+                                    {
+                                        pageIndex = pageIdx;
+                                        break;
+                                    }
+                                }
                                 if (pageIndex >= 0)
                                 {
                                     pageNum = pageIndex + 1; // Convert 0-based to 1-based
@@ -298,12 +306,13 @@ namespace WordToPdfConverter.Services
                             }
                         }
 
-                        // Only fall back to coordinate detection if official method truly fails
+                        // REMOVED BROKEN COORDINATE FALLBACK
+                        // The coordinate detection (Y < 150 = page 2) is broken because all fields have Y ≈ 370
+                        // This was forcing all fields to page 1 incorrectly
                         if (!pageFound)
                         {
-                            _logger.LogWarning($"[FALLBACK] Official Syncfusion method unavailable for '{field.Name}', using coordinate detection as last resort");
-                            pageNum = PdfCoordinateConverter.FindPageContainingField(field, pdfDoc, _logger);
-                            _logger.LogInformation($"[FALLBACK] Field '{field.Name}' (Y={bounds.Y}) assigned to page {pageNum} via coordinate detection");
+                            _logger.LogWarning($"[NO-FALLBACK] Official Syncfusion method unavailable for '{field.Name}', defaulting to page 1 (coordinate detection removed due to Y<150 bug)");
+                            pageNum = 1; // Safe default instead of broken coordinate detection
                         }
 
                         // Clean implementation: Official Syncfusion method with coordinate fallback
@@ -1410,7 +1419,7 @@ Document:
                 }
                 if (cvFieldsSorted.Count > 0)
                 {
-                    var bottomCvFields = cvFieldsSorted.Where(f => f.Y > 250 || cvFieldsSorted.IndexOf(f) >= cvFieldsSorted.Count - 5).ToList();
+                    var bottomCvFields = cvFieldsSorted.Where((f, idx) => f.Y > 250 || idx >= cvFieldsSorted.Count - 5).ToList();
                     foreach (var cvField in bottomCvFields)
                     {
                         _logger.LogInformation($"Bottom Claude field: {cvField.FieldName} at Y={cvField.Y}, X={cvField.X}, Type={cvField.FieldType}");
@@ -1529,7 +1538,16 @@ Document:
                             ).ToList();
                             
                             // Match by index in sorted order
-                            var checkboxIndex = sfFieldsSorted.Where(f => f.FieldType.ToLower() == "checkbox").ToList().IndexOf(sfField);
+                            var checkboxFields = sfFieldsSorted.Where(f => f.FieldType.ToLower() == "checkbox").ToList();
+                            var checkboxIndex = -1;
+                            for (int idx = 0; idx < checkboxFields.Count; idx++)
+                            {
+                                if (checkboxFields[idx] == sfField)
+                                {
+                                    checkboxIndex = idx;
+                                    break;
+                                }
+                            }
                             if (checkboxIndex >= 0 && checkboxIndex < checkboxLabels.Count)
                             {
                                 checkboxMatch = checkboxLabels[checkboxIndex];

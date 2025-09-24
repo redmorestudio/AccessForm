@@ -3657,7 +3657,7 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
                 UseGoogle = false,
                 UseClaudeValidation = true
             },
-            Mode = WordToPdfConverter.Models.ProcessingMode.SyncfusionWithValidation
+            Mode = WordToPdfConverter.Models.ProcessingMode.Sequential
         };
 
         logger.LogInformation($"Processing {file.FileName} with PassportPDF for full PDF/UA compliance");
@@ -3726,6 +3726,151 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
     }
 })
 .WithName("ProcessWithPassportPdfAuto")
+.DisableAntiforgery();
+
+// Field Management API Endpoints
+app.MapPost("/api/fields/load", async (
+    HttpRequest request,
+    ILogger<Program> logger) =>
+{
+    try
+    {
+        if (!request.Form.Files.Any())
+        {
+            return Results.BadRequest("No PDF file uploaded");
+        }
+
+        var file = request.Form.Files[0];
+        if (!file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.BadRequest("Please upload a PDF file");
+        }
+
+        using var stream = file.OpenReadStream();
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        var pdfBytes = ms.ToArray();
+
+        // Extract fields from PDF
+        using var loadedDocument = new PdfLoadedDocument(pdfBytes);
+        var fields = new List<object>();
+
+        if (loadedDocument.Form?.Fields != null)
+        {
+            var fieldId = 1;
+            foreach (PdfLoadedField field in loadedDocument.Form.Fields)
+            {
+                var fieldInfo = new
+                {
+                    ShortId = $"F{fieldId++}",
+                    FieldName = field.Name ?? "Unnamed Field",
+                    FieldType = field switch
+                    {
+                        PdfLoadedTextBoxField => "text",
+                        PdfLoadedCheckBoxField => "checkbox",
+                        PdfLoadedRadioButtonListField => "radio",
+                        PdfLoadedComboBoxField => "dropdown",
+                        PdfLoadedListBoxField => "listbox",
+                        PdfLoadedSignatureField => "signature",
+                        _ => "unknown"
+                    },
+                    PageNumber = GetFieldPageNumber(field, loadedDocument),
+                    X = GetFieldBounds(field).X,
+                    Y = GetFieldBounds(field).Y,
+                    Width = GetFieldBounds(field).Width,
+                    Height = GetFieldBounds(field).Height,
+                    Tooltip = GetFieldTooltip(field),
+                    IsRequired = GetFieldRequired(field),
+                    Source = "PDF",
+                    Confidence = 1.0f,
+                    TabIndex = fieldId - 1
+                };
+                fields.Add(fieldInfo);
+            }
+        }
+
+        return Results.Ok(new
+        {
+            success = true,
+            fields = fields,
+            totalPages = loadedDocument.PageCount,
+            filename = file.FileName
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Failed to load fields from PDF");
+        return Results.Problem($"Failed to load fields: {ex.Message}");
+    }
+})
+.WithName("LoadFieldsFromPdf")
+.DisableAntiforgery();
+
+app.MapPost("/api/fields/save", async (
+    HttpRequest request,
+    PdfFieldTagEditorService fieldEditorService,
+    ILogger<Program> logger) =>
+{
+    try
+    {
+        if (!request.Form.Files.Any())
+        {
+            return Results.BadRequest("No PDF file uploaded");
+        }
+
+        var file = request.Form.Files[0];
+        var fieldsJson = request.Form["fields"].ToString();
+
+        if (string.IsNullOrEmpty(fieldsJson))
+        {
+            return Results.BadRequest("No field updates provided");
+        }
+
+        using var stream = file.OpenReadStream();
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        var pdfBytes = ms.ToArray();
+
+        // Parse field updates from JSON
+        var fieldUpdates = JsonSerializer.Deserialize<List<PdfFieldTagEditorService.FieldUpdate>>(
+            fieldsJson,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        if (fieldUpdates == null || !fieldUpdates.Any())
+        {
+            return Results.BadRequest("Invalid field update data");
+        }
+
+        logger.LogInformation($"Processing {fieldUpdates.Count} field updates");
+
+        // Update fields using the field editor service
+        var result = await fieldEditorService.UpdateFieldsAndTagsAsync(pdfBytes, fieldUpdates, true);
+
+        if (!result.Success)
+        {
+            return Results.Problem($"Field update failed: {result.ErrorMessage}");
+        }
+
+        return Results.Ok(new
+        {
+            success = true,
+            message = $"Successfully updated {fieldUpdates.Count} fields",
+            modifiedFields = result.ModifiedFields,
+            pdf = new
+            {
+                filename = Path.GetFileNameWithoutExtension(file.FileName) + "_updated.pdf",
+                data = Convert.ToBase64String(result.PdfBytes!),
+                size = result.PdfBytes!.Length
+            }
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Failed to save field updates");
+        return Results.Problem($"Failed to save fields: {ex.Message}");
+    }
+})
+.WithName("SaveFieldUpdates")
 .DisableAntiforgery();
 
 app.Run();
@@ -3907,6 +4052,94 @@ void AnalyzePotentialMissedFields(AccessibilityReport report)
     }
     
     Console.WriteLine($"Missed field analysis complete.");
+}
+
+// Helper functions for field management API
+int GetFieldPageNumber(PdfLoadedField field, PdfLoadedDocument document)
+{
+    try
+    {
+        // Get field bounds and find which page it belongs to
+        var bounds = GetFieldBounds(field);
+
+        for (int pageIndex = 0; pageIndex < document.PageCount; pageIndex++)
+        {
+            var page = document.Pages[pageIndex];
+            var pageSize = page.Size;
+
+            // Check if field is within page bounds
+            if (bounds.X >= 0 && bounds.Y >= 0 &&
+                bounds.X <= pageSize.Width && bounds.Y <= pageSize.Height)
+            {
+                return pageIndex + 1; // Convert to 1-based page number
+            }
+        }
+
+        return 1; // Default to page 1 if cannot determine
+    }
+    catch
+    {
+        return 1; // Default to page 1 on error
+    }
+}
+
+System.Drawing.RectangleF GetFieldBounds(PdfLoadedField field)
+{
+    try
+    {
+        return field switch
+        {
+            PdfLoadedTextBoxField textField => new System.Drawing.RectangleF(textField.Bounds.X, textField.Bounds.Y, textField.Bounds.Width, textField.Bounds.Height),
+            PdfLoadedCheckBoxField checkBox => new System.Drawing.RectangleF(checkBox.Bounds.X, checkBox.Bounds.Y, checkBox.Bounds.Width, checkBox.Bounds.Height),
+            PdfLoadedRadioButtonListField radioList => radioList.Items.Count > 0 ? new System.Drawing.RectangleF(radioList.Items[0].Bounds.X, radioList.Items[0].Bounds.Y, radioList.Items[0].Bounds.Width, radioList.Items[0].Bounds.Height) : new System.Drawing.RectangleF(),
+            PdfLoadedComboBoxField comboBox => new System.Drawing.RectangleF(comboBox.Bounds.X, comboBox.Bounds.Y, comboBox.Bounds.Width, comboBox.Bounds.Height),
+            PdfLoadedListBoxField listBox => new System.Drawing.RectangleF(listBox.Bounds.X, listBox.Bounds.Y, listBox.Bounds.Width, listBox.Bounds.Height),
+            PdfLoadedSignatureField signature => new System.Drawing.RectangleF(signature.Bounds.X, signature.Bounds.Y, signature.Bounds.Width, signature.Bounds.Height),
+            _ => new System.Drawing.RectangleF()
+        };
+    }
+    catch
+    {
+        return new System.Drawing.RectangleF();
+    }
+}
+
+string GetFieldTooltip(PdfLoadedField field)
+{
+    try
+    {
+        return field switch
+        {
+            PdfLoadedTextBoxField textField => textField.ToolTip ?? "",
+            PdfLoadedCheckBoxField checkBox => checkBox.ToolTip ?? "",
+            PdfLoadedComboBoxField comboBox => comboBox.ToolTip ?? "",
+            PdfLoadedListBoxField listBox => listBox.ToolTip ?? "",
+            _ => ""
+        };
+    }
+    catch
+    {
+        return "";
+    }
+}
+
+bool GetFieldRequired(PdfLoadedField field)
+{
+    try
+    {
+        return field switch
+        {
+            PdfLoadedTextBoxField textField => textField.Required,
+            PdfLoadedCheckBoxField checkBox => checkBox.Required,
+            PdfLoadedComboBoxField comboBox => comboBox.Required,
+            PdfLoadedListBoxField listBox => listBox.Required,
+            _ => false
+        };
+    }
+    catch
+    {
+        return false;
+    }
 }
 
 // Function to capture field processing information
