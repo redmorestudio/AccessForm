@@ -58,68 +58,30 @@ namespace WordToPdfConverter.Services
                 return 1;
             }
 
-            // Get actual page heights instead of assuming standard
-            float cumulativeHeight = 0;
+            // SIMPLIFIED COORDINATE DETECTION
+            // Syncfusion provides page-relative coordinates, not cumulative coordinates
+            // The previous cumulative logic was incorrect - Y coordinates are per-page, not across pages
 
-            for (int i = 0; i < document.Pages.Count; i++)
+            if (document.Pages.Count > 1)
             {
-                var page = document.Pages[i];
-                var pageHeight = page.Size.Height;
-
-                // Check if this Y coordinate falls within this page
-                var pageStartY = cumulativeHeight;
-                var pageEndY = cumulativeHeight + pageHeight;
-
-                logger?.LogDebug($"Page {i + 1}: height={pageHeight}, range=[{pageStartY}, {pageEndY}], checking Y={yCoordinate}");
-
-                // Handle both positive coordinates (from page 1) and negative coordinates (multi-page offset)
-                if (yCoordinate >= 0)
+                // Simple boundary detection: Y > 650 typically indicates page 2+ fields
+                // This matches the working logic from FindPageContainingField
+                if (yCoordinate > 650)
                 {
-                    // Standard positive coordinates - check if it falls within this page's range
-                    if (yCoordinate >= pageStartY && yCoordinate <= pageEndY)
-                    {
-                        logger?.LogInformation($"Y={yCoordinate} falls on page {i + 1} (range: {pageStartY}-{pageEndY})");
-                        return i + 1;
-                    }
+                    var calculatedPage = 2;
+                    logger?.LogInformation($"[SIMPLE-COORD] Y={yCoordinate} > 650, assigned to page {calculatedPage}");
+                    return Math.Min(calculatedPage, document.Pages.Count);
                 }
                 else
                 {
-                    // Negative coordinates indicate offset from a multi-page conversion
-                    // Convert to positive equivalent and check
-                    var absoluteY = Math.Abs(yCoordinate);
-                    if (absoluteY <= pageHeight && i == 1) // Usually page 2 for simple negative offsets
-                    {
-                        logger?.LogInformation($"Negative Y={yCoordinate} (abs={absoluteY}) assigned to page 2");
-                        return 2;
-                    }
-                    // For more complex negative offsets, calculate based on cumulative height
-                    else if (absoluteY >= cumulativeHeight && absoluteY <= pageEndY)
-                    {
-                        logger?.LogInformation($"Complex negative Y={yCoordinate} assigned to page {i + 1}");
-                        return i + 1;
-                    }
+                    logger?.LogInformation($"[SIMPLE-COORD] Y={yCoordinate} <= 650, assigned to page 1");
+                    return 1;
                 }
-
-                cumulativeHeight += pageHeight;
             }
 
-            // If we couldn't determine the page, use a heuristic
-            if (yCoordinate < 0)
-            {
-                // Negative coordinates typically indicate page 2 or beyond
-                var calculatedPage = Math.Min(document.Pages.Count,
-                    Math.Max(2, (int)(Math.Abs(yCoordinate) / STANDARD_PAGE_HEIGHT) + 2));
-                logger?.LogWarning($"Could not determine page for Y={yCoordinate}, using heuristic: page {calculatedPage}");
-                return calculatedPage;
-            }
-            else
-            {
-                // Positive coordinates - calculate based on standard page height
-                var calculatedPage = Math.Min(document.Pages.Count,
-                    Math.Max(1, (int)(yCoordinate / STANDARD_PAGE_HEIGHT) + 1));
-                logger?.LogWarning($"Could not determine page for Y={yCoordinate}, using heuristic: page {calculatedPage}");
-                return calculatedPage;
-            }
+            // Single-page document
+            logger?.LogInformation($"[SIMPLE-COORD] Single-page document, Y={yCoordinate} assigned to page 1");
+            return 1;
         }
 
         /// <summary>
@@ -184,26 +146,20 @@ namespace WordToPdfConverter.Services
 
                 logger?.LogDebug($"Field '{field.Name}' has Y coordinate: {fieldY}");
 
-                // For multi-page documents with page-relative coordinates:
-                // - Page 1 fields: Y usually ranges from 0-792 (most values > 100)
-                // - Page 2 fields: Y usually ranges from 0-792 but are typically smaller values (often < 100)
-                // This is because page 2 fields start from the top of page 2
+                // TEMPORARY COORDINATE HEURISTIC - WILL BE REPLACED WITH PROPER SOLUTION
+                // Based on observed data: page 2 fields have Y > 650 (like "Professionalism" at Y=755)
                 if (document.Pages.Count > 1)
                 {
-                    // If Y coordinate is very small (< 100) and we have multiple pages,
-                    // it's likely a page 2+ field
-                    if (fieldY < 100 && fieldY >= 0)
+                    // Temporary boundary - fields with Y > 650 are likely page 2+
+                    if (fieldY > 650)
                     {
-                        // Determine which page based on Y coordinate ranges
-                        // This is a heuristic but works for most multi-page forms
                         int estimatedPage = 2;
-                        logger?.LogInformation($"Field '{field.Name}' with Y={fieldY} estimated to be on page {estimatedPage} (small Y coordinate)");
+                        logger?.LogWarning($"[TEMP HEURISTIC] Field '{field.Name}' with Y={fieldY} estimated to be on page {estimatedPage} (Y > 650)");
                         return Math.Min(estimatedPage, document.Pages.Count);
                     }
                     else
                     {
-                        // Larger Y coordinates are typically page 1
-                        logger?.LogInformation($"Field '{field.Name}' with Y={fieldY} estimated to be on page 1 (large Y coordinate)");
+                        logger?.LogWarning($"[TEMP HEURISTIC] Field '{field.Name}' with Y={fieldY} estimated to be on page 1 (Y <= 650)");
                         return 1;
                     }
                 }
