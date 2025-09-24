@@ -14,6 +14,7 @@ using Syncfusion.Pdf.Graphics;
 using Syncfusion.Drawing;
 using AccessFormServer.Services;
 using WordToPdfConverter.Models;
+using WordToPdfConverter.Services;
 using PDFtoImage;
 
 namespace WordToPdfConverter.Services
@@ -281,25 +282,43 @@ namespace WordToPdfConverter.Services
                         }
                         else
                         {
-                            _logger.LogWarning($"[PAGE DEBUG] Field '{field.Name}' has no page reference - calculating from Y coordinate");
-                            // Calculate page based on Y coordinate as fallback
-                            const float pageHeight = 792f;
+                            _logger.LogWarning($"[PAGE DEBUG] Field '{field.Name}' has no page reference - trying widget annotation detection");
 
-                            if (bounds.Y < 0)
+                            // Try to find the field by searching through page annotations/widgets
+                            bool foundOnPage = false;
+                            for (int pageIdx = 0; pageIdx < pdfDoc.Pages.Count; pageIdx++)
                             {
-                                // Negative Y coordinates indicate page 2 or higher
-                                pageNum = Math.Max(2, (int)(Math.Abs(bounds.Y) / pageHeight) + 2);
-                                _logger.LogInformation($"[PAGE DEBUG] Negative Y={bounds.Y} assigned to page {pageNum}");
-                            }
-                            else
-                            {
-                                pageNum = Math.Max(1, (int)(bounds.Y / pageHeight) + 1);
-                                _logger.LogInformation($"[PAGE DEBUG] Positive Y={bounds.Y} assigned to page {pageNum}");
+                                var pdfPage = pdfDoc.Pages[pageIdx];
+                                if (pdfPage.Annotations != null)
+                                {
+                                    foreach (var annotation in pdfPage.Annotations)
+                                    {
+                                        // Check if this annotation corresponds to our field
+                                        if (annotation is PdfLoadedWidgetAnnotation widget)
+                                        {
+                                            // Match by bounds or other properties
+                                            var annotationBounds = widget.Bounds;
+                                            if (Math.Abs(annotationBounds.X - bounds.X) < 5 &&
+                                                Math.Abs(annotationBounds.Y - bounds.Y) < 5)
+                                            {
+                                                pageNum = pageIdx + 1;
+                                                foundOnPage = true;
+                                                _logger.LogInformation($"[PAGE DEBUG] Found field '{field.Name}' on page {pageNum} via widget annotation");
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                if (foundOnPage) break;
                             }
 
-                            // Ensure page number doesn't exceed document page count
-                            pageNum = Math.Min(pageNum, pdfDoc.Pages.Count);
-                            _logger.LogInformation($"[PAGE DEBUG] Final calculated page {pageNum} for field '{field.Name}' with Y={bounds.Y}");
+                            if (!foundOnPage)
+                            {
+                                _logger.LogInformation($"[PAGE DEBUG] Could not find field '{field.Name}' via annotations, using PdfCoordinateConverter");
+                                // Fallback to coordinate-based detection
+                                pageNum = PdfCoordinateConverter.CalculatePageFromY(bounds.Y, pdfDoc, _logger);
+                                _logger.LogInformation($"[PAGE DEBUG] PdfCoordinateConverter assigned field '{field.Name}' (Y={bounds.Y}) to page {pageNum}");
+                            }
                         }
                         
                         var detectedField = new FieldDetectionResult
@@ -316,6 +335,15 @@ namespace WordToPdfConverter.Services
                             Confidence = 0.85f,
                             IsValid = true
                         };
+
+                        // Enhanced debugging for field detection
+                        _logger.LogInformation($"[FIELD DETECTION] Detected field: {detectedField.FieldName}");
+                        _logger.LogInformation($"  - Original Name: {field.Name}");
+                        _logger.LogInformation($"  - Type: {detectedField.FieldType}");
+                        _logger.LogInformation($"  - Position: ({detectedField.X:F2}, {detectedField.Y:F2})");
+                        _logger.LogInformation($"  - Size: {detectedField.Width:F2}x{detectedField.Height:F2}");
+                        _logger.LogInformation($"  - Page: {detectedField.PageNumber} (HasPageRef: {field.Page != null})");
+                        _logger.LogInformation($"  - Source: {detectedField.Source}");
                         
                         detectedField.DebugInfo["OriginalName"] = field.Name;
                         detectedField.DebugInfo["FieldClass"] = field.GetType().Name;
@@ -913,11 +941,13 @@ namespace WordToPdfConverter.Services
                     string pageInfo = "unknown";
                     if (pdfField is PdfTextBoxField textField)
                     {
-                        pageInfo = $"Y={textField.Bounds.Y}, Page calculated={(int)(textField.Bounds.Y / 792) + 1}";
+                        var calculatedPage = PdfCoordinateConverter.CalculatePageFromY(textField.Bounds.Y, pdfDoc, _logger);
+                        pageInfo = $"Y={textField.Bounds.Y}, Page calculated={calculatedPage}, Expected page={field.PageNumber}";
                     }
                     else if (pdfField is PdfCheckBoxField checkField)
                     {
-                        pageInfo = $"Y={checkField.Bounds.Y}, Page calculated={(int)(checkField.Bounds.Y / 792) + 1}";
+                        var calculatedPage = PdfCoordinateConverter.CalculatePageFromY(checkField.Bounds.Y, pdfDoc, _logger);
+                        pageInfo = $"Y={checkField.Bounds.Y}, Page calculated={calculatedPage}, Expected page={field.PageNumber}";
                     }
 
                     _logger.LogInformation($"[POST-ADD] Field name after adding to form: '{nameAfterAdd}', {pageInfo}");

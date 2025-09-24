@@ -120,17 +120,16 @@ namespace WordToPdfConverter.Services
                     foreach (var visionField in pageResult.Fields)
                     {
                         // Check if this field already exists from Syncfusion (by name OR position)
-                        var existingField = combinedFields.FirstOrDefault(sf => 
-                            sf.PageNumber == visionField.PageNumber &&
-                            (
-                                // Same name
-                                IsSimilarName(sf.FieldName, visionField.FieldName) ||
-                                // Or overlapping bounds (for fields with different names but same location)
-                                (visionField.Bounds != null && AreBoundsOverlapping(
-                                    sf.Bounds,
-                                    ClaudeVisionFieldDetector.ConvertPercentageToPdfBounds(
-                                        visionField.Bounds, pageWidth, pageHeight)))
-                            ));
+                        // CRITICAL FIX: Don't require same page number - that's what we're trying to correct!
+                        var existingField = combinedFields.FirstOrDefault(sf =>
+                            // Same name
+                            IsSimilarName(sf.FieldName, visionField.FieldName) ||
+                            // Or overlapping bounds (for fields with different names but same location)
+                            (visionField.Bounds != null && AreBoundsOverlapping(
+                                sf.Bounds,
+                                ClaudeVisionFieldDetector.ConvertPercentageToPdfBounds(
+                                    visionField.Bounds, pageWidth, pageHeight)))
+                        );
                         
                         if (existingField != null)
                         {
@@ -159,11 +158,19 @@ namespace WordToPdfConverter.Services
                             {
                                 existingField.Description = visionField.Description;
                             }
-                            
+
+                            // CRITICAL FIX: Trust Vision's page assignment since it analyzes each page separately
+                            // Syncfusion often has null field.Page resulting in wrong page assignments
+                            if (visionField.PageNumber > 0 && visionField.PageNumber != existingField.PageNumber)
+                            {
+                                _logger.LogInformation($"[COMBINER] CORRECTING page number for field '{existingField.FieldName}' from {existingField.PageNumber} to {visionField.PageNumber} based on Vision analysis");
+                                existingField.PageNumber = visionField.PageNumber;
+                            }
+
                             if (visionField.IsRequired)
                                 existingField.IsRequired = true;
-                                
-                            existingField.Source = existingField.Source.Contains("Vision") ? 
+
+                            existingField.Source = existingField.Source.Contains("Vision") ?
                                 existingField.Source : $"{existingField.Source}+Vision";
                             existingField.Confidence = Math.Min(1.0f, existingField.Confidence + 0.1f);
                             
