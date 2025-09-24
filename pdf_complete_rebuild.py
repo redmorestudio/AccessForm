@@ -119,39 +119,48 @@ class PDFCompleteRebuilder:
             
         return field_type, tooltip
     
-    def add_form_field(self, page: fitz.Page, field_info: Dict[str, Any]) -> Optional[fitz.Widget]:
+    def add_form_field(self, page: fitz.Page, field_info: Dict[str, Any], page_num: int = 0) -> Optional[fitz.Widget]:
         """Add a single form field to a page with proper properties"""
         try:
             # Get field name, but handle unnamed/duplicate fields better
             field_name = field_info.get('name', '')
-            
+
             # If field has no name or empty name, give it a temporary name
             if not field_name or field_name.strip() == '':
                 field_name = f'TEMP_FIELD_{self.field_counter}'
                 logger.info(f"Assigning temporary name: {field_name}")
-            
+
             provided_type = field_info.get('type', 'text')
             provided_tooltip = field_info.get('tooltip', '')
-            
+
             # Use smart detection for field type and tooltip
             field_type, tooltip = self.detect_field_type_and_tooltip(field_name, provided_type, provided_tooltip)
-            
+
             # Get position and size
             x = field_info.get('x', 100)
             y = field_info.get('y', 100)
             width = field_info.get('width', 200)
             height = field_info.get('height', 20)
-            
+
             # Text area fields don't need position adjustment - they're already correct
             # Removing the adjustment that was messing them up
             name_lower = field_name.lower()
-            
+
             # IMPORTANT: Coordinate conversion
             # Syncfusion/frontend uses top-left origin (Y increases downward)
             # PyMuPDF uses bottom-left origin (Y increases upward)
             # We store positions in top-left format, so we need to convert to bottom-left
-            page_height = page.rect.height
-            y_converted = page_height - y - height  # Convert from top-left to bottom-left
+
+            # COORDINATE DEBUG: Let's see what coordinates we're actually getting
+            page_height = page.rect.height  # ~792 points per page
+            logger.info(f"[COORD DEBUG] Field '{field_name}' page {page_num}: raw_Y={y}, page_height={page_height}")
+
+            # CRITICAL FIX: Coordinates from C# are already in correct PDF coordinate system
+            # C# Syncfusion provides coordinates that are page-relative and bottom-left origin
+            # No conversion needed - use coordinates as-is
+            y_converted = y  # Use Y coordinate directly - already in correct PDF coordinate system
+
+            logger.info(f"[COORD DEBUG] Field '{field_name}' page {page_num}: using_Y={y_converted} (no conversion needed)")
             
             # Adjust for checkbox/radio button dimensions
             if field_type in ['checkbox', 'radio', 'radiobutton']:
@@ -955,7 +964,7 @@ class PDFCompleteRebuilder:
                 page_num = field_def['page_num']
                 page = final_doc[page_num]
 
-                widget = self.add_form_field(page, field_def)
+                widget = self.add_form_field(page, field_def, page_num)
                 if widget:
                     added_fields.append({
                         'name': field_def['name'],

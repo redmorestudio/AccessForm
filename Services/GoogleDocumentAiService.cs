@@ -206,13 +206,18 @@ namespace WordToPdfConverter.Services
         private List<GoogleFormField> ExtractFieldsFromLayout(Document document)
         {
             var fields = new List<GoogleFormField>();
-            
+
             try
             {
                 // For now, just log that we have layout data
                 // The actual DocumentLayout type may not be available in our version of the library
                 _logger.LogInformation("Google Document AI returned layout format - extracting text-based fields");
-                
+
+                // Get page count for better page distribution
+                int totalPages = document.Pages?.Count ?? 1;
+                _logger.LogInformation($"Document has {totalPages} pages for field distribution");
+                int currentPageIndex = 0;
+
                 // Extract fields from the document text if available
                 if (!string.IsNullOrEmpty(document.Text))
                 {
@@ -225,14 +230,19 @@ namespace WordToPdfConverter.Services
                         if (text.EndsWith(":") && !text.Contains("?") && text.Length > 2)
                         {
                             var fieldName = text.TrimEnd(':');
+
+                            // Distribute fields across pages if multiple pages exist
+                            int assignedPage = totalPages > 1 ? (currentPageIndex % totalPages) + 1 : 1;
+
                             fields.Add(new GoogleFormField
                             {
                                 FieldName = fieldName,
                                 FieldType = DetermineFieldTypeFromName(fieldName),
-                                PageNumber = 1,
+                                PageNumber = assignedPage,
                                 Confidence = 0.7f
                             });
-                            _logger.LogDebug($"Found field from text: {fieldName}");
+                            _logger.LogDebug($"Found field from text: {fieldName} (assigned to page {assignedPage})");
+                            currentPageIndex++;
                         }
                         // Detect checkboxes
                         else if (text.Contains("☐"))
@@ -241,14 +251,18 @@ namespace WordToPdfConverter.Services
                             var label = text.Replace("☐", "").Trim();
                             if (!string.IsNullOrEmpty(label))
                             {
+                                // Distribute fields across pages if multiple pages exist
+                                int assignedPage = totalPages > 1 ? (currentPageIndex % totalPages) + 1 : 1;
+
                                 fields.Add(new GoogleFormField
                                 {
                                     FieldName = label,
                                     FieldType = "checkbox",
-                                    PageNumber = 1,
+                                    PageNumber = assignedPage,
                                     Confidence = 0.85f
                                 });
-                                _logger.LogDebug($"Found checkbox: {label}");
+                                _logger.LogDebug($"Found checkbox: {label} (assigned to page {assignedPage})");
+                                currentPageIndex++;
                             }
                         }
                     }

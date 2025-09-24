@@ -726,7 +726,7 @@ namespace WordToPdfConverter.Services
                 else if (field is PdfLoadedRadioButtonListField radioField && radioField.Items.Count > 0)
                 {
                     result.Bounds = radioField.Items[0].Bounds;
-                    result.PageNumber = 1; // Default to first page
+                    result.PageNumber = GetFieldPageNumber(radioField, pdfDoc);
                 }
                 
                 return result;
@@ -739,13 +739,35 @@ namespace WordToPdfConverter.Services
         }
         
         /// <summary>
-        /// Determines which page a field is on
+        /// Determines which page a field is on based on Y coordinate
         /// </summary>
         private int GetFieldPageNumber(PdfLoadedField field, PdfLoadedDocument pdfDoc)
         {
-            // This is a simplified approach - in reality you'd need to check field's page reference
-            // For now, return 1 as most forms start on page 1
-            return 1;
+            try
+            {
+                // Get the field bounds
+                RectangleF bounds;
+                if (field is PdfLoadedTextBoxField textField)
+                    bounds = textField.Bounds;
+                else if (field is PdfLoadedCheckBoxField checkField)
+                    bounds = checkField.Bounds;
+                else if (field is PdfLoadedRadioButtonListField radioField && radioField.Items.Count > 0)
+                    bounds = radioField.Items[0].Bounds;
+                else
+                    return 1;
+
+                // Standard letter page height is ~792 points
+                const float pageHeight = 792f;
+                var calculatedPage = Math.Max(1, (int)(bounds.Y / pageHeight) + 1);
+                var pageNum = Math.Max(1, Math.Min(calculatedPage, pdfDoc.Pages.Count));
+                _logger.LogInformation($"[PAGINATION FIX] Field {field.Name} Y={bounds.Y:F1} -> Page {pageNum}");
+                return pageNum;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Could not determine page number for field {field.Name}: {ex.Message}");
+                return 1;
+            }
         }
         
         private void AddFieldValidation(PdfTextBoxField textField)

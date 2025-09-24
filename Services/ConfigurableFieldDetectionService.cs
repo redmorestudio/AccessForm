@@ -262,17 +262,44 @@ namespace WordToPdfConverter.Services
                         var shortId = $"SF{++_fieldCounter}";
                         var bounds = GetLoadedFieldBounds(field);
                         var pageNum = 1;
+
+                        _logger.LogInformation($"[PAGE DEBUG] Processing field '{field.Name}', field.Page is null: {field.Page == null}");
+
                         if (field.Page is PdfLoadedPage page)
                         {
+                            _logger.LogInformation($"[PAGE DEBUG] Field '{field.Name}' has page reference, searching through {pdfDoc.Pages.Count} pages");
                             // Find page index
                             for (int p = 0; p < pdfDoc.Pages.Count; p++)
                             {
                                 if (pdfDoc.Pages[p] == page)
                                 {
                                     pageNum = p + 1;
+                                    _logger.LogInformation($"[PAGE DEBUG] Found field '{field.Name}' on page {pageNum}");
                                     break;
                                 }
                             }
+                        }
+                        else
+                        {
+                            _logger.LogWarning($"[PAGE DEBUG] Field '{field.Name}' has no page reference - calculating from Y coordinate");
+                            // Calculate page based on Y coordinate as fallback
+                            const float pageHeight = 792f;
+
+                            if (bounds.Y < 0)
+                            {
+                                // Negative Y coordinates indicate page 2 or higher
+                                pageNum = Math.Max(2, (int)(Math.Abs(bounds.Y) / pageHeight) + 2);
+                                _logger.LogInformation($"[PAGE DEBUG] Negative Y={bounds.Y} assigned to page {pageNum}");
+                            }
+                            else
+                            {
+                                pageNum = Math.Max(1, (int)(bounds.Y / pageHeight) + 1);
+                                _logger.LogInformation($"[PAGE DEBUG] Positive Y={bounds.Y} assigned to page {pageNum}");
+                            }
+
+                            // Ensure page number doesn't exceed document page count
+                            pageNum = Math.Min(pageNum, pdfDoc.Pages.Count);
+                            _logger.LogInformation($"[PAGE DEBUG] Final calculated page {pageNum} for field '{field.Name}' with Y={bounds.Y}");
                         }
                         
                         var detectedField = new FieldDetectionResult
@@ -516,7 +543,7 @@ namespace WordToPdfConverter.Services
         private string CleanFieldName(string name)
         {
             if (string.IsNullOrEmpty(name))
-                return $"Field_{++_fieldCounter}";
+                return "Field";
 
             // Remove common prefixes
             name = name.Replace("Textformfield", "")
@@ -527,9 +554,9 @@ namespace WordToPdfConverter.Services
             // If it's just a hash, make it more readable
             if (name.Length > 10 && !name.Contains(" "))
             {
-                name = $"Field_{++_fieldCounter}";
+                name = "Field";
             }
-            
+
             return name;
         }
 
@@ -757,7 +784,7 @@ namespace WordToPdfConverter.Services
                 // Syncfusion fields already have PDF coordinates (bottom-left origin)
                 // Only convert if the field is NOT from Syncfusion
                 float pdfY = field.Y;
-                
+
                 if (field.Source != "Syncfusion" && !field.Source.StartsWith("Syncfusion"))
                 {
                     // For non-Syncfusion sources, convert from top-left to bottom-left origin
@@ -765,6 +792,12 @@ namespace WordToPdfConverter.Services
                     float pageHeight = page.Size.Height;
                     pdfY = pageHeight - field.Y - field.Height;
                 }
+
+                // COORDINATES ARE ALREADY PAGE-RELATIVE - DON'T ADD PAGE OFFSETS!
+                // Syncfusion provides page-relative coordinates (0-792 per page)
+                // PyMuPDF also expects page-relative coordinates
+                // The old code incorrectly made Page 2 fields have Y > 792, pushing them off-page
+                _logger.LogInformation($"[COORDINATE FIX] Field '{field.FieldName}' on page {field.PageNumber}: Y={field.Y} stays as Y={pdfY} (page-relative)");
                 
                 // No adjustment needed - use the calculated position directly
                 // pdfY -= 10;
@@ -875,7 +908,19 @@ namespace WordToPdfConverter.Services
 
                     // Verify name after adding
                     string nameAfterAdd = pdfField.Name;
-                    _logger.LogInformation($"[POST-ADD] Field name after adding to form: '{nameAfterAdd}'");
+
+                    // ULTRATHINK: Log page information when adding fields
+                    string pageInfo = "unknown";
+                    if (pdfField is PdfTextBoxField textField)
+                    {
+                        pageInfo = $"Y={textField.Bounds.Y}, Page calculated={(int)(textField.Bounds.Y / 792) + 1}";
+                    }
+                    else if (pdfField is PdfCheckBoxField checkField)
+                    {
+                        pageInfo = $"Y={checkField.Bounds.Y}, Page calculated={(int)(checkField.Bounds.Y / 792) + 1}";
+                    }
+
+                    _logger.LogInformation($"[POST-ADD] Field name after adding to form: '{nameAfterAdd}', {pageInfo}");
 
                     if (nameBeforeAdd != nameAfterAdd)
                     {
