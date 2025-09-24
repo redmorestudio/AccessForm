@@ -180,7 +180,7 @@ namespace AccessFormServer.Services
                             }
                             
                             fieldMetadata.Add(metadata);
-                            _logger.LogDebug($"Extracted field: {metadata.Name} ({metadata.FieldType}) on page {metadata.PageIndex}");
+                            _logger.LogInformation($"[FIELD EXTRACT] Field: {metadata.Name} ({metadata.FieldType}) on page {metadata.PageIndex}");
                         }
                         
                         _logger.LogInformation($"Extracted {fieldMetadata.Count} fields from original PDF");
@@ -226,10 +226,14 @@ namespace AccessFormServer.Services
                         foreach (var metadata in fieldMetadata)
                         {
                             if (metadata.PageIndex < 0 || metadata.PageIndex >= pdfDoc.Pages.Count)
+                            {
+                                _logger.LogWarning($"[FIELD RE-ADD] Field {metadata.Name} has invalid page index {metadata.PageIndex} (total pages: {pdfDoc.Pages.Count})");
                                 continue;
-                                
+                            }
+
                             var page = pdfDoc.Pages[metadata.PageIndex];
-                            
+                            _logger.LogInformation($"[FIELD RE-ADD] Adding field: {metadata.Name} ({metadata.FieldType}) to page {metadata.PageIndex}");
+
                             switch (metadata.FieldType)
                             {
                                 case "checkbox":
