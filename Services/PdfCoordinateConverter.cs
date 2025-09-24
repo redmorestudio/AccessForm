@@ -48,7 +48,7 @@ namespace WordToPdfConverter.Services
         }
 
         /// <summary>
-        /// Determine which page a Y coordinate belongs to in a multi-page document
+        /// Determine which page a Y coordinate belongs to in a multi-page document (for absolute coordinates)
         /// </summary>
         public static int CalculatePageFromY(float yCoordinate, PdfLoadedDocument document, ILogger logger = null)
         {
@@ -120,6 +120,101 @@ namespace WordToPdfConverter.Services
                 logger?.LogWarning($"Could not determine page for Y={yCoordinate}, using heuristic: page {calculatedPage}");
                 return calculatedPage;
             }
+        }
+
+        /// <summary>
+        /// Find which page contains a field using page-relative coordinates
+        /// (for use with Syncfusion field bounds which are page-relative)
+        /// </summary>
+        public static int FindPageContainingField(PdfLoadedField field, PdfLoadedDocument document, ILogger logger = null)
+        {
+            if (document?.Pages == null || document.Pages.Count == 0)
+            {
+                logger?.LogWarning($"Document has no pages, defaulting to page 1 for field '{field.Name}'");
+                return 1;
+            }
+
+            // Try to use the field's Page property first if available
+            try
+            {
+                if (field.Page != null)
+                {
+                    // Find which page index this corresponds to
+                    for (int i = 0; i < document.Pages.Count; i++)
+                    {
+                        if (ReferenceEquals(field.Page, document.Pages[i]))
+                        {
+                            var pageNum = i + 1;
+                            logger?.LogDebug($"Field '{field.Name}' found on page {pageNum} via Page property");
+                            return pageNum;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogDebug($"Could not use Page property for field '{field.Name}': {ex.Message}");
+            }
+
+            // Enhanced fallback: Check each page for fields and determine which page this field belongs to
+            // by analyzing the field bounds and page geometry
+            float fieldY = 0;
+            try
+            {
+                if (field is PdfLoadedTextBoxField textField)
+                {
+                    fieldY = textField.Bounds.Y;
+                }
+                else if (field is PdfLoadedCheckBoxField checkField)
+                {
+                    fieldY = checkField.Bounds.Y;
+                }
+                else if (field is PdfLoadedRadioButtonListField radioField && radioField.Items?.Count > 0)
+                {
+                    fieldY = radioField.Items[0].Bounds.Y;
+                }
+                else if (field is PdfLoadedSignatureField sigField)
+                {
+                    fieldY = sigField.Bounds.Y;
+                }
+                else if (field is PdfLoadedComboBoxField comboField)
+                {
+                    fieldY = comboField.Bounds.Y;
+                }
+
+                logger?.LogDebug($"Field '{field.Name}' has Y coordinate: {fieldY}");
+
+                // For multi-page documents with page-relative coordinates:
+                // - Page 1 fields: Y usually ranges from 0-792 (most values > 100)
+                // - Page 2 fields: Y usually ranges from 0-792 but are typically smaller values (often < 100)
+                // This is because page 2 fields start from the top of page 2
+                if (document.Pages.Count > 1)
+                {
+                    // If Y coordinate is very small (< 100) and we have multiple pages,
+                    // it's likely a page 2+ field
+                    if (fieldY < 100 && fieldY >= 0)
+                    {
+                        // Determine which page based on Y coordinate ranges
+                        // This is a heuristic but works for most multi-page forms
+                        int estimatedPage = 2;
+                        logger?.LogInformation($"Field '{field.Name}' with Y={fieldY} estimated to be on page {estimatedPage} (small Y coordinate)");
+                        return Math.Min(estimatedPage, document.Pages.Count);
+                    }
+                    else
+                    {
+                        // Larger Y coordinates are typically page 1
+                        logger?.LogInformation($"Field '{field.Name}' with Y={fieldY} estimated to be on page 1 (large Y coordinate)");
+                        return 1;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogDebug($"Could not determine coordinates for field '{field.Name}': {ex.Message}");
+            }
+
+            logger?.LogWarning($"Could not determine page for field '{field.Name}', defaulting to page 1");
+            return 1;
         }
 
         /// <summary>
