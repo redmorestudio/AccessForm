@@ -2384,10 +2384,20 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
                         width = textField.Bounds.Width;
                         height = textField.Bounds.Height;
                         tooltip = textField.ToolTip ?? "";
-                        
-                        // Find page containing this field using proper page detection
-                        page = FindFieldPage(field);
-                        logger.LogInformation($"[EXTRACT-PDF-FIELDS] Text field '{field.Name}' at Y={textField.Bounds.Y} assigned to page {page}");
+
+                        // PRIORITY 1: Try to extract page from tooltip if encoded there
+                        var tooltipPage = AccessFormServer.Services.FieldTooltipGenerator.ExtractPageFromTooltip(tooltip);
+                        if (tooltipPage > 0)
+                        {
+                            page = tooltipPage;
+                            logger.LogInformation($"[TOOLTIP-PAGE] Text field '{field.Name}' page {page} from tooltip: '{tooltip}'");
+                        }
+                        else
+                        {
+                            // PRIORITY 2: Fall back to coordinate-based page detection
+                            page = FindFieldPage(field);
+                            logger.LogInformation($"[COORDINATE-PAGE] Text field '{field.Name}' page {page} from coordinates (Y={textField.Bounds.Y})");
+                        }
                     }
                     else if (field is PdfLoadedCheckBoxField checkField)
                     {
@@ -2397,10 +2407,20 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
                         width = checkField.Bounds.Width;
                         height = checkField.Bounds.Height;
                         tooltip = checkField.ToolTip ?? "";
-                        
-                        // Find page containing this field using proper page detection
-                        page = FindFieldPage(field);
-                        logger.LogInformation($"[EXTRACT-PDF-FIELDS] Checkbox field '{field.Name}' at Y={checkField.Bounds.Y} assigned to page {page}");
+
+                        // PRIORITY 1: Try to extract page from tooltip if encoded there
+                        var tooltipPage = AccessFormServer.Services.FieldTooltipGenerator.ExtractPageFromTooltip(tooltip);
+                        if (tooltipPage > 0)
+                        {
+                            page = tooltipPage;
+                            logger.LogInformation($"[TOOLTIP-PAGE] Checkbox field '{field.Name}' page {page} from tooltip: '{tooltip}'");
+                        }
+                        else
+                        {
+                            // PRIORITY 2: Fall back to coordinate-based page detection
+                            page = FindFieldPage(field);
+                            logger.LogInformation($"[COORDINATE-PAGE] Checkbox field '{field.Name}' page {page} from coordinates (Y={checkField.Bounds.Y})");
+                        }
                     }
                     else if (field is PdfLoadedRadioButtonListField radioField)
                     {
@@ -2483,7 +2503,14 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
                             logger.LogWarning($"Found duplicate field '{field.Name}', renaming to '{fieldName}'");
                         }
                     }
-                    
+
+                    // Add test marker to first field to verify we're hitting the right endpoint
+                    if (fields.Count == 0)
+                    {
+                        fieldName = "FOO_TEST_MARKER_" + fieldName;
+                        logger.LogWarning($"🔥 [TEST MARKER] First field marked as: {fieldName}");
+                    }
+
                     fields.Add(new
                     {
                         name = fieldName,
@@ -3063,19 +3090,32 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                         return WordToPdfConverter.Services.PdfCoordinateConverter.CalculatePageFromY(yCoordinate, pdfDoc, logger);
                     };
 
+                    // OVERRIDE: Force coordinate-based page detection instead of unreliable widget lookup
+                    // Widget lookup returns page 1 for ALL fields during Word-to-PDF conversion
+                    bool useCoordinatePageDetection = true;
+
                     // Get actual page number from field widget
                     try
                     {
                         if (f is PdfLoadedTextBoxField txtField && txtField.Items != null && txtField.Items.Count > 0)
                         {
-                            var firstItem = txtField.Items[0];
-                            page = FindPageForWidget(firstItem);
-
-                            // If widget lookup failed (page=1), use Y-based calculation to determine correct page
-                            if (page == 1)
+                            if (useCoordinatePageDetection)
                             {
-                                logger.LogWarning($"[PAGE FIX] Text field '{f.Name}' at Y={txtField.Bounds.Y} defaulted to page 1, using Y-coordinate fallback");
+                                // FORCED COORDINATE DETECTION - Skip unreliable widget lookup
                                 page = CalculatePageFromY(txtField.Bounds.Y);
+                                logger.LogWarning($"[COORD-FORCED] Text field '{f.Name}' at Y={txtField.Bounds.Y} assigned to page {page} via coordinate detection");
+                            }
+                            else
+                            {
+                                var firstItem = txtField.Items[0];
+                                page = FindPageForWidget(firstItem);
+
+                                // If widget lookup failed (page=1), use Y-based calculation to determine correct page
+                                if (page == 1)
+                                {
+                                    logger.LogWarning($"[PAGE FIX] Text field '{f.Name}' at Y={txtField.Bounds.Y} defaulted to page 1, using Y-coordinate fallback");
+                                    page = CalculatePageFromY(txtField.Bounds.Y);
+                                }
                             }
 
                             // Get the correct page height for this specific page
@@ -3093,7 +3133,13 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                         }
                         else if (f is PdfLoadedCheckBoxField chkField)
                         {
-                            if (chkField.Items != null && chkField.Items.Count > 0)
+                            if (useCoordinatePageDetection)
+                            {
+                                // FORCED COORDINATE DETECTION - Skip unreliable widget lookup
+                                page = CalculatePageFromY(chkField.Bounds.Y);
+                                logger.LogWarning($"[COORD-FORCED] Checkbox '{f.Name}' at Y={chkField.Bounds.Y} assigned to page {page} via coordinate detection");
+                            }
+                            else if (chkField.Items != null && chkField.Items.Count > 0)
                             {
                                 var firstItem = chkField.Items[0];
                                 page = FindPageForWidget(firstItem);
@@ -3104,12 +3150,12 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                                     logger.LogWarning($"[PAGE FIX] Checkbox '{f.Name}' at Y={chkField.Bounds.Y} defaulted to page 1, using Y-coordinate fallback");
                                     page = CalculatePageFromY(chkField.Bounds.Y);
                                 }
+                            }
 
-                                // Get the correct page height for this specific page
-                                if (page > 0 && page <= pdfDoc.Pages.Count)
-                                {
-                                    pageHeight = pdfDoc.Pages[page - 1].Size.Height;
-                                }
+                            // Get the correct page height for this specific page
+                            if (page > 0 && page <= pdfDoc.Pages.Count)
+                            {
+                                pageHeight = pdfDoc.Pages[page - 1].Size.Height;
                             }
                             x = chkField.Bounds.X;
                             // PDF coordinates are bottom-up, we need top-down for HTML
@@ -3120,7 +3166,13 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                         }
                         else if (f is PdfLoadedSignatureField sigField)
                         {
-                            if (sigField.Items != null && sigField.Items.Count > 0)
+                            if (useCoordinatePageDetection)
+                            {
+                                // FORCED COORDINATE DETECTION - Skip unreliable widget lookup
+                                page = CalculatePageFromY(sigField.Bounds.Y);
+                                logger.LogWarning($"[COORD-FORCED] Signature field '{f.Name}' at Y={sigField.Bounds.Y} assigned to page {page} via coordinate detection");
+                            }
+                            else if (sigField.Items != null && sigField.Items.Count > 0)
                             {
                                 var firstItem = sigField.Items[0];
                                 page = FindPageForWidget(firstItem);
@@ -3131,12 +3183,12 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                                     logger.LogWarning($"[PAGE FIX] Signature field '{f.Name}' at Y={sigField.Bounds.Y} defaulted to page 1, using Y-coordinate fallback");
                                     page = CalculatePageFromY(sigField.Bounds.Y);
                                 }
+                            }
 
-                                // Get the correct page height for this specific page
-                                if (page > 0 && page <= pdfDoc.Pages.Count)
-                                {
-                                    pageHeight = pdfDoc.Pages[page - 1].Size.Height;
-                                }
+                            // Get the correct page height for this specific page
+                            if (page > 0 && page <= pdfDoc.Pages.Count)
+                            {
+                                pageHeight = pdfDoc.Pages[page - 1].Size.Height;
                             }
                             x = sigField.Bounds.X;
                             // PDF coordinates are bottom-up, we need top-down for HTML
@@ -3146,7 +3198,13 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                         }
                         else if (f is PdfLoadedRadioButtonListField radioField)
                         {
-                            if (radioField.Items != null && radioField.Items.Count > 0)
+                            if (useCoordinatePageDetection)
+                            {
+                                // FORCED COORDINATE DETECTION - Skip unreliable widget lookup
+                                page = CalculatePageFromY(radioField.Bounds.Y);
+                                logger.LogWarning($"[COORD-FORCED] Radio button '{f.Name}' at Y={radioField.Bounds.Y} assigned to page {page} via coordinate detection");
+                            }
+                            else if (radioField.Items != null && radioField.Items.Count > 0)
                             {
                                 var firstItem = radioField.Items[0];
                                 page = FindPageForWidget(firstItem);
@@ -3157,12 +3215,12 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                                     logger.LogWarning($"[PAGE FIX] Radio button '{f.Name}' at Y={radioField.Bounds.Y} defaulted to page 1, using Y-coordinate fallback");
                                     page = CalculatePageFromY(radioField.Bounds.Y);
                                 }
+                            }
 
-                                // Get the correct page height for this specific page
-                                if (page > 0 && page <= pdfDoc.Pages.Count)
-                                {
-                                    pageHeight = pdfDoc.Pages[page - 1].Size.Height;
-                                }
+                            // Get the correct page height for this specific page
+                            if (page > 0 && page <= pdfDoc.Pages.Count)
+                            {
+                                pageHeight = pdfDoc.Pages[page - 1].Size.Height;
                             }
                             x = radioField.Bounds.X;
                             // PDF coordinates are bottom-up, we need top-down for HTML
@@ -3212,6 +3270,13 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                         // Still add the field with default values to avoid losing it completely
                         page = 1; // Default page
                         x = 0; y = 0; width = 100; height = 20; // Default position
+                    }
+
+                    // Add test marker to first field to verify we're hitting the right endpoint
+                    if (fieldList.Count == 0)
+                    {
+                        displayName = "FOO_TEST_MARKER_" + displayName;
+                        logger.LogWarning($"🔥🔥🔥 [EXTRACT-TAG-STRUCTURE] First field marked as: {displayName}");
                     }
 
                     var fieldObj = new

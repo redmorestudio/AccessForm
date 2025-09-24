@@ -697,7 +697,7 @@
             
             content.Add(new StringContent(fieldsJson), "fields");
             
-            var response = await client.PostAsync("http://localhost:5001/api/pdf-page-with-field-boxes", content);
+            var response = await client.PostAsync("http://localhost:5002/api/pdf-page-with-field-boxes", content);
             
             if (response.IsSuccessStatusCode)
             {
@@ -737,7 +737,7 @@
             content.Add(new ByteArrayContent(PdfBytes), "file", "document.pdf");
             content.Add(new StringContent(pageNumber.ToString()), "pageNumber");
             
-            var response = await client.PostAsync("http://localhost:5001/api/pdf-page-preview", content);
+            var response = await client.PostAsync("http://localhost:5002/api/pdf-page-preview", content);
             
             if (response.IsSuccessStatusCode)
             {

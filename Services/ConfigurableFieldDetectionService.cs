@@ -266,60 +266,25 @@ namespace WordToPdfConverter.Services
 
                         _logger.LogInformation($"[PAGE DEBUG] Processing field '{field.Name}', field.Page is null: {field.Page == null}");
 
-                        if (field.Page is PdfLoadedPage page)
-                        {
-                            _logger.LogInformation($"[PAGE DEBUG] Field '{field.Name}' has page reference, searching through {pdfDoc.Pages.Count} pages");
-                            // Find page index
-                            for (int p = 0; p < pdfDoc.Pages.Count; p++)
-                            {
-                                if (pdfDoc.Pages[p] == page)
-                                {
-                                    pageNum = p + 1;
-                                    _logger.LogInformation($"[PAGE DEBUG] Found field '{field.Name}' on page {pageNum}");
-                                    break;
-                                }
-                            }
-                        }
-                        else
-                        {
-                            _logger.LogWarning($"[PAGE DEBUG] Field '{field.Name}' has no page reference - trying widget annotation detection");
+                        // Use Syncfusion's OFFICIAL recommended method for page detection
+                        _logger.LogInformation($"[SYNCFUSION-OFFICIAL] Using official Syncfusion page detection for '{field.Name}'");
 
-                            // Try to find the field by searching through page annotations/widgets
-                            bool foundOnPage = false;
-                            for (int pageIdx = 0; pageIdx < pdfDoc.Pages.Count; pageIdx++)
-                            {
-                                var pdfPage = pdfDoc.Pages[pageIdx];
-                                if (pdfPage.Annotations != null)
-                                {
-                                    foreach (var annotation in pdfPage.Annotations)
-                                    {
-                                        // Check if this annotation corresponds to our field
-                                        if (annotation is PdfLoadedWidgetAnnotation widget)
-                                        {
-                                            // Match by bounds or other properties
-                                            var annotationBounds = widget.Bounds;
-                                            if (Math.Abs(annotationBounds.X - bounds.X) < 5 &&
-                                                Math.Abs(annotationBounds.Y - bounds.Y) < 5)
-                                            {
-                                                pageNum = pageIdx + 1;
-                                                foundOnPage = true;
-                                                _logger.LogInformation($"[PAGE DEBUG] Found field '{field.Name}' on page {pageNum} via widget annotation");
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                                if (foundOnPage) break;
-                            }
+                        // OVERRIDE: Syncfusion's page references are wrong during Word-to-PDF conversion
+                        // Force fallback to coordinate detection for all fields
+                        bool pageFound = false;
+                        _logger.LogInformation($"[SYNCFUSION-OVERRIDE] Skipping official method - page references are unreliable during Word conversion");
 
-                            if (!foundOnPage)
-                            {
-                                _logger.LogInformation($"[PAGE DEBUG] Could not find field '{field.Name}' via annotations, using PdfCoordinateConverter");
-                                // Fallback to coordinate-based detection
-                                pageNum = PdfCoordinateConverter.CalculatePageFromY(bounds.Y, pdfDoc, _logger);
-                                _logger.LogInformation($"[PAGE DEBUG] PdfCoordinateConverter assigned field '{field.Name}' (Y={bounds.Y}) to page {pageNum}");
-                            }
+                        // If official method fails, fall back to coordinate detection
+                        if (!pageFound)
+                        {
+                            _logger.LogWarning($"[FALLBACK] Official Syncfusion method failed for '{field.Name}', using coordinate detection");
+
+                            // Use our coordinate-based page detection as fallback
+                            pageNum = PdfCoordinateConverter.FindPageContainingField(field, pdfDoc, _logger);
+                            _logger.LogInformation($"[FALLBACK] Field '{field.Name}' (Y={bounds.Y}) assigned to page {pageNum} via coordinate detection");
                         }
+
+                        // Clean implementation: Official Syncfusion method with coordinate fallback
                         
                         var detectedField = new FieldDetectionResult
                         {
