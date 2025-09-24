@@ -92,15 +92,14 @@ builder.Services.AddScoped<PdfFieldTagEditorService>();
 builder.Services.AddScoped<ITextFieldRebuildService>();
 
 // Add Adobe Autotag Service for accessibility
-// TEMPORARILY DISABLED DUE TO RESTSHARP CONFLICT WITH PASSPORTPDF
-// builder.Services.AddScoped<AccessFormServer.Services.AdobeAutotagService>(provider =>
-// {
-//     var logger = provider.GetRequiredService<ILogger<AccessFormServer.Services.AdobeAutotagService>>();
-//     // Use the new credentials path provided by the user
-//     var credentialsPath = "/Users/sethredmore/Documents/Redmore Studio/AccessForm/PDFServicesAPI-Credentials/pdfservices-api-credentials.json";
-//     logger.LogInformation($"Using Adobe credentials from: {credentialsPath}");
-//     return new AccessFormServer.Services.AdobeAutotagService(logger, credentialsPath);
-// });
+builder.Services.AddScoped<AccessFormServer.Services.AdobeAutotagService>(provider =>
+{
+    var logger = provider.GetRequiredService<ILogger<AccessFormServer.Services.AdobeAutotagService>>();
+    // Use the new credentials path provided by the user
+    var credentialsPath = "/Users/sethredmore/Documents/Redmore Studio/AccessForm/PDFServicesAPI-Credentials/pdfservices-api-credentials.json";
+    logger.LogInformation($"Using Adobe credentials from: {credentialsPath}");
+    return new AccessFormServer.Services.AdobeAutotagService(logger, credentialsPath);
+});
 
 // Add Aspose PDF Service for font embedding and optimization
 builder.Services.AddScoped<AccessFormServer.Services.AsposePdfService>(provider =>
@@ -120,11 +119,11 @@ builder.Services.AddScoped<PdfCompleteRebuildService>(provider =>
 {
     var logger = provider.GetRequiredService<ILogger<PdfCompleteRebuildService>>();
     var passportPdfService = provider.GetService<PassportPdfService>();
-    // var adobeService = provider.GetService<AccessFormServer.Services.AdobeAutotagService>();
+    var adobeService = provider.GetService<AccessFormServer.Services.AdobeAutotagService>();
     var asposeService = provider.GetService<AccessFormServer.Services.AsposePdfService>();
     // var formStructureService = provider.GetService<AccessFormServer.Services.PdfFormStructureService>();
     // var pythonFormFixService = provider.GetService<AccessFormServer.Services.PythonFormStructureFixService>();
-    return new PdfCompleteRebuildService(logger, passportPdfService, null, asposeService); // Adobe temporarily null due to RestSharp conflict
+    return new PdfCompleteRebuildService(logger, passportPdfService, adobeService, asposeService); // , formStructureService, pythonFormFixService);
 });
 
 // Add NLP services  
@@ -1024,11 +1023,10 @@ app.MapPost("/api/convert-with-ai", async (
         // 1. Convert to PDF with Syncfusion (preserves field positions)
         // 2. Use Claude Vision to label and verify fields
         // 3. Create fields at correct positions
-        List<FieldDetectionResult> detectedPipelineFields = null;
         if (isWord)
         {
             logger.LogInformation("Using proper field detection pipeline for Word document");
-
+            
             // Configure the pipeline to use Syncfusion + Claude Vision
             var config = new FieldDetectionConfig
             {
@@ -1042,15 +1040,14 @@ app.MapPost("/api/convert-with-ai", async (
                 Mode = ProcessingMode.Sequential,  // Process in order
                 DebugMode = false
             };
-
+            
             // Process with the full pipeline
             var (processedPdfBytes, pipelineFields) = await configService.ConvertWithConfig(fileBytes, file.FileName, config);
             normalPdfBytes = processedPdfBytes;
-            detectedPipelineFields = pipelineFields;
-
+            
             // Update field count for reporting
-            detectedFields = detectedPipelineFields?.Count ?? 0;
-
+            detectedFields = pipelineFields?.Count ?? 0;
+            
             logger.LogInformation($"Pipeline detected and created {detectedFields} fields at correct positions");
         }
         else
@@ -1071,32 +1068,24 @@ app.MapPost("/api/convert-with-ai", async (
             
             // Prepare field updates from detected fields
             var fieldUpdates = new List<PdfCompleteRebuildService.FieldUpdate>();
-            if (detectedFields > 0 && isWord)
+            if (detectedFields > 0)
             {
-                // Use the properly detected fields from the pipeline instead of duplicate logic
-                if (detectedPipelineFields != null && detectedPipelineFields.Count > 0)
+                // Get the fields that were detected
+                // We need to extract field information from the PDF
+                using var pdfStream = new MemoryStream(normalPdfBytes);
+                using var pdfDoc = new PdfLoadedDocument(pdfStream);
+                
+                if (pdfDoc.Form != null && pdfDoc.Form.Fields != null)
                 {
-                    logger.LogInformation($"[FIELD MAPPING] Using {detectedPipelineFields.Count} fields from detection pipeline");
-
-                    // ULTRATHINK DEBUG: Mark first field to verify code path
-                    bool isFirstField = true;
-
-                    foreach (var detectedField in detectedPipelineFields)
+                    foreach (PdfLoadedField field in pdfDoc.Form.Fields)
                     {
-                        logger.LogInformation($"[FIELD MAPPING] Processing detected field: {detectedField.FieldName} on page {detectedField.PageNumber}");
-
-                        // ULTRATHINK DEBUG: Override first field name to verify this code is running
-                        if (isFirstField)
-                        {
-                            logger.LogWarning($"[ULTRATHINK DEBUG] Overriding first field '{detectedField.FieldName}' to 'ULTRATHINK_TEST' to verify code path");
-                            detectedField.FieldName = "ULTRATHINK_TEST";
-                            isFirstField = false;
-                        }
-
+                        // Clean field names by removing type suffixes like [name], [checkbox], etc.
+                        var cleanName = System.Text.RegularExpressions.Regex.Replace(field.Name, @"\[(name|text|textarea|checkbox|radio|dropdown|date|email|phone|signature|number)\]$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                        
                         // Generate appropriate tooltip based on field name
-                        string tooltip = detectedField.FieldName;
-                        var lowerName = detectedField.FieldName?.ToLower() ?? "";
-
+                        string tooltip = cleanName;
+                        var lowerName = cleanName.ToLower();
+                        
                         if (lowerName.Contains("signature") && !lowerName.Contains("date"))
                             tooltip = "Click to add signature";
                         else if (lowerName.Contains("date"))
@@ -1112,40 +1101,21 @@ app.MapPost("/api/convert-with-ai", async (
                         else if (lowerName.Contains("phone"))
                             tooltip = "Enter phone number";
                         else if (lowerName.Contains("description") || lowerName.Contains("reason"))
-                            tooltip = $"Enter detailed information for {detectedField.FieldName}";
-                        else if (detectedField.FieldType == "checkbox")
-                            tooltip = $"Check to select {detectedField.FieldName}";
-
+                            tooltip = $"Enter detailed information for {cleanName}";
+                        else if (field is PdfLoadedCheckBoxField)
+                            tooltip = $"Check to select {cleanName}";
+                        
                         fieldUpdates.Add(new PdfCompleteRebuildService.FieldUpdate
                         {
-                            OriginalName = detectedField.ShortId, // Use ShortId for mapping
-                            NewName = detectedField.FieldName,   // Use proper field name
-                            FieldType = detectedField.FieldType,
+                            OriginalName = field.Name,
+                            NewName = cleanName,
+                            FieldType = field is PdfLoadedCheckBoxField ? "checkbox" : 
+                                       field is PdfLoadedRadioButtonListField ? "radio" :
+                                       field is PdfLoadedComboBoxField ? "dropdown" :
+                                       field is PdfLoadedTextBoxField ? "text" : "text",
                             Tooltip = tooltip,
-                            PageNumber = detectedField.PageNumber  // Use the correctly detected page number!
+                            PageNumber = 1  // Default to page 1 for now, as Page.Index doesn't exist
                         });
-                    }
-                }
-                else
-                {
-                    logger.LogWarning("No pipeline fields available, falling back to PDF field reading");
-                    // Fallback to reading from PDF (but this shouldn't happen normally)
-                    using var pdfStream = new MemoryStream(normalPdfBytes);
-                    using var pdfDoc = new PdfLoadedDocument(pdfStream);
-
-                    if (pdfDoc.Form?.Fields != null)
-                    {
-                        foreach (PdfLoadedField field in pdfDoc.Form.Fields)
-                        {
-                            fieldUpdates.Add(new PdfCompleteRebuildService.FieldUpdate
-                            {
-                                OriginalName = field.Name,
-                                NewName = field.Name,
-                                FieldType = field is PdfLoadedCheckBoxField ? "checkbox" : "text",
-                                Tooltip = field.Name,
-                                PageNumber = 1 // Fallback only
-                            });
-                        }
                     }
                 }
             }
@@ -1413,28 +1383,12 @@ app.MapPost("/api/convert-with-updated-fields", async (HttpRequest request, ISer
             {
                 pdfDoc.Form.Fields.Clear();
             }
-
-            Console.WriteLine($"[CRITICAL DEBUG] PDF has {pdfDoc.Pages.Count} pages before adding fields");
-
+            
             // Add updated fields
             foreach (var field in updatedFields.Where(f => f.IsValid))
             {
-                // CRITICAL FIX: Check if the page exists before accessing it
-                if (field.PageNumber > pdfDoc.Pages.Count)
-                {
-                    Console.WriteLine($"[CRITICAL] Field '{field.FieldName}' assigned to page {field.PageNumber} but PDF only has {pdfDoc.Pages.Count} pages! Adding missing pages...");
-
-                    // Add missing pages
-                    while (pdfDoc.Pages.Count < field.PageNumber)
-                    {
-                        pdfDoc.Pages.Add();
-                        Console.WriteLine($"[PAGE FIX] Added page {pdfDoc.Pages.Count} to PDF");
-                    }
-                }
-
                 var page = pdfDoc.Pages[field.PageNumber - 1];
                 float pageHeight = page.Size.Height;
-                Console.WriteLine($"[PDF FIELD CREATION] Creating field '{field.FieldName}' on page {field.PageNumber} (Page height: {pageHeight})");
                 
                 // Use appropriate coordinate system
                 float pdfY = field.Y;
@@ -2337,7 +2291,6 @@ app.MapPost("/api/update-pdf-fields", async (HttpRequest request, ILogger<Progra
 
 app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Program> logger) =>
 {
-    logger.LogWarning("🔥🔥🔥 [EXTRACT-PDF-FIELDS] ENDPOINT CALLED!!! 🔥🔥🔥");
     try
     {
         var form = await request.ReadFormAsync();
@@ -2360,12 +2313,6 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
             if (pdfDoc.Form?.Fields != null)
             {
                 logger.LogInformation($"Found {pdfDoc.Form.Fields.Count} form fields in PDF");
-
-                // Helper function to calculate page from Y coordinate using the centralized converter
-                Func<float, int> CalculatePageFromY = (yCoordinate) =>
-                {
-                    return WordToPdfConverter.Services.PdfCoordinateConverter.CalculatePageFromY(yCoordinate, pdfDoc, logger);
-                };
                 
                 foreach (PdfLoadedField field in pdfDoc.Form.Fields)
                 {
@@ -2385,9 +2332,16 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
                         height = textField.Bounds.Height;
                         tooltip = textField.ToolTip ?? "";
                         
-                        // Calculate page based on Y coordinate instead of unreliable Page property
-                        page = CalculatePageFromY(textField.Bounds.Y);
-                        logger.LogInformation($"[EXTRACT-PDF-FIELDS] Text field '{field.Name}' at Y={textField.Bounds.Y} assigned to page {page}");
+                        // Find which page this field is on
+                        fieldPage = textField.Page;
+                        for (int i = 0; i < pdfDoc.Pages.Count; i++)
+                        {
+                            if (textField.Page == pdfDoc.Pages[i])
+                            {
+                                page = i + 1;
+                                break;
+                            }
+                        }
                     }
                     else if (field is PdfLoadedCheckBoxField checkField)
                     {
@@ -2398,9 +2352,14 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
                         height = checkField.Bounds.Height;
                         tooltip = checkField.ToolTip ?? "";
                         
-                        // Calculate page based on Y coordinate instead of unreliable Page property
-                        page = CalculatePageFromY(checkField.Bounds.Y);
-                        logger.LogInformation($"[EXTRACT-PDF-FIELDS] Checkbox field '{field.Name}' at Y={checkField.Bounds.Y} assigned to page {page}");
+                        for (int i = 0; i < pdfDoc.Pages.Count; i++)
+                        {
+                            if (checkField.Page == pdfDoc.Pages[i])
+                            {
+                                page = i + 1;
+                                break;
+                            }
+                        }
                     }
                     else if (field is PdfLoadedRadioButtonListField radioField)
                     {
@@ -2415,10 +2374,6 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
                             height = firstItem.Bounds.Height;
                         }
                         tooltip = radioField.ToolTip ?? "";
-
-                        // Calculate page based on Y coordinate instead of unreliable Page property
-                        page = CalculatePageFromY(y);
-                        logger.LogInformation($"[EXTRACT-PDF-FIELDS] Radio field '{field.Name}' at Y={y} assigned to page {page}");
                     }
                     else if (field is PdfLoadedSignatureField sigField)
                     {
@@ -2429,9 +2384,14 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
                         height = sigField.Bounds.Height;
                         tooltip = "Signature field";
                         
-                        // Calculate page based on Y coordinate instead of unreliable Page property
-                        page = CalculatePageFromY(sigField.Bounds.Y);
-                        logger.LogInformation($"[EXTRACT-PDF-FIELDS] Signature field '{field.Name}' at Y={sigField.Bounds.Y} assigned to page {page}");
+                        for (int i = 0; i < pdfDoc.Pages.Count; i++)
+                        {
+                            if (sigField.Page == pdfDoc.Pages[i])
+                            {
+                                page = i + 1;
+                                break;
+                            }
+                        }
                     }
                     else if (field is PdfLoadedComboBoxField comboField)
                     {
@@ -2442,9 +2402,14 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
                         height = comboField.Bounds.Height;
                         tooltip = comboField.ToolTip ?? "";
                         
-                        // Calculate page based on Y coordinate instead of unreliable Page property
-                        page = CalculatePageFromY(comboField.Bounds.Y);
-                        logger.LogInformation($"[EXTRACT-PDF-FIELDS] Combo field '{field.Name}' at Y={comboField.Bounds.Y} assigned to page {page}");
+                        for (int i = 0; i < pdfDoc.Pages.Count; i++)
+                        {
+                            if (comboField.Page == pdfDoc.Pages[i])
+                            {
+                                page = i + 1;
+                                break;
+                            }
+                        }
                     }
                     
                     // Ensure we have valid bounds
@@ -2496,7 +2461,7 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
                         tooltip = tooltip
                     });
                     
-                    logger.LogInformation($"[EXTRACT-PDF-FIELDS] Final result: field '{fieldName}' (original: '{field.Name}') type={fieldType} at ({x:F2},{y:F2}) size={width:F2}x{height:F2} assigned to page {page} (fieldPage={fieldPage?.GetType().Name})");
+                    logger.LogInformation($"Found field '{fieldName}' (original: '{field.Name}') type={fieldType} at ({x:F2},{y:F2}) size={width:F2}x{height:F2} on page {page} (fieldPage={fieldPage?.GetType().Name})");
                 }
             }
             
@@ -2627,6 +2592,9 @@ app.MapPost("/api/pdf-page-with-field-boxes", async (HttpRequest request, ILogge
             var page = pdfDoc.Pages[pageNumber - 1];
             float pageHeight = page.Size.Height;
             
+            // PDF coordinates are in points (72 DPI), image is at 150 DPI
+            float scale = 150f / 72f;
+            
             foreach (var field in fields)
             {
                 if (field.TryGetProperty("page", out var pageElement) && pageElement.GetInt32() == pageNumber)
@@ -2641,21 +2609,15 @@ app.MapPost("/api/pdf-page-with-field-boxes", async (HttpRequest request, ILogge
                     
                     // Log received field data
                     logger.LogInformation($"Received field '{fieldName}': x={x}, y={y}, w={width}, h={height}, type={fieldType}");
-
-                    // Use PdfCoordinateConverter for consistent coordinate transformation
-                    var (displayX, displayY) = WordToPdfConverter.Services.PdfCoordinateConverter.PdfToDisplay(x, y, pageHeight);
-                    var (displayWidth, displayHeight) = WordToPdfConverter.Services.PdfCoordinateConverter.ScaleDimensions(width, height);
-
-                    // For display, Y coordinate needs to be adjusted for field height since we converted bottom-left to top-left
-                    displayY -= displayHeight;
-
-                    // Update variables with converted values
-                    x = displayX;
-                    y = displayY;
-                    width = displayWidth;
-                    height = displayHeight;
-
-                    logger.LogInformation($"Converted to display coords: x={x}, y={y}, w={width}, h={height}");
+                    
+                    // Scale to image coordinates (PDF is 72 DPI, image is 150 DPI)
+                    x = x * scale;
+                    y = y * scale;
+                    width = width * scale;
+                    height = height * scale;
+                    
+                    // Convert PDF Y coordinate (bottom-left origin) to image Y (top-left origin)
+                    y = (pageHeight * scale) - y - height;
                     
                     // Draw field rectangle with semi-transparent fill
                     using var fillPaint = new SkiaSharp.SKPaint
@@ -2819,7 +2781,7 @@ app.MapPost("/api/pdf-page-preview", async (HttpRequest request, ILogger<Program
                     if (field is PdfLoadedTextBoxField textField)
                     {
                         // Check if this field belongs to current page
-                        if (textField.Page == currentPage || (textField.Page == null && pageNumber == 1)) // Show on correct page, or page 1 if page detection failed
+                        if (textField.Page == currentPage || pageNumber == 1) // Default to page 1 if can't determine
                         {
                             isOnCurrentPage = true;
                             x = textField.Bounds.X;
@@ -2836,7 +2798,7 @@ app.MapPost("/api/pdf-page-preview", async (HttpRequest request, ILogger<Program
                     }
                     else if (field is PdfLoadedCheckBoxField checkField)
                     {
-                        if (checkField.Page == currentPage || (checkField.Page == null && pageNumber == 1))
+                        if (checkField.Page == currentPage || pageNumber == 1)
                         {
                             isOnCurrentPage = true;
                             x = checkField.Bounds.X;
@@ -2855,7 +2817,7 @@ app.MapPost("/api/pdf-page-preview", async (HttpRequest request, ILogger<Program
                     }
                     else if (field is PdfLoadedSignatureField sigField)
                     {
-                        if (sigField.Page == currentPage || (sigField.Page == null && pageNumber == 1))
+                        if (sigField.Page == currentPage || pageNumber == 1)
                         {
                             isOnCurrentPage = true;
                             x = sigField.Bounds.X;
@@ -2868,9 +2830,8 @@ app.MapPost("/api/pdf-page-preview", async (HttpRequest request, ILogger<Program
                     else if (field is PdfLoadedRadioButtonListField radioField)
                     {
                         // Radio fields might have items on different pages
-                        // Try to determine which page this radio field belongs to
-                        // For now, skip radio fields without proper page detection
-                        if (false) // TODO: Implement proper radio field page detection
+                        // For now, show on page 1
+                        if (pageNumber == 1)
                         {
                             isOnCurrentPage = true;
                             // Try to get bounds from first item
@@ -2977,17 +2938,19 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
             using var pdfStream = new MemoryStream(pdfBytes);
             using var pdfDoc = new PdfLoadedDocument(pdfStream);
             
-            // First collect all fields with their coordinates
-            var fieldList = new List<dynamic>();
-            if (pdfDoc.Form?.Fields != null)
+            // Get basic PDF info
+            tagStructure = new
             {
-                foreach (PdfLoadedField f in pdfDoc.Form.Fields)
+                success = true,
+                pageCount = pdfDoc.Pages.Count,
+                hasTaggedContent = false, // Tagged property doesn't exist in Syncfusion
+                hasForm = pdfDoc.Form?.Fields?.Count > 0,
+                formFields = (pdfDoc.Form?.Fields?.Cast<PdfLoadedField>().Select(f => 
                 {
                     string tooltip = "";
                     string fieldType = "text";
-                    string originalName = f.Name ?? "Unknown";
-                    string displayName = originalName;
-
+                    string displayName = f.Name ?? "Unknown";
+                    
                     // Extract field type from name if embedded (format: "FieldName[type]")
                     var match = System.Text.RegularExpressions.Regex.Match(displayName, @"^(.+?)\[([^\]]+)\]$");
                     if (match.Success)
@@ -2995,7 +2958,7 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                         displayName = match.Groups[1].Value;
                         fieldType = match.Groups[2].Value;
                     }
-
+                    
                     // Get tooltip and proper field type based on field class
                     if (f is PdfLoadedTextBoxField textField)
                     {
@@ -3029,195 +2992,56 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                         tooltip = "Click to add signature";
                         fieldType = "signature";
                     }
-
+                    
                     // Get field bounds and page
                     float x = 0, y = 0, width = 100, height = 20;
                     int page = 1;
                     float pageHeight = 792; // Default page height (11 inches at 72 DPI)
-
-                    // Helper to find page for any widget annotation
-                    Func<object, int> FindPageForWidget = (widget) =>
+                    
+                    // Get the actual page height for coordinate transformation
+                    if (pdfDoc.Pages.Count > 0)
                     {
+                        pageHeight = pdfDoc.Pages[0].Size.Height;
+                    }
+                    
+                    if (f is PdfLoadedTextBoxField txtField)
+                    {
+                        x = txtField.Bounds.X;
+                        // PDF coordinates are bottom-up, we need top-down for HTML
+                        y = pageHeight - txtField.Bounds.Y - txtField.Bounds.Height;
+                        width = txtField.Bounds.Width;
+                        height = txtField.Bounds.Height;
+                        // Try to get page number (this is approximate)
                         for (int i = 0; i < pdfDoc.Pages.Count; i++)
                         {
-                            var pg = pdfDoc.Pages[i];
-                            if (pg.Annotations != null)
+                            if (txtField.Page == pdfDoc.Pages[i])
                             {
-                                foreach (var annotation in pg.Annotations)
-                                {
-                                    if (annotation == widget)
-                                    {
-                                        logger.LogInformation($"[PAGE FIX] Found widget on page {i + 1}");
-                                        return i + 1;
-                                    }
-                                }
+                                page = i + 1;
+                                pageHeight = pdfDoc.Pages[i].Size.Height;
+                                // Recalculate Y with correct page height
+                                y = pageHeight - txtField.Bounds.Y - txtField.Bounds.Height;
+                                break;
                             }
-                        }
-                        logger.LogWarning($"[PAGE FIX] Widget not found in annotations, defaulting to page 1");
-                        return 1; // Default to page 1 if not found
-                    };
-
-                    // Alternative page detection using Y coordinate when widget lookup fails
-                    Func<float, int> CalculatePageFromY = (yCoordinate) =>
-                    {
-                        return WordToPdfConverter.Services.PdfCoordinateConverter.CalculatePageFromY(yCoordinate, pdfDoc, logger);
-                    };
-
-                    // Get actual page number from field widget
-                    try
-                    {
-                        if (f is PdfLoadedTextBoxField txtField && txtField.Items != null && txtField.Items.Count > 0)
-                        {
-                            var firstItem = txtField.Items[0];
-                            page = FindPageForWidget(firstItem);
-
-                            // If widget lookup failed (page=1), use Y-based calculation to determine correct page
-                            if (page == 1)
-                            {
-                                logger.LogWarning($"[PAGE FIX] Text field '{f.Name}' at Y={txtField.Bounds.Y} defaulted to page 1, using Y-coordinate fallback");
-                                page = CalculatePageFromY(txtField.Bounds.Y);
-                            }
-
-                            // Get the correct page height for this specific page
-                            if (page > 0 && page <= pdfDoc.Pages.Count)
-                            {
-                                pageHeight = pdfDoc.Pages[page - 1].Size.Height;
-                            }
-
-                            x = txtField.Bounds.X;
-                            // PDF coordinates are bottom-up, we need top-down for HTML
-                            y = pageHeight - txtField.Bounds.Y - txtField.Bounds.Height;
-                            width = txtField.Bounds.Width;
-                            height = txtField.Bounds.Height;
-                            logger.LogInformation($"[COORD DEBUG] Text field '{f.Name}' raw Y={txtField.Bounds.Y}, page={page}, converted Y={y}");
-                        }
-                        else if (f is PdfLoadedCheckBoxField chkField)
-                        {
-                            if (chkField.Items != null && chkField.Items.Count > 0)
-                            {
-                                var firstItem = chkField.Items[0];
-                                page = FindPageForWidget(firstItem);
-
-                                // If widget lookup failed (page=1), use Y-based calculation to determine correct page
-                                if (page == 1)
-                                {
-                                    logger.LogWarning($"[PAGE FIX] Checkbox '{f.Name}' at Y={chkField.Bounds.Y} defaulted to page 1, using Y-coordinate fallback");
-                                    page = CalculatePageFromY(chkField.Bounds.Y);
-                                }
-
-                                // Get the correct page height for this specific page
-                                if (page > 0 && page <= pdfDoc.Pages.Count)
-                                {
-                                    pageHeight = pdfDoc.Pages[page - 1].Size.Height;
-                                }
-                            }
-                            x = chkField.Bounds.X;
-                            // PDF coordinates are bottom-up, we need top-down for HTML
-                            y = pageHeight - chkField.Bounds.Y - chkField.Bounds.Height;
-                            width = chkField.Bounds.Width;
-                            height = chkField.Bounds.Height;
-                            logger.LogInformation($"[COORD DEBUG] Checkbox '{f.Name}' raw Y={chkField.Bounds.Y}, page={page}, converted Y={y}");
-                        }
-                        else if (f is PdfLoadedSignatureField sigField)
-                        {
-                            if (sigField.Items != null && sigField.Items.Count > 0)
-                            {
-                                var firstItem = sigField.Items[0];
-                                page = FindPageForWidget(firstItem);
-
-                                // If widget lookup failed (page=1), use Y-based calculation to determine correct page
-                                if (page == 1)
-                                {
-                                    logger.LogWarning($"[PAGE FIX] Signature field '{f.Name}' at Y={sigField.Bounds.Y} defaulted to page 1, using Y-coordinate fallback");
-                                    page = CalculatePageFromY(sigField.Bounds.Y);
-                                }
-
-                                // Get the correct page height for this specific page
-                                if (page > 0 && page <= pdfDoc.Pages.Count)
-                                {
-                                    pageHeight = pdfDoc.Pages[page - 1].Size.Height;
-                                }
-                            }
-                            x = sigField.Bounds.X;
-                            // PDF coordinates are bottom-up, we need top-down for HTML
-                            y = pageHeight - sigField.Bounds.Y - sigField.Bounds.Height;
-                            width = sigField.Bounds.Width;
-                            height = sigField.Bounds.Height;
-                        }
-                        else if (f is PdfLoadedRadioButtonListField radioField)
-                        {
-                            if (radioField.Items != null && radioField.Items.Count > 0)
-                            {
-                                var firstItem = radioField.Items[0];
-                                page = FindPageForWidget(firstItem);
-
-                                // If widget lookup failed (page=1), use Y-based calculation to determine correct page
-                                if (page == 1)
-                                {
-                                    logger.LogWarning($"[PAGE FIX] Radio button '{f.Name}' at Y={radioField.Bounds.Y} defaulted to page 1, using Y-coordinate fallback");
-                                    page = CalculatePageFromY(radioField.Bounds.Y);
-                                }
-
-                                // Get the correct page height for this specific page
-                                if (page > 0 && page <= pdfDoc.Pages.Count)
-                                {
-                                    pageHeight = pdfDoc.Pages[page - 1].Size.Height;
-                                }
-                            }
-                            x = radioField.Bounds.X;
-                            // PDF coordinates are bottom-up, we need top-down for HTML
-                            y = pageHeight - radioField.Bounds.Y - radioField.Bounds.Height;
-                            width = radioField.Bounds.Width;
-                            height = radioField.Bounds.Height;
-                        }
-                        else if (f is PdfLoadedComboBoxField comboField)
-                        {
-                            if (comboField.Items != null && comboField.Items.Count > 0)
-                            {
-                                var firstItem = comboField.Items[0];
-                                page = FindPageForWidget(firstItem);
-
-                                // If widget lookup failed (page=1), use Y-based calculation to determine correct page
-                                if (page == 1)
-                                {
-                                    logger.LogWarning($"[PAGE FIX] Combo box '{f.Name}' at Y={comboField.Bounds.Y} defaulted to page 1, using Y-coordinate fallback");
-                                    page = CalculatePageFromY(comboField.Bounds.Y);
-                                }
-
-                                // Get the correct page height for this specific page
-                                if (page > 0 && page <= pdfDoc.Pages.Count)
-                                {
-                                    pageHeight = pdfDoc.Pages[page - 1].Size.Height;
-                                }
-                            }
-                            x = comboField.Bounds.X;
-                            // PDF coordinates are bottom-up, we need top-down for HTML
-                            y = pageHeight - comboField.Bounds.Y - comboField.Bounds.Height;
-                            width = comboField.Bounds.Width;
-                            height = comboField.Bounds.Height;
-                        }
-                        else
-                        {
-                            // Unknown field type - use defaults to avoid breaking SignalR connection
-                            logger.LogWarning($"[PAGE FIX] Unknown field type '{f.GetType().Name}' for field '{f.Name}', using defaults");
-                            // Skip reflection for now to avoid casting exceptions that break Blazor
-                            page = 1; // Default page
-                            x = 0; y = 0; width = 100; height = 20; // Default position
                         }
                     }
-                    catch (Exception ex)
+                    else if (f is PdfLoadedCheckBoxField chkField)
                     {
-                        logger.LogError($"ERROR processing field {originalName}: {ex.Message}");
-                        logger.LogError($"Field type: {f?.GetType().Name}, Stack: {ex.StackTrace}");
-                        // Still add the field with default values to avoid losing it completely
-                        page = 1; // Default page
-                        x = 0; y = 0; width = 100; height = 20; // Default position
+                        x = chkField.Bounds.X;
+                        y = pageHeight - chkField.Bounds.Y - chkField.Bounds.Height;
+                        width = chkField.Bounds.Width;
+                        height = chkField.Bounds.Height;
                     }
-
-                    var fieldObj = new
+                    else if (f is PdfLoadedSignatureField sigField)
                     {
-                        originalName = originalName,
-                        displayName = displayName,
+                        x = sigField.Bounds.X;
+                        y = pageHeight - sigField.Bounds.Y - sigField.Bounds.Height;
+                        width = sigField.Bounds.Width;
+                        height = sigField.Bounds.Height;
+                    }
+                    
+                    return (object)new
+                    {
+                        name = displayName,
                         type = fieldType,
                         tooltip = tooltip,
                         page = page,
@@ -3226,197 +3050,7 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                         width = width,
                         height = height
                     };
-
-                    // Add debugging for field data sent to UI
-                    logger.LogInformation($"[EXTRACT-TAG] Field '{displayName}' (orig: '{originalName}') -> Page {page}, Type: {fieldType}, Pos: ({x:F2},{y:F2}), Size: {width:F2}x{height:F2}");
-
-                    fieldList.Add(fieldObj);
-                }
-            }
-
-            // Sort fields by page, then Y coordinate (top to bottom), then X coordinate (left to right)
-            fieldList.Sort((a, b) =>
-            {
-                // First sort by page
-                int pageCompare = a.page.CompareTo(b.page);
-                if (pageCompare != 0) return pageCompare;
-
-                // Then by Y coordinate (with tolerance for same row)
-                float yDiff = Math.Abs(a.y - b.y);
-                if (yDiff > 10) // More than 10 points difference means different row
-                {
-                    return a.y.CompareTo(b.y); // Top to bottom
-                }
-
-                // Same row, sort by X coordinate
-                return a.x.CompareTo(b.x); // Left to right
-            });
-
-            // Helper function to generate human-readable field names
-            Func<dynamic, int, int, string> GenerateHumanReadableName = (field, index, totalFields) =>
-            {
-                string baseName = field.originalName as string ?? "";
-                string fieldType = field.type as string ?? "text";
-                int page = field.page;
-                float x = field.x;
-                float y = field.y;
-
-                // First, try to use the original name if it's already human-readable
-                if (!string.IsNullOrEmpty(baseName) && !baseName.StartsWith("SF") && !baseName.Contains("502fba303ae4"))
-                {
-                    // Clean up the name but keep it readable
-                    baseName = System.Text.RegularExpressions.Regex.Replace(baseName, @"\[.*?\]$", ""); // Remove type suffix
-                    baseName = baseName.Replace("_", " ").Trim();
-
-                    // If it's a meaningful name, use it
-                    if (baseName.Length > 2 && !System.Text.RegularExpressions.Regex.IsMatch(baseName, @"^(Text|Check|Radio|Field)\d*$"))
-                    {
-                        return baseName;
-                    }
-                }
-
-                // Analyze field position and context
-                string position = "";
-                string pagePosition = page == 1 ? "Header" : $"Page {page}";
-
-                // Determine vertical position
-                if (y < 150)
-                    position = "Top";
-                else if (y > 600)
-                    position = "Bottom";
-                else
-                    position = "Middle";
-
-                // Determine horizontal position
-                if (x < 200)
-                    position += " Left";
-                else if (x > 400)
-                    position += " Right";
-                else
-                    position += " Center";
-
-                // Look for common patterns in the original name or tooltip
-                string tooltip = field.tooltip as string ?? "";
-                string nameHint = (baseName + " " + tooltip).ToLower();
-
-                // Detect common field patterns
-                if (nameHint.Contains("signature") || fieldType == "signature")
-                    return page == 1 ? "Signature" : $"Signature Page {page}";
-
-                if (nameHint.Contains("date") || nameHint.Contains("dated"))
-                    return page == 1 ? "Date" : $"Date Page {page}";
-
-                if (nameHint.Contains("email") || nameHint.Contains("e-mail"))
-                    return "Email Address";
-
-                if (nameHint.Contains("phone") || nameHint.Contains("tel"))
-                    return "Phone Number";
-
-                if (nameHint.Contains("name"))
-                {
-                    if (nameHint.Contains("first"))
-                        return "First Name";
-                    if (nameHint.Contains("last"))
-                        return "Last Name";
-                    if (nameHint.Contains("organization") || nameHint.Contains("company"))
-                        return "Organization Name";
-                    return "Full Name";
-                }
-
-                if (nameHint.Contains("address"))
-                {
-                    if (nameHint.Contains("street"))
-                        return "Street Address";
-                    if (nameHint.Contains("city"))
-                        return "City";
-                    if (nameHint.Contains("state"))
-                        return "State";
-                    if (nameHint.Contains("zip") || nameHint.Contains("postal"))
-                        return "Zip Code";
-                    return "Address";
-                }
-
-                if (nameHint.Contains("title"))
-                    return page == 1 ? "Title" : $"Title Page {page}";
-
-                if (nameHint.Contains("department") || nameHint.Contains("dept"))
-                    return "Department";
-
-                if (nameHint.Contains("contact"))
-                    return "Contact Person";
-
-                if (nameHint.Contains("amount") || nameHint.Contains("total") || nameHint.Contains("price"))
-                    return "Amount";
-
-                if (nameHint.Contains("description") || nameHint.Contains("comments") || nameHint.Contains("notes"))
-                    return "Description";
-
-                // Generate name based on field type and position
-                switch (fieldType.ToLower())
-                {
-                    case "checkbox":
-                        if (index == 0)
-                            return "Agreement Checkbox";
-                        else if (position.Contains("Bottom"))
-                            return $"Confirmation {index + 1}";
-                        else
-                            return $"Option {index + 1}";
-
-                    case "radio":
-                        return $"Selection {index + 1}";
-
-                    case "dropdown":
-                    case "listbox":
-                        return $"{position} Selection";
-
-                    case "signature":
-                        return page == 1 ? "Signature Field" : $"Signature Page {page}";
-
-                    case "date":
-                        return page == 1 ? "Date Field" : $"Date Page {page}";
-
-                    case "email":
-                        return "Email Field";
-
-                    case "phone":
-                        return "Phone Field";
-
-                    default:
-                        // For text fields, use position-based naming
-                        if (index < 5 && page == 1)
-                        {
-                            string[] commonFields = { "Organization Name", "Contact Person", "Email Address", "Phone Number", "Date Submitted" };
-                            if (index < commonFields.Length)
-                                return commonFields[index];
-                        }
-
-                        return $"{pagePosition} {position} Field";
-                }
-            };
-
-            // Now assign human-readable names with tab order
-            var formFields = fieldList.Select((field, index) => new
-            {
-                name = GenerateHumanReadableName(field, index, fieldList.Count),
-                tabOrder = index + 1, // Sequential tab order for proper navigation
-                originalName = field.originalName,
-                type = field.type,
-                tooltip = field.tooltip,
-                page = field.page,
-                x = field.x,
-                y = field.y,
-                width = field.width,
-                height = field.height
-            }).ToList();
-
-            // Get basic PDF info
-            tagStructure = new
-            {
-                success = true,
-                pageCount = pdfDoc.Pages.Count,
-                hasTaggedContent = false, // Tagged property doesn't exist in Syncfusion
-                hasForm = formFields.Count > 0,
-                formFields = formFields.Cast<object>().ToList(),
+                }).ToList()) ?? new List<object>(),
                 tagTree = new
                 {
                     type = "Document",
@@ -3600,22 +3234,11 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
         // First convert with field detection
         var (pdfBytes, fields) = await fieldService.ConvertWithConfig(fileBytes, file.FileName, config);
 
-        // Log enhanced field names that will be preserved in PDF
-        if (fields != null && fields.Count > 0)
-        {
-            logger.LogInformation($"[PASSPORT DEBUG] Processing {fields.Count} enhanced fields with human-readable names");
-            var sampleFields = fields.Take(3).ToList();
-            foreach (var field in sampleFields)
-            {
-                logger.LogInformation($"[PASSPORT FIELD] '{field.FieldName}' ({field.FieldType}) on page {field.PageNumber}");
-            }
-        }
-
-        // Then process with PassportPDF for PDF/UA compliance - PRESERVE FIELD NAMES
+        // Then process with PassportPDF for PDF/UA compliance
         try
         {
-            pdfBytes = await passportPdfService.ConvertToPdfAPreservingFieldsAsync(pdfBytes, file.FileName);
-            logger.LogInformation("PassportPDF PDF/A conversion successful with field name preservation");
+            pdfBytes = await passportPdfService.ConvertToPdfAAsync(pdfBytes, file.FileName);
+            logger.LogInformation("PassportPDF PDF/A conversion successful");
         }
         catch (Exception passportEx)
         {
