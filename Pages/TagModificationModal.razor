@@ -1150,7 +1150,7 @@
             var content = new MultipartFormDataContent();
             content.Add(new ByteArrayContent(PdfBytes), "file", "document.pdf");
             
-            var response = await client.PostAsync("http://localhost:5001/api/extract-pdf-fields", content);
+            var response = await client.PostAsync("http://localhost:5002/api/extract-pdf-fields", content);
             
             if (response.IsSuccessStatusCode)
             {

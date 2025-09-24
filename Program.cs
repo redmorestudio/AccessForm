@@ -2361,10 +2361,10 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
             {
                 logger.LogInformation($"Found {pdfDoc.Form.Fields.Count} form fields in PDF");
 
-                // Helper function to calculate page from Y coordinate using the centralized converter
-                Func<float, int> CalculatePageFromY = (yCoordinate) =>
+                // Helper function to find page containing field using proper page detection
+                Func<PdfLoadedField, int> FindFieldPage = (field) =>
                 {
-                    return WordToPdfConverter.Services.PdfCoordinateConverter.CalculatePageFromY(yCoordinate, pdfDoc, logger);
+                    return WordToPdfConverter.Services.PdfCoordinateConverter.FindPageContainingField(field, pdfDoc, logger);
                 };
                 
                 foreach (PdfLoadedField field in pdfDoc.Form.Fields)
@@ -2385,8 +2385,8 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
                         height = textField.Bounds.Height;
                         tooltip = textField.ToolTip ?? "";
                         
-                        // Calculate page based on Y coordinate instead of unreliable Page property
-                        page = CalculatePageFromY(textField.Bounds.Y);
+                        // Find page containing this field using proper page detection
+                        page = FindFieldPage(field);
                         logger.LogInformation($"[EXTRACT-PDF-FIELDS] Text field '{field.Name}' at Y={textField.Bounds.Y} assigned to page {page}");
                     }
                     else if (field is PdfLoadedCheckBoxField checkField)
@@ -2398,8 +2398,8 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
                         height = checkField.Bounds.Height;
                         tooltip = checkField.ToolTip ?? "";
                         
-                        // Calculate page based on Y coordinate instead of unreliable Page property
-                        page = CalculatePageFromY(checkField.Bounds.Y);
+                        // Find page containing this field using proper page detection
+                        page = FindFieldPage(field);
                         logger.LogInformation($"[EXTRACT-PDF-FIELDS] Checkbox field '{field.Name}' at Y={checkField.Bounds.Y} assigned to page {page}");
                     }
                     else if (field is PdfLoadedRadioButtonListField radioField)
@@ -2416,8 +2416,8 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
                         }
                         tooltip = radioField.ToolTip ?? "";
 
-                        // Calculate page based on Y coordinate instead of unreliable Page property
-                        page = CalculatePageFromY(y);
+                        // Find page containing this field using proper page detection
+                        page = FindFieldPage(field);
                         logger.LogInformation($"[EXTRACT-PDF-FIELDS] Radio field '{field.Name}' at Y={y} assigned to page {page}");
                     }
                     else if (field is PdfLoadedSignatureField sigField)
@@ -2429,8 +2429,8 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
                         height = sigField.Bounds.Height;
                         tooltip = "Signature field";
                         
-                        // Calculate page based on Y coordinate instead of unreliable Page property
-                        page = CalculatePageFromY(sigField.Bounds.Y);
+                        // Find page containing this field using proper page detection
+                        page = FindFieldPage(field);
                         logger.LogInformation($"[EXTRACT-PDF-FIELDS] Signature field '{field.Name}' at Y={sigField.Bounds.Y} assigned to page {page}");
                     }
                     else if (field is PdfLoadedComboBoxField comboField)
@@ -2442,8 +2442,8 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
                         height = comboField.Bounds.Height;
                         tooltip = comboField.ToolTip ?? "";
                         
-                        // Calculate page based on Y coordinate instead of unreliable Page property
-                        page = CalculatePageFromY(comboField.Bounds.Y);
+                        // Find page containing this field using proper page detection
+                        page = FindFieldPage(field);
                         logger.LogInformation($"[EXTRACT-PDF-FIELDS] Combo field '{field.Name}' at Y={comboField.Bounds.Y} assigned to page {page}");
                     }
                     
