@@ -94,14 +94,16 @@ namespace WordToPdfConverter.Services
             {
                 using var pdfStream = new MemoryStream(pdfBytes);
                 using var pdfDocument = new PdfLoadedDocument(pdfStream);
-                
+
                 int pagesToProcess = Math.Min(pdfDocument.Pages.Count, maxPages);
-                _logger.LogInformation($"Processing {pagesToProcess} pages with Claude Vision");
+                _logger.LogWarning($"🔍 [CLAUDE-VISION-PAGES] PDF has {pdfDocument.Pages.Count} total pages, processing {pagesToProcess} pages");
+                _logger.LogWarning($"🔍 [CLAUDE-VISION-PAGES] maxPages parameter = {maxPages}");
                 
                 for (int pageIndex = 0; pageIndex < pagesToProcess; pageIndex++)
                 {
                     try
                     {
+                        _logger.LogWarning($"🔍 [CLAUDE-VISION-PAGE-{pageIndex + 1}] Starting analysis of page {pageIndex + 1} of {pagesToProcess}");
                         _logger.LogInformation($"Converting page {pageIndex + 1} to image for vision analysis");
                         
                         // Convert PDF page to image
@@ -112,8 +114,14 @@ namespace WordToPdfConverter.Services
                             // Send to Claude Vision for analysis
                             var pageResult = await AnalyzePageImage(imageBytes, pageIndex + 1, documentMarkdown);
                             results.Add(pageResult);
-                            
-                            _logger.LogInformation($"Page {pageIndex + 1}: Detected {pageResult.Fields.Count} fields visually");
+
+                            _logger.LogWarning($"🔍 [CLAUDE-VISION-PAGE-{pageIndex + 1}] RESULT: Detected {pageResult.Fields.Count} fields on page {pageIndex + 1}");
+
+                            // Log each field detected on this page
+                            foreach (var field in pageResult.Fields)
+                            {
+                                _logger.LogWarning($"🔍 [CLAUDE-VISION-FIELD] '{field.FieldName}' (type: {field.FieldType}) assigned to PAGE {field.PageNumber}");
+                            }
                         }
                         else
                         {
@@ -131,13 +139,19 @@ namespace WordToPdfConverter.Services
                         });
                     }
                 }
+                // Log summary of all pages processed
+                var totalFields = results.SelectMany(r => r.Fields).Count();
+                var fieldsByPage = results.Select(r => $"Page {r.PageNumber}: {r.Fields.Count} fields").ToList();
+                _logger.LogWarning($"🔍 [CLAUDE-VISION-SUMMARY] Total pages processed: {results.Count}");
+                _logger.LogWarning($"🔍 [CLAUDE-VISION-SUMMARY] Total fields detected: {totalFields}");
+                _logger.LogWarning($"🔍 [CLAUDE-VISION-SUMMARY] Breakdown: {string.Join(", ", fieldsByPage)}");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to analyze PDF with vision");
                 throw;
             }
-            
+
             return results;
         }
 
@@ -385,11 +399,16 @@ namespace WordToPdfConverter.Services
         /// </summary>
         private async Task<VisualFieldDetectionResult> AnalyzePageImage(byte[] imageBytes, int pageNumber, string documentMarkdown = null)
         {
+            _logger.LogWarning($"🔍 [CLAUDE-VISION-ANALYZE] AnalyzePageImage called with pageNumber = {pageNumber}");
+            _logger.LogWarning($"🔍 [CLAUDE-VISION-ANALYZE] Image size: {imageBytes.Length} bytes");
+
             var result = new VisualFieldDetectionResult
             {
                 PageNumber = pageNumber,
                 Success = false
             };
+
+            _logger.LogWarning($"🔍 [CLAUDE-VISION-ANALYZE] VisualFieldDetectionResult.PageNumber set to {result.PageNumber}");
             
             try
             {
@@ -568,6 +587,9 @@ IMPORTANT: Use the document context above to accurately name fields. For example
                 {
                     try
                     {
+                        _logger.LogWarning($"🔍 [CLAUDE-VISION-API-REQUEST] Page {pageNumber}: Sending request to Claude Vision API");
+                        _logger.LogWarning($"🔍 [CLAUDE-VISION-API-REQUEST] Request body size: {JsonSerializer.Serialize(requestBody).Length} chars");
+
                         var request = new HttpRequestMessage(HttpMethod.Post, "https://api.anthropic.com/v1/messages");
                         request.Headers.Add("x-api-key", _apiKey);
                         request.Headers.Add("anthropic-version", "2023-06-01");
@@ -576,9 +598,12 @@ IMPORTANT: Use the document context above to accurately name fields. For example
                             System.Text.Encoding.UTF8,
                             "application/json"
                         );
-                        
+
+                        _logger.LogWarning($"🔍 [CLAUDE-VISION-API-SEND] Page {pageNumber}: Sending HTTP request...");
                         response = await _httpClient.SendAsync(request);
                         responseContent = await response.Content.ReadAsStringAsync();
+
+                        _logger.LogWarning($"🔍 [CLAUDE-VISION-API-RESPONSE] Page {pageNumber}: Status={response.StatusCode}, Content length={responseContent.Length}");
                         break; // Success, exit retry loop
                     }
                     catch (HttpRequestException httpEx) when (retryCount < maxRetries - 1)
@@ -605,6 +630,16 @@ IMPORTANT: Use the document context above to accurately name fields. For example
                     result.Fields = ParseVisionResponse(content, pageNumber);
                     result.Success = true;
 
+                    _logger.LogWarning($"🔍 [CLAUDE-VISION-FINAL-RESULT] Page {pageNumber}: Detected {result.Fields.Count} fields");
+                    if (result.Fields.Count == 0)
+                    {
+                        _logger.LogWarning($"🔍 [CLAUDE-VISION-ZERO-FIELDS] Page {pageNumber}: NO FIELDS DETECTED - Investigation needed!");
+                        _logger.LogWarning($"🔍 [CLAUDE-VISION-ZERO-FIELDS] Content length: {content?.Length ?? 0} chars");
+                        if (!string.IsNullOrEmpty(content))
+                        {
+                            _logger.LogWarning($"🔍 [CLAUDE-VISION-ZERO-FIELDS] First 500 chars: {content.Substring(0, Math.Min(500, content.Length))}");
+                        }
+                    }
                     _logger.LogInformation($"Claude Vision detected {result.Fields.Count} fields on page {pageNumber}");
                 }
                 else
