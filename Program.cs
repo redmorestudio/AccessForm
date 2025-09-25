@@ -69,6 +69,9 @@ builder.Services.AddScoped<WordToPdfConverter.Services.ClaudeBoundingBoxValidato
 builder.Services.AddScoped<WordToPdfConverter.Services.MultiSourceFieldCombiner>();
 builder.Services.AddScoped<WordToPdfConverter.Services.FieldTypeDetector>();
 
+// Add document preprocessing service for invisible text removal
+builder.Services.AddScoped<WordToPdfConverter.Services.DocumentPreprocessingService>();
+
 // Add AI services
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<CostTrackingService>();
@@ -235,7 +238,7 @@ app.MapGet("/api/accessibility-reports", () =>
 });
 
 // Add API endpoint for Word to PDF conversion with DUAL output (normal + accessible)
-app.MapPost("/api/convert", async (HttpRequest request, AccessibilityService accessibilityService, AccessibilityRetrofitService retrofitService, PdfAccessibilityEnhancer enhancer) =>
+app.MapPost("/api/convert", async (HttpRequest request, AccessibilityService accessibilityService, AccessibilityRetrofitService retrofitService, PdfAccessibilityEnhancer enhancer, WordToPdfConverter.Services.DocumentPreprocessingService preprocessingService) =>
 {
     try
     {
@@ -425,10 +428,48 @@ app.MapPost("/api/convert", async (HttpRequest request, AccessibilityService acc
         using var outputStream = new MemoryStream();
         pdfDoc.Save(outputStream);
         
+        // STEP 1: Apply document preprocessing to remove invisible text and problematic fonts
+        Console.WriteLine("\n🧹 APPLYING DOCUMENT PREPROCESSING...");
+        var preprocessingResult = await preprocessingService.PreprocessDocumentAsync(outputStream.ToArray());
+
+        if (!preprocessingResult.Success)
+        {
+            Console.WriteLine($"⚠️ Preprocessing failed: {preprocessingResult.ErrorMessage}");
+            Console.WriteLine("Continuing with original PDF...");
+        }
+        else
+        {
+            Console.WriteLine($"✅ Preprocessing completed successfully!");
+            Console.WriteLine($"Issues found: {preprocessingResult.InvisibleTextInstancesRemoved}");
+            Console.WriteLine($"Actions performed: {preprocessingResult.ProblematicFontsReplaced}");
+
+            if (preprocessingResult.IssuesFound.Count > 0)
+            {
+                Console.WriteLine("Issues detected:");
+                foreach (var issue in preprocessingResult.IssuesFound.Take(5)) // Show first 5
+                {
+                    Console.WriteLine($"  - {issue}");
+                }
+                if (preprocessingResult.IssuesFound.Count > 5)
+                {
+                    Console.WriteLine($"  ... and {preprocessingResult.IssuesFound.Count - 5} more");
+                }
+            }
+
+            // Use the preprocessed PDF if successful
+            if (preprocessingResult.ProcessedPdfBytes != null)
+            {
+                outputStream.SetLength(0);
+                outputStream.Position = 0;
+                await outputStream.WriteAsync(preprocessingResult.ProcessedPdfBytes);
+                Console.WriteLine($"✅ Using preprocessed PDF ({preprocessingResult.ProcessedPdfBytes.Length} bytes)");
+            }
+        }
+
         // Process with loaded document for form field enhancements
         outputStream.Position = 0;
         using var loadedPdf = new PdfLoadedDocument(outputStream);
-        
+
         // Initialize field processing data tracking
         Console.WriteLine("\n🔍 Initializing field processing data tracking...");
         var fieldProcessingData = new WordToPdfConverter.Models.FieldProcessingData();

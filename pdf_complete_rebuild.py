@@ -488,7 +488,74 @@ class PDFCompleteRebuilder:
             fitz.PDF_WIDGET_TYPE_BUTTON: 'button'
         }
         return type_map.get(widget_type, 'text')
-    
+
+    def get_unicode_replacement(self, text, font_name):
+        """Enhanced character replacement with best-guess mapping for unknown characters"""
+        # Known ZapfDingbats mappings
+        zapf_mappings = {
+            'q': '☐',      # Empty checkbox
+            '\x71': '☐',   # Empty checkbox (hex)
+            '4': '☑',      # Checked checkbox
+            '\x34': '☑',   # Checked checkbox (hex)
+            'o': '□',      # Square
+            '\x6f': '□',   # Square (hex)
+            'n': '✓',      # Checkmark
+            '\x6E': '✓',   # Checkmark (hex)
+            'l': '●',      # Filled circle (radio selected)
+            '\x6C': '●',   # Filled circle (hex)
+            'm': '○',      # Empty circle (radio unselected)
+            '\x6D': '○',   # Empty circle (hex)
+            # Additional common mappings
+            'a': '✁',      # Scissors
+            'b': '✂',      # Scissors (solid)
+            'c': '✃',      # Lower blade scissors
+            'd': '✄',      # Upper blade scissors
+            'e': '☎',      # Telephone
+            'f': '✆',      # Telephone (solid)
+            'g': '✇',      # Tape drive
+            'h': '✈',      # Airplane
+            'i': '✉',      # Envelope
+            'j': '✊',      # Victory hand
+            'k': '✋',      # Raised hand
+            'u': '◆',      # Diamond
+            'v': '◇',      # Diamond outline
+            'w': '★',      # Star
+            'x': '☆',      # Star outline
+            'y': '♠',      # Spade
+            'z': '♣',      # Club
+        }
+
+        for char in text:
+            if char in zapf_mappings:
+                return zapf_mappings[char]
+
+        # Special handling for invisible fonts - replace ALL text with empty string
+        if 'invisible' in font_name.lower():
+            return ''  # Remove invisible text entirely
+
+        # Best-guess replacement for unknown characters
+        for char in text:
+            if char == ' ':
+                continue
+
+            # ASCII range analysis for best guess
+            ascii_val = ord(char)
+
+            if 32 <= ascii_val <= 47:  # Punctuation/symbols
+                return '□'
+            elif 48 <= ascii_val <= 57:  # Digits - likely decorative
+                return '○'
+            elif 65 <= ascii_val <= 90:  # Uppercase - likely filled shapes
+                return '■'
+            elif 97 <= ascii_val <= 122:  # Lowercase - likely outline shapes
+                return '□'
+            elif ascii_val > 127:  # Extended ASCII - unknown
+                return '?'
+            else:
+                return '?'  # Fallback for unknown
+
+        return None  # No replacement needed
+
     def replace_problematic_fonts(self, doc: fitz.Document) -> None:
         """Note problematic fonts - Adobe will handle the actual replacement"""
         logger.info("=== CHECKING FOR PROBLEMATIC FONTS ===")
@@ -502,7 +569,9 @@ class PDFCompleteRebuilder:
                 fonts = page.get_fonts()
                 for font in fonts:
                     font_name = font[3]
-                    if any(problem in font_name for problem in ['Arial', 'ZapfDingbats', 'Symbol']):
+                    # Enhanced problematic font detection including invisible fonts
+                    problematic_patterns = ['Arial', 'ZapfDingbats', 'Symbol', 'invisible', 'Wingdings', 'Webdings', 'Marlett']
+                    if any(problem.lower() in font_name.lower() for problem in problematic_patterns):
                         problematic_fonts.add(font_name)
                         logger.info(f"Page {page_num}: Found problematic font '{font_name}'")
             
@@ -600,9 +669,9 @@ class PDFCompleteRebuilder:
             except Exception as e:
                 logger.warning(f"Could not check fonts: {e}")
             
-            # Replace ZapfDingbats checkbox characters with Unicode equivalents
-            # This is a workaround - we'll redact and replace the ZapfDingbats characters
-            logger.info("=== STARTING ZAPFDINGBATS REPLACEMENT ===")
+            # Replace ZapfDingbats and other problematic font characters with Unicode equivalents
+            # This is a workaround - we'll redact and replace the problematic characters
+            logger.info("=== STARTING PROBLEMATIC FONT CHARACTER REPLACEMENT ===")
             try:
                 zapf_replacements = []
                 zapf_widgets_cleaned = 0
@@ -633,23 +702,19 @@ class PDFCompleteRebuilder:
                         for line in block.get("lines", []):
                             for span in line.get("spans", []):
                                 font = span.get("font", "")
-                                if "ZapfDingbats" in font:
+                                # Check for any problematic font patterns including invisible fonts
+                                is_problematic_font = any(pattern.lower() in font.lower()
+                                                        for pattern in ['ZapfDingbats', 'Symbol', 'invisible', 'Wingdings', 'Webdings', 'Marlett'])
+                                if is_problematic_font:
                                     bbox = span.get("bbox", None)
                                     if bbox:
                                         # Get the actual character
                                         text = span.get("text", "")
-                                        # Map ZapfDingbats codes to Unicode
-                                        # In ZapfDingbats: q = empty box, 4 = checkmark
-                                        replacement = None
-                                        if 'q' in text or '\x71' in text:  # hex 71 = 'q'
-                                            replacement = '☐'  # Empty checkbox
-                                        elif '4' in text or '\x34' in text:  # hex 34 = '4'
-                                            replacement = '☑'  # Checked checkbox
-                                        elif 'o' in text or '\x6f' in text:  # hex 6f = 'o'
-                                            replacement = '□'  # Square
+                                        # Enhanced mapping for problematic font characters to Unicode
+                                        replacement = self.get_unicode_replacement(text, font)
                                         
                                         if replacement:
-                                            logger.info(f"Found ZapfDingbats '{text}' at page {page_num}, bbox {bbox}")
+                                            logger.info(f"Found problematic font character '{text}' in font '{font}' at page {page_num}, bbox {bbox}")
                                             zapf_replacements.append({
                                                 'page': page_num,
                                                 'bbox': bbox,

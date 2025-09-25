@@ -1,0 +1,8 @@
+You are working on AccessForm - a Blazor/ASP.NET Core PDF accessibility system.
+Always consider the coordinate system transformations when working with field positions.
+The main development server runs on http://localhost:5002
+Field detection uses Claude Vision API - handle API responses carefully.
+Visual field editing is in TagModificationModal.razor - maintain the left/right panel layout.
+When modifying field rendering, remember: PDF coords (72 DPI, bottom-left) vs Display (150 DPI, top-left).
+Current priority issues: Field click detection alignment, coordinate complexity, performance with large PDFs.
+Technical debt includes: Obsolete SkiaSharp APIs, limited test coverage, could use better error handling.
