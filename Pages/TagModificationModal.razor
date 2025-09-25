@@ -128,19 +128,19 @@
                                         rowIndex++;
                                         var isSelected = SelectedField == field;
                                         <tr class="@(isSelected ? "table-primary" : "")" 
-                                            @onclick="() => SelectField(field)"
+                                            @onclick="async () => await SelectField(field)"
                                             style="cursor: pointer;">
                                             <td class="text-muted">@field.OriginalIndex</td>
                                             <td>
                                                 <input type="text" class="form-control form-control-sm @(isSelected ? "border-primary" : "")" 
                                                        @bind="field.Name" 
-                                                       @onfocus="() => SelectField(field)"
+                                                       @onfocus="async () => await SelectField(field)"
                                                        @onclick:stopPropagation="true" />
                                             </td>
                                             <td>
                                                 <select class="form-select form-select-sm @(isSelected ? "border-primary" : "")" 
                                                         @bind="field.Type"
-                                                        @onfocus="() => SelectField(field)"
+                                                        @onfocus="async () => await SelectField(field)"
                                                         @onclick:stopPropagation="true">
                                                     @foreach (var type in FieldTypes)
                                                     {
@@ -154,7 +154,7 @@
                                                        @bind:event="oninput"
                                                        @onkeypress="@(async (e) => await HandleFieldKeyPress(e))"
                                                        step="1" min="10" max="500"
-                                                       @onfocus="() => SelectField(field)"
+                                                       @onfocus="async () => await SelectField(field)"
                                                        @onclick:stopPropagation="true" />
                                             </td>
                                             <td>
@@ -163,16 +163,23 @@
                                                        @bind:event="oninput"
                                                        @onkeypress="@(async (e) => await HandleFieldKeyPress(e))"
                                                        step="1" min="10" max="100"
-                                                       @onfocus="() => SelectField(field)"
+                                                       @onfocus="async () => await SelectField(field)"
                                                        @onclick:stopPropagation="true" />
                                             </td>
                                             <td>
                                                 <input type="text" class="form-control form-control-sm @(isSelected ? "border-primary" : "")" 
                                                        @bind="field.Tooltip"
-                                                       @onfocus="() => SelectField(field)"
+                                                       @onfocus="async () => await SelectField(field)"
                                                        @onclick:stopPropagation="true" />
                                             </td>
-                                            <td class="text-center">@field.Page</td>
+                                            <td>
+                                                <input type="number" class="form-control form-control-sm @(isSelected ? "border-primary" : "")"
+                                                       @bind="field.Page"
+                                                       @bind:event="oninput"
+                                                       step="1" min="1" max="@TotalPages"
+                                                       @onfocus="async () => await SelectField(field)"
+                                                       @onclick:stopPropagation="true" />
+                                            </td>
                                             <td>
                                                 <button class="btn btn-sm btn-danger" 
                                                         @onclick="() => DeleteField(field)"
@@ -247,10 +254,21 @@
                                     <div class="col-md-3">
                                         <div class="mb-2">
                                             <label class="form-label small">Height</label>
-                                            <input type="number" class="form-control" 
+                                            <input type="number" class="form-control"
                                                    value="@SelectedField.Height"
                                                    @oninput="async (e) => { SelectedField.Height = float.Parse(e.Value?.ToString() ?? SelectedField.Height.ToString()); StateHasChanged(); }"
                                                    step="2" min="10" max="100" />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-2">
+                                            <label class="form-label small">Page Number</label>
+                                            <input type="number" class="form-control"
+                                                   @bind="SelectedField.Page"
+                                                   @bind:event="oninput"
+                                                   step="1" min="1" max="@TotalPages" />
                                         </div>
                                     </div>
                                 </div>
@@ -337,87 +355,6 @@
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     
-    .field-overlay {
-        position: absolute;
-        border: 2px solid;
-        background: rgba(255, 255, 255, 0.1);
-        cursor: move;
-        transition: opacity 0.2s;
-        user-select: none;
-    }
-    
-    .field-overlay:hover {
-        opacity: 0.8;
-        z-index: 100;
-    }
-    
-    .field-overlay.selected {
-        z-index: 200;
-        box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.3);
-    }
-    
-    .field-overlay.field-text {
-        border-color: #17a2b8;
-        background: rgba(23, 162, 184, 0.15);
-    }
-    
-    .field-overlay.field-checkbox {
-        border-color: #28a745;
-        background: rgba(40, 167, 69, 0.15);
-    }
-    
-    .field-overlay.field-date {
-        border-color: #ffc107;
-        background: rgba(255, 193, 7, 0.15);
-    }
-    
-    .field-overlay.field-signature {
-        border-color: #dc3545;
-        background: rgba(220, 53, 69, 0.15);
-    }
-    
-    .field-overlay.field-email {
-        border-color: #6c757d;
-        background: rgba(108, 117, 125, 0.15);
-    }
-    
-    .field-overlay.field-phone {
-        border-color: #6f42c1;
-        background: rgba(111, 66, 193, 0.15);
-    }
-    
-    .field-label {
-        position: absolute;
-        top: -20px;
-        left: 0;
-        font-size: 11px;
-        background: white;
-        padding: 2px 4px;
-        border-radius: 2px;
-        white-space: nowrap;
-        pointer-events: none;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.2);
-    }
-    
-    .resize-handle {
-        position: absolute;
-        width: 8px;
-        height: 8px;
-        background: white;
-        border: 1px solid #333;
-        display: none;
-    }
-    
-    .field-overlay:hover .resize-handle,
-    .field-overlay.selected .resize-handle {
-        display: block;
-    }
-    
-    .resize-handle-se {
-        right: -4px;
-        bottom: -4px;
-        cursor: nwse-resize;
-    }
     
     .fields-panel {
         height: 400px;
@@ -493,16 +430,8 @@
     private List<EditableField> CurrentPageFields = new List<EditableField>();
     private double ImageScale = 1.0;
     
-    // Drag and resize state
+    // Field selection state
     private EditableField SelectedField = null;
-    private bool IsDragging = false;
-    private bool IsResizing = false;
-    private double DragStartX = 0;
-    private double DragStartY = 0;
-    private double FieldStartX = 0;
-    private double FieldStartY = 0;
-    private double FieldStartWidth = 0;
-    private double FieldStartHeight = 0;
     
     // Sorting state
     private string sortBy = "original";
@@ -687,7 +616,8 @@
                 x = f.X,
                 y = f.Y,
                 width = f.Width,
-                height = f.Height
+                height = f.Height,
+                isSelected = SelectedField != null && SelectedField == f
             }).ToList();
             
             var fieldsJson = System.Text.Json.JsonSerializer.Serialize(fieldsForJson);
@@ -867,83 +797,19 @@
         };
     }
     
-    private void SelectField(EditableField field)
+    private async Task SelectField(EditableField field)
     {
         SelectedField = field;
+
+        // If field boxes are currently shown, refresh to highlight the selected field
+        if (ShowFieldBoxes)
+        {
+            await LoadPageWithFieldBoxes(CurrentPage);
+        }
+
         StateHasChanged();
     }
     
-    private async Task StartDrag(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, EditableField field)
-    {
-        IsDragging = true;
-        SelectedField = field;
-        DragStartX = e.ClientX;
-        DragStartY = e.ClientY;
-        FieldStartX = field.X;
-        FieldStartY = field.Y;
-        
-        // Register mouse move and up handlers via JavaScript
-        await JSRuntime.InvokeVoidAsync("startFieldDrag", 
-            DotNetObjectReference.Create(this), field.Name);
-    }
-    
-    private async Task StartResize(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, EditableField field)
-    {
-        IsResizing = true;
-        SelectedField = field;
-        DragStartX = e.ClientX;
-        DragStartY = e.ClientY;
-        FieldStartWidth = field.Width;
-        FieldStartHeight = field.Height;
-        
-        // Register mouse move and up handlers via JavaScript
-        await JSRuntime.InvokeVoidAsync("startFieldResize", 
-            DotNetObjectReference.Create(this), field.Name);
-    }
-    
-    [JSInvokable]
-    public void UpdateFieldPosition(double deltaX, double deltaY)
-    {
-        if (IsDragging && SelectedField != null)
-        {
-            SelectedField.X = (float)(FieldStartX + deltaX / ImageScale);
-            SelectedField.Y = (float)(FieldStartY + deltaY / ImageScale);
-            
-            // Ensure field stays within bounds
-            SelectedField.X = Math.Max(0, SelectedField.X);
-            SelectedField.Y = Math.Max(0, SelectedField.Y);
-            
-            StateHasChanged();
-        }
-    }
-    
-    [JSInvokable]
-    public void UpdateFieldSize(double deltaX, double deltaY)
-    {
-        if (IsResizing && SelectedField != null)
-        {
-            SelectedField.Width = (float)(FieldStartWidth + deltaX / ImageScale);
-            SelectedField.Height = (float)(FieldStartHeight + deltaY / ImageScale);
-            
-            // Minimum size constraints
-            SelectedField.Width = Math.Max(20, SelectedField.Width);
-            SelectedField.Height = Math.Max(10, SelectedField.Height);
-            
-            StateHasChanged();
-        }
-    }
-    
-    [JSInvokable]
-    public async Task EndDragOrResize()
-    {
-        IsDragging = false;
-        IsResizing = false;
-        
-        // Update the PDF preview with the new field positions/sizes
-        await UpdatePdfPreview();
-        
-        StateHasChanged();
-    }
     
     private void DeleteField(EditableField field)
     {

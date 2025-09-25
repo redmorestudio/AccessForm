@@ -1822,15 +1822,20 @@
                 
                 // Convert updated fields to the format expected by the API
                 // We need to map from the current field names to the new names
-                // IMPORTANT: Do NOT send positions - we want to keep Syncfusion's original positions
+                // NOW INCLUDING PAGE NUMBERS to fix pagination issues
                 var fieldUpdates = updatedFields.Select(f => new
                 {
                     OriginalName = f.OriginalName ?? f.Name, // Use OriginalName if available, otherwise current Name
                     NewName = f.Name,
                     FieldType = f.Type,
                     Tooltip = f.Tooltip,
-                    IsRequired = f.IsRequired
-                    // DO NOT SEND X, Y, Width, Height - keep original positions from PDF
+                    IsRequired = f.IsRequired,
+                    PageNumber = f.Page, // CRITICAL: Include page number to fix pagination
+                    // Include coordinates so they can be updated if page changes
+                    X = f.X,
+                    Y = f.Y,
+                    Width = f.Width,
+                    Height = f.Height
                 }).ToList();
                 
                 var fieldsJson = System.Text.Json.JsonSerializer.Serialize(fieldUpdates);

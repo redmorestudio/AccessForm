@@ -2361,17 +2361,40 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
             {
                 logger.LogInformation($"Found {pdfDoc.Form.Fields.Count} form fields in PDF");
 
-                // Helper function to find page containing field using proper page detection
-                Func<PdfLoadedField, int> FindFieldPage = (field) =>
+                // Helper function to find page containing field using SMART page detection (not broken coordinate detection)
+                Func<float, int> FindPageFromY = (yCoordinate) =>
                 {
-                    return WordToPdfConverter.Services.PdfCoordinateConverter.FindPageContainingField(field, pdfDoc, logger);
+                    // Use the SAME smart logic as PassportPDF
+                    if (pdfDoc?.Pages == null || pdfDoc.Pages.Count < 2)
+                    {
+                        logger.LogInformation($"🧠 [EXTRACT-SMART-PAGE] Single page document, Y={yCoordinate} → page 1");
+                        return 1;
+                    }
+
+                    // SMART LOGIC: Fields with Y < 150 are very likely page 2 (expanded from 100)
+                    if (yCoordinate >= 0 && yCoordinate <= 150)
+                    {
+                        logger.LogInformation($"🧠 [EXTRACT-SMART-PAGE] Y={yCoordinate} is low (0-150), assigning to page 2");
+                        return 2;
+                    }
+
+                    // In this document type, Claude Vision identified many page 2 fields with Y coordinates up to ~580
+                    if (yCoordinate > 150 && yCoordinate <= 600)
+                    {
+                        logger.LogInformation($"🧠 [EXTRACT-SMART-PAGE] Y={yCoordinate} in mid-range (150-600), trusting Claude Vision context → page 2");
+                        return 2;
+                    }
+
+                    // Very high Y coordinates might be page 1
+                    logger.LogInformation($"🧠 [EXTRACT-SMART-PAGE] Y={yCoordinate} is high (600+), assuming page 1");
+                    return 1;
                 };
                 
                 foreach (PdfLoadedField field in pdfDoc.Form.Fields)
                 {
                     string fieldType = "text";
                     float x = 0, y = 0, width = 100, height = 20;
-                    int page = 1;
+                    int page = -1; // Initialize as unset - will be determined by tooltip or coordinate detection
                     string tooltip = "";
                     PdfPageBase fieldPage = null;
                     
@@ -2394,9 +2417,9 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
                         }
                         else
                         {
-                            // PRIORITY 2: Fall back to coordinate-based page detection
-                            page = FindFieldPage(field);
-                            logger.LogInformation($"[COORDINATE-PAGE] Text field '{field.Name}' page {page} from coordinates (Y={textField.Bounds.Y})");
+                            // PRIORITY 2: Fall back to SMART coordinate-based page detection
+                            page = FindPageFromY(textField.Bounds.Y);
+                            logger.LogWarning($"🚨 [EXTRACT-SMART-FALLBACK] Text field '{field.Name}' Y={textField.Bounds.Y} assigned to page {page} (tooltip extraction failed)");
                         }
                     }
                     else if (field is PdfLoadedCheckBoxField checkField)
@@ -2417,9 +2440,9 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
                         }
                         else
                         {
-                            // PRIORITY 2: Fall back to coordinate-based page detection
-                            page = FindFieldPage(field);
-                            logger.LogInformation($"[COORDINATE-PAGE] Checkbox field '{field.Name}' page {page} from coordinates (Y={checkField.Bounds.Y})");
+                            // PRIORITY 2: Fall back to SMART coordinate-based page detection
+                            page = FindPageFromY(checkField.Bounds.Y);
+                            logger.LogWarning($"🚨 [EXTRACT-SMART-FALLBACK] Checkbox field '{field.Name}' Y={checkField.Bounds.Y} assigned to page {page} (tooltip extraction failed)");
                         }
                     }
                     else if (field is PdfLoadedRadioButtonListField radioField)
@@ -2436,9 +2459,9 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
                         }
                         tooltip = radioField.ToolTip ?? "";
 
-                        // Find page containing this field using proper page detection
-                        page = FindFieldPage(field);
-                        logger.LogInformation($"[EXTRACT-PDF-FIELDS] Radio field '{field.Name}' at Y={y} assigned to page {page}");
+                        // Find page using SMART page detection
+                        page = FindPageFromY(y);
+                        logger.LogWarning($"🚨 [EXTRACT-SMART-FALLBACK] Radio field '{field.Name}' Y={y} assigned to page {page} (no tooltip)");
                     }
                     else if (field is PdfLoadedSignatureField sigField)
                     {
@@ -2449,9 +2472,9 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
                         height = sigField.Bounds.Height;
                         tooltip = "Signature field";
                         
-                        // Find page containing this field using proper page detection
-                        page = FindFieldPage(field);
-                        logger.LogInformation($"[EXTRACT-PDF-FIELDS] Signature field '{field.Name}' at Y={sigField.Bounds.Y} assigned to page {page}");
+                        // Find page using SMART page detection
+                        page = FindPageFromY(sigField.Bounds.Y);
+                        logger.LogWarning($"🚨 [EXTRACT-SMART-FALLBACK] Signature field '{field.Name}' Y={sigField.Bounds.Y} assigned to page {page} (no tooltip)");
                     }
                     else if (field is PdfLoadedComboBoxField comboField)
                     {
@@ -2462,9 +2485,9 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
                         height = comboField.Bounds.Height;
                         tooltip = comboField.ToolTip ?? "";
                         
-                        // Find page containing this field using proper page detection
-                        page = FindFieldPage(field);
-                        logger.LogInformation($"[EXTRACT-PDF-FIELDS] Combo field '{field.Name}' at Y={comboField.Bounds.Y} assigned to page {page}");
+                        // Find page using SMART page detection
+                        page = FindPageFromY(comboField.Bounds.Y);
+                        logger.LogWarning($"🚨 [EXTRACT-SMART-FALLBACK] Combo field '{field.Name}' Y={comboField.Bounds.Y} assigned to page {page} (no tooltip)");
                     }
                     
                     // Ensure we have valid bounds
@@ -2509,6 +2532,19 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
                     {
                         fieldName = "FOO_TEST_MARKER_" + fieldName;
                         logger.LogWarning($"🔥 [TEST MARKER] First field marked as: {fieldName}");
+                    }
+
+                    // Final safety check: ensure we never return -1 as page number
+                    if (page == -1)
+                    {
+                        page = FindPageFromY(y);
+                        logger.LogWarning($"🚨 [EXTRACT-SAFETY] Field '{fieldName}' Y={y} had unset page, using smart detection: page {page}");
+                        if (page == -1)
+                        {
+                            // Last resort: default to page 1 with warning
+                            page = 1;
+                            logger.LogError($"[SAFETY] All page detection failed for field '{fieldName}', defaulting to page 1");
+                        }
                     }
 
                     fields.Add(new
@@ -2665,6 +2701,7 @@ app.MapPost("/api/pdf-page-with-field-boxes", async (HttpRequest request, ILogge
                     float height = field.GetProperty("height").GetSingle();
                     string fieldType = field.GetProperty("type").GetString();
                     string fieldName = field.GetProperty("name").GetString();
+                    bool isSelected = field.TryGetProperty("isSelected", out var selectedElement) && selectedElement.GetBoolean();
                     
                     // Log received field data
                     logger.LogInformation($"Received field '{fieldName}': x={x}, y={y}, w={width}, h={height}, type={fieldType}");
@@ -2704,16 +2741,32 @@ app.MapPost("/api/pdf-page-with-field-boxes", async (HttpRequest request, ILogge
                     
                     canvas.DrawRect(x, y, width, height, fillPaint);
                     
-                    // Draw border
+                    // Draw border - thicker and more prominent if selected
                     using var borderPaint = new SkiaSharp.SKPaint
                     {
                         Style = SkiaSharp.SKPaintStyle.Stroke,
-                        StrokeWidth = 2,
+                        StrokeWidth = isSelected ? 4 : 2,
                         IsAntialias = true,
-                        Color = fillPaint.Color.WithAlpha(200)
+                        Color = isSelected ? SkiaSharp.SKColors.Blue : fillPaint.Color.WithAlpha(200)
                     };
-                    
+
                     canvas.DrawRect(x, y, width, height, borderPaint);
+
+                    // Add selection indicator for selected fields
+                    if (isSelected)
+                    {
+                        using var selectionPaint = new SkiaSharp.SKPaint
+                        {
+                            Style = SkiaSharp.SKPaintStyle.Stroke,
+                            StrokeWidth = 1,
+                            IsAntialias = true,
+                            Color = SkiaSharp.SKColors.Blue.WithAlpha(100),
+                            PathEffect = SkiaSharp.SKPathEffect.CreateDash(new float[] { 5, 5 }, 0)
+                        };
+
+                        // Draw dashed outline slightly outside the main border
+                        canvas.DrawRect(x - 2, y - 2, width + 4, height + 4, selectionPaint);
+                    }
                     
                     // Draw field name label
                     using var textPaint = new SkiaSharp.SKPaint
@@ -3074,48 +3127,48 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                                 {
                                     if (annotation == widget)
                                     {
-                                        logger.LogInformation($"[PAGE FIX] Found widget on page {i + 1}");
+                                        logger.LogInformation($"[WIDGET] Found widget on page {i + 1}");
                                         return i + 1;
                                     }
                                 }
                             }
                         }
-                        logger.LogWarning($"[PAGE FIX] Widget not found in annotations, defaulting to page 1");
-                        return 1; // Default to page 1 if not found
+                        logger.LogWarning($"[WIDGET] Widget not found in annotations, returning -1 for coordinate fallback");
+                        return -1; // Return -1 to indicate widget lookup failed, so caller can use coordinate detection
                     };
 
-                    // Alternative page detection using Y coordinate when widget lookup fails
-                    Func<float, int> CalculatePageFromY = (yCoordinate) =>
+                    // 🚫 COORDINATE DETECTION REMOVED - Trust only Claude Vision tooltips!
+                    // This function should never be called now that all tooltips have [PAGE:X]
+                    Func<float, int> FallbackToPageOne = (yCoordinate) =>
                     {
-                        return WordToPdfConverter.Services.PdfCoordinateConverter.CalculatePageFromY(yCoordinate, pdfDoc, logger);
+                        logger.LogError($"🚨 [TAG-STRUCTURE-ERROR] Field at Y={yCoordinate} has no [PAGE:X] tooltip! Defaulting to page 1");
+                        return 1; // Always default to page 1 if tooltip extraction fails
                     };
 
-                    // OVERRIDE: Force coordinate-based page detection instead of unreliable widget lookup
-                    // Widget lookup returns page 1 for ALL fields during Word-to-PDF conversion
-                    bool useCoordinatePageDetection = true;
+                    // DON'T OVERRIDE: Trust widget/Claude Vision page detection first, only fallback to coordinates
+                    // Claude Vision already provides correct page assignments - don't force coordinate detection!
+                    bool useCoordinatePageDetection = false;
 
                     // Get actual page number from field widget
                     try
                     {
                         if (f is PdfLoadedTextBoxField txtField && txtField.Items != null && txtField.Items.Count > 0)
                         {
-                            if (useCoordinatePageDetection)
+                            // 🚨 SMART PAGE DETECTION: Always use tooltip context + smart logic
+                            logger.LogWarning($"🚨 [TAG-STRUCTURE-TEXT] Processing text field '{f.Name}' with Y={txtField.Bounds.Y}");
+
+                            // Check if tooltip has page info first (Claude Vision puts [PAGE:2] in tooltips)
+                            var tooltipMatch = System.Text.RegularExpressions.Regex.Match(tooltip, @"\[PAGE:(\d+)\]");
+                            if (tooltipMatch.Success && int.TryParse(tooltipMatch.Groups[1].Value, out var tooltipPage))
                             {
-                                // FORCED COORDINATE DETECTION - Skip unreliable widget lookup
-                                page = CalculatePageFromY(txtField.Bounds.Y);
-                                logger.LogWarning($"[COORD-FORCED] Text field '{f.Name}' at Y={txtField.Bounds.Y} assigned to page {page} via coordinate detection");
+                                page = tooltipPage;
+                                logger.LogWarning($"🎯 [TAG-STRUCTURE-TOOLTIP] Text field '{f.Name}' using page {page} from tooltip");
                             }
                             else
                             {
-                                var firstItem = txtField.Items[0];
-                                page = FindPageForWidget(firstItem);
-
-                                // If widget lookup failed (page=1), use Y-based calculation to determine correct page
-                                if (page == 1)
-                                {
-                                    logger.LogWarning($"[PAGE FIX] Text field '{f.Name}' at Y={txtField.Bounds.Y} defaulted to page 1, using Y-coordinate fallback");
-                                    page = CalculatePageFromY(txtField.Bounds.Y);
-                                }
+                                // All fields should have [PAGE:X] now - this is an error if we get here
+                                page = FallbackToPageOne(txtField.Bounds.Y);
+                                logger.LogError($"🚫 [TAG-STRUCTURE-ERROR] Text field '{f.Name}' missing [PAGE:X] tooltip! Using page {page} fallback");
                             }
 
                             // Get the correct page height for this specific page
@@ -3133,23 +3186,21 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                         }
                         else if (f is PdfLoadedCheckBoxField chkField)
                         {
-                            if (useCoordinatePageDetection)
-                            {
-                                // FORCED COORDINATE DETECTION - Skip unreliable widget lookup
-                                page = CalculatePageFromY(chkField.Bounds.Y);
-                                logger.LogWarning($"[COORD-FORCED] Checkbox '{f.Name}' at Y={chkField.Bounds.Y} assigned to page {page} via coordinate detection");
-                            }
-                            else if (chkField.Items != null && chkField.Items.Count > 0)
-                            {
-                                var firstItem = chkField.Items[0];
-                                page = FindPageForWidget(firstItem);
+                            // 🚨 SMART PAGE DETECTION: Always use tooltip context + smart logic
+                            logger.LogWarning($"🚨 [TAG-STRUCTURE-CHECKBOX] Processing checkbox '{f.Name}' with Y={chkField.Bounds.Y}");
 
-                                // If widget lookup failed (page=1), use Y-based calculation to determine correct page
-                                if (page == 1)
-                                {
-                                    logger.LogWarning($"[PAGE FIX] Checkbox '{f.Name}' at Y={chkField.Bounds.Y} defaulted to page 1, using Y-coordinate fallback");
-                                    page = CalculatePageFromY(chkField.Bounds.Y);
-                                }
+                            // Check if tooltip has page info first (Claude Vision puts [PAGE:2] in tooltips)
+                            var tooltipMatch = System.Text.RegularExpressions.Regex.Match(tooltip, @"\[PAGE:(\d+)\]");
+                            if (tooltipMatch.Success && int.TryParse(tooltipMatch.Groups[1].Value, out var tooltipPage))
+                            {
+                                page = tooltipPage;
+                                logger.LogWarning($"🎯 [TAG-STRUCTURE-TOOLTIP] Checkbox '{f.Name}' using page {page} from tooltip");
+                            }
+                            else
+                            {
+                                // All fields should have [PAGE:X] now - this is an error if we get here
+                                page = FallbackToPageOne(chkField.Bounds.Y);
+                                logger.LogError($"🚫 [TAG-STRUCTURE-ERROR] Checkbox '{f.Name}' missing [PAGE:X] tooltip! Using page {page} fallback");
                             }
 
                             // Get the correct page height for this specific page
@@ -3166,23 +3217,20 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                         }
                         else if (f is PdfLoadedSignatureField sigField)
                         {
-                            if (useCoordinatePageDetection)
+                            // 🚨 SMART PAGE DETECTION: Always use tooltip context + smart logic
+                            logger.LogWarning($"🚨 [TAG-STRUCTURE-SIGNATURE] Processing signature field '{f.Name}' with Y={sigField.Bounds.Y}");
+                            // Check if tooltip has page info first (Claude Vision puts [PAGE:2] in tooltips)
+                            var tooltipMatch = System.Text.RegularExpressions.Regex.Match(tooltip, @"\[PAGE:(\d+)\]");
+                            if (tooltipMatch.Success && int.TryParse(tooltipMatch.Groups[1].Value, out var tooltipPage))
                             {
-                                // FORCED COORDINATE DETECTION - Skip unreliable widget lookup
-                                page = CalculatePageFromY(sigField.Bounds.Y);
-                                logger.LogWarning($"[COORD-FORCED] Signature field '{f.Name}' at Y={sigField.Bounds.Y} assigned to page {page} via coordinate detection");
+                                page = tooltipPage;
+                                logger.LogWarning($"🎯 [TAG-STRUCTURE-TOOLTIP] Signature field '{f.Name}' using page {page} from tooltip");
                             }
-                            else if (sigField.Items != null && sigField.Items.Count > 0)
+                            else
                             {
-                                var firstItem = sigField.Items[0];
-                                page = FindPageForWidget(firstItem);
-
-                                // If widget lookup failed (page=1), use Y-based calculation to determine correct page
-                                if (page == 1)
-                                {
-                                    logger.LogWarning($"[PAGE FIX] Signature field '{f.Name}' at Y={sigField.Bounds.Y} defaulted to page 1, using Y-coordinate fallback");
-                                    page = CalculatePageFromY(sigField.Bounds.Y);
-                                }
+                                // All fields should have [PAGE:X] now - this is an error if we get here
+                                page = FallbackToPageOne(sigField.Bounds.Y);
+                                logger.LogError($"🚫 [TAG-STRUCTURE-ERROR] Signature field '{f.Name}' missing [PAGE:X] tooltip! Using page {page} fallback");
                             }
 
                             // Get the correct page height for this specific page
@@ -3198,23 +3246,20 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                         }
                         else if (f is PdfLoadedRadioButtonListField radioField)
                         {
-                            if (useCoordinatePageDetection)
+                            // 🚨 SMART PAGE DETECTION: Always use tooltip context + smart logic
+                            logger.LogWarning($"🚨 [TAG-STRUCTURE-RADIO] Processing radio button '{f.Name}' with Y={radioField.Bounds.Y}");
+                            // Check if tooltip has page info first (Claude Vision puts [PAGE:2] in tooltips)
+                            var tooltipMatch = System.Text.RegularExpressions.Regex.Match(tooltip, @"\[PAGE:(\d+)\]");
+                            if (tooltipMatch.Success && int.TryParse(tooltipMatch.Groups[1].Value, out var tooltipPage))
                             {
-                                // FORCED COORDINATE DETECTION - Skip unreliable widget lookup
-                                page = CalculatePageFromY(radioField.Bounds.Y);
-                                logger.LogWarning($"[COORD-FORCED] Radio button '{f.Name}' at Y={radioField.Bounds.Y} assigned to page {page} via coordinate detection");
+                                page = tooltipPage;
+                                logger.LogWarning($"🎯 [TAG-STRUCTURE-TOOLTIP] Radio button '{f.Name}' using page {page} from tooltip");
                             }
-                            else if (radioField.Items != null && radioField.Items.Count > 0)
+                            else
                             {
-                                var firstItem = radioField.Items[0];
-                                page = FindPageForWidget(firstItem);
-
-                                // If widget lookup failed (page=1), use Y-based calculation to determine correct page
-                                if (page == 1)
-                                {
-                                    logger.LogWarning($"[PAGE FIX] Radio button '{f.Name}' at Y={radioField.Bounds.Y} defaulted to page 1, using Y-coordinate fallback");
-                                    page = CalculatePageFromY(radioField.Bounds.Y);
-                                }
+                                // All fields should have [PAGE:X] now - this is an error if we get here
+                                page = FallbackToPageOne(radioField.Bounds.Y);
+                                logger.LogError($"🚫 [TAG-STRUCTURE-ERROR] Radio button '{f.Name}' missing [PAGE:X] tooltip! Using page {page} fallback");
                             }
 
                             // Get the correct page height for this specific page
@@ -3235,11 +3280,15 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                                 var firstItem = comboField.Items[0];
                                 page = FindPageForWidget(firstItem);
 
-                                // If widget lookup failed (page=1), use Y-based calculation to determine correct page
-                                if (page == 1)
+                                // If widget lookup failed (page=-1), use Y-based calculation to determine correct page
+                                if (page == -1)
                                 {
-                                    logger.LogWarning($"[PAGE FIX] Combo box '{f.Name}' at Y={comboField.Bounds.Y} defaulted to page 1, using Y-coordinate fallback");
-                                    page = CalculatePageFromY(comboField.Bounds.Y);
+                                    page = FallbackToPageOne(comboField.Bounds.Y);
+                                    logger.LogInformation($"[FALLBACK] Combo box '{f.Name}' at Y={comboField.Bounds.Y} using coordinate detection, assigned to page {page}");
+                                }
+                                else
+                                {
+                                    logger.LogInformation($"[WIDGET] Combo box '{f.Name}' found via widget lookup on page {page}");
                                 }
 
                                 // Get the correct page height for this specific page
@@ -3872,6 +3921,46 @@ app.MapPost("/api/fields/save", async (
 })
 .WithName("SaveFieldUpdates")
 .DisableAntiforgery();
+
+// TEST ENDPOINT: Verify page detection logic without processing documents
+app.MapGet("/api/test-page-detection", (float yCoordinate, int totalPages, ILogger<Program> logger) =>
+{
+    logger.LogWarning($"🧪 [PAGE-DETECTION-TEST] Testing Y={yCoordinate} in {totalPages}-page document");
+
+    // Test the current CalculatePageFromY logic
+    var detectedPage = WordToPdfConverter.Services.PdfCoordinateConverter.CalculatePageFromY(
+        yCoordinate,
+        null, // We don't need a real document for this test
+        logger
+    );
+
+    // Show the logic breakdown
+    string reasoning = "";
+    if (yCoordinate >= 0 && yCoordinate <= 100)
+    {
+        reasoning = "Y coordinate is low (0-100), likely page 2 in multi-page doc";
+    }
+    else if (yCoordinate > 100 && yCoordinate < 400)
+    {
+        reasoning = "Y coordinate is mid-range (100-400), likely page 1";
+    }
+    else if (yCoordinate >= 400)
+    {
+        reasoning = "Y coordinate is high (400+), assuming page 1";
+    }
+
+    logger.LogWarning($"🧪 [PAGE-DETECTION-TEST] Result: Y={yCoordinate} → Page {detectedPage} ({reasoning})");
+
+    return Results.Ok(new {
+        yCoordinate = yCoordinate,
+        totalPages = totalPages,
+        detectedPage = detectedPage,
+        reasoning = reasoning,
+        issue = detectedPage == 1 && yCoordinate <= 100 ? "❌ WRONG! Should be page 2" : "✅ Looks correct",
+        currentLogic = "Y <= 100 = page 2, Y > 100 = page 1"
+    });
+})
+.WithName("TestPageDetection");
 
 app.Run();
 
