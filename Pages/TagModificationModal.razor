@@ -33,10 +33,13 @@
                             <div class="pdf-page-container">
                                 @if (!string.IsNullOrEmpty(CurrentPageImage))
                                 {
-                                    <img src="@($"data:image/png;base64,{CurrentPageImage}")" 
-                                         class="pdf-page-image" 
-                                         @ref="pageImage" />
-                                    
+                                    <img src="@($"data:image/png;base64,{CurrentPageImage}")"
+                                         class="pdf-page-image"
+                                         @ref="pageImage"
+                                         @onclick="HandleImageClick"
+                                         @oncontextmenu="HandleImageRightClick"
+                                         @oncontextmenu:preventDefault="true" />
+
                                     <!-- Field boxes are drawn directly on the server-generated image -->
                                 }
                                 else
@@ -408,7 +411,172 @@
         background: white;
         border-bottom: 1px solid #dee2e6;
     }
+
+    .pdf-page-image {
+        cursor: pointer;
+    }
 </style>
+
+<script>
+    window.fieldClickHandler = window.fieldClickHandler || {
+        currentFieldMap: [],
+
+        setupFieldClickDetection: function(fieldMapJson) {
+            try {
+                this.currentFieldMap = JSON.parse(fieldMapJson);
+                console.log('Field click detection setup with', this.currentFieldMap.length, 'fields');
+            } catch (e) {
+                console.error('Failed to parse field map:', e);
+                this.currentFieldMap = [];
+            }
+        }
+    };
+
+    window.setupFieldClickDetection = function(fieldMapJson) {
+        window.fieldClickHandler.setupFieldClickDetection(fieldMapJson);
+    };
+
+    window.handleFieldClick = function(x, y, dotNetHelper) {
+        const fieldMap = window.fieldClickHandler.currentFieldMap;
+        console.log(`=== CLICK DEBUG ===`);
+        console.log(`Click coordinates: (${x}, ${y})`);
+        console.log(`Available fields: ${fieldMap.length}`);
+
+        // Debug: Log all field bounds for comparison
+        fieldMap.forEach((field, index) => {
+            const bounds = field.bounds;
+            console.log(`Field ${index + 1} "${field.name}": x=${bounds.x}-${bounds.x + bounds.width}, y=${bounds.y}-${bounds.y + bounds.height} (w=${bounds.width}, h=${bounds.height})`);
+        });
+
+        // Find the field that contains the click coordinates
+        for (let field of fieldMap) {
+            const bounds = field.bounds;
+            const isWithinX = x >= bounds.x && x <= bounds.x + bounds.width;
+            const isWithinY = y >= bounds.y && y <= bounds.y + bounds.height;
+
+            console.log(`Testing field "${field.name}": X in bounds? ${isWithinX} (${x} >= ${bounds.x} && ${x} <= ${bounds.x + bounds.width}), Y in bounds? ${isWithinY} (${y} >= ${bounds.y} && ${y} <= ${bounds.y + bounds.height})`);
+
+            if (isWithinX && isWithinY) {
+                console.log(`✓ MATCH! Clicked on field: ${field.name}`);
+                // Call back to Blazor to select the field
+                dotNetHelper.invokeMethodAsync('SelectFieldByName', field.name);
+                return;
+            }
+        }
+
+        console.log('✗ No field found at click coordinates');
+        console.log(`=== END CLICK DEBUG ===`);
+    };
+
+    window.handleFieldRightClick = function(x, y, dotNetHelper) {
+        const fieldMap = window.fieldClickHandler.currentFieldMap;
+        console.log(`Checking field right-click at (${x}, ${y}) against ${fieldMap.length} fields`);
+
+        // Find the field that contains the right-click coordinates
+        for (let field of fieldMap) {
+            const bounds = field.bounds;
+            if (x >= bounds.x && x <= bounds.x + bounds.width &&
+                y >= bounds.y && y <= bounds.y + bounds.height) {
+                console.log(`Right-clicked on field: ${field.name}`);
+
+                // Show context menu for this field
+                showFieldContextMenu(field, x, y, dotNetHelper);
+                return;
+            }
+        }
+
+        console.log('No field found at right-click coordinates');
+    };
+
+    window.showFieldContextMenu = function(field, x, y, dotNetHelper) {
+        // Remove any existing context menu
+        const existingMenu = document.getElementById('field-context-menu');
+        if (existingMenu) {
+            existingMenu.remove();
+        }
+
+        // Create context menu
+        const menu = document.createElement('div');
+        menu.id = 'field-context-menu';
+        menu.className = 'field-context-menu';
+        menu.style.position = 'fixed';
+        menu.style.left = `${x + window.scrollX}px`;
+        menu.style.top = `${y + window.scrollY}px`;
+        menu.style.zIndex = '10000';
+        menu.style.backgroundColor = '#fff';
+        menu.style.border = '1px solid #ccc';
+        menu.style.borderRadius = '4px';
+        menu.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+        menu.style.padding = '5px 0';
+        menu.style.minWidth = '120px';
+
+        // Add menu items
+        const deleteItem = document.createElement('div');
+        deleteItem.className = 'context-menu-item';
+        deleteItem.innerHTML = `<i class="fas fa-trash text-danger"></i> Delete "${field.name}"`;
+        deleteItem.style.padding = '8px 12px';
+        deleteItem.style.cursor = 'pointer';
+        deleteItem.style.borderBottom = '1px solid #eee';
+
+        deleteItem.addEventListener('mouseover', function() {
+            this.style.backgroundColor = '#f8f9fa';
+        });
+
+        deleteItem.addEventListener('mouseout', function() {
+            this.style.backgroundColor = '';
+        });
+
+        deleteItem.addEventListener('click', function() {
+            console.log(`Deleting field: ${field.name}`);
+            dotNetHelper.invokeMethodAsync('DeleteFieldByName', field.name);
+            menu.remove();
+        });
+
+        const selectItem = document.createElement('div');
+        selectItem.className = 'context-menu-item';
+        selectItem.innerHTML = `<i class="fas fa-crosshairs text-primary"></i> Select Field`;
+        selectItem.style.padding = '8px 12px';
+        selectItem.style.cursor = 'pointer';
+
+        selectItem.addEventListener('mouseover', function() {
+            this.style.backgroundColor = '#f8f9fa';
+        });
+
+        selectItem.addEventListener('mouseout', function() {
+            this.style.backgroundColor = '';
+        });
+
+        selectItem.addEventListener('click', function() {
+            console.log(`Selecting field: ${field.name}`);
+            dotNetHelper.invokeMethodAsync('SelectFieldByName', field.name);
+            menu.remove();
+        });
+
+        menu.appendChild(selectItem);
+        menu.appendChild(deleteItem);
+        document.body.appendChild(menu);
+
+        // Remove menu when clicking elsewhere
+        setTimeout(() => {
+            document.addEventListener('click', function closeMenu(e) {
+                if (!menu.contains(e.target)) {
+                    menu.remove();
+                    document.removeEventListener('click', closeMenu);
+                }
+            });
+        }, 100);
+    };
+
+    window.showFieldDeletedMessage = function(fieldName) {
+        console.log(`Field "${fieldName}" has been deleted`);
+        // Simple notification - could be enhanced with toast notifications
+        const message = `Field "${fieldName}" deleted. Changes will be applied when you save.`;
+        if (window.console) {
+            console.info(message);
+        }
+        // Could add a temporary toast notification here
+    };
+</script>
 
 @code {
     [Parameter] public bool IsVisible { get; set; }
@@ -633,8 +801,32 @@
             {
                 var result = await response.Content.ReadAsStringAsync();
                 var json = System.Text.Json.JsonDocument.Parse(result);
-                
+
                 CurrentPageImage = json.RootElement.GetProperty("imageData").GetString();
+
+                // Store field map for click detection
+                if (json.RootElement.TryGetProperty("fieldMap", out var fieldMapElement))
+                {
+                    var fieldMapJson = System.Text.Json.JsonSerializer.Serialize(fieldMapElement);
+                    await JSRuntime.InvokeVoidAsync("console.log", "BLAZOR: Setting up field click detection with field map:", fieldMapJson);
+
+                    // Check if setupFieldClickDetection function exists
+                    var setupExists = await JSRuntime.InvokeAsync<bool>("eval", "typeof window.setupFieldClickDetection === 'function'");
+                    await JSRuntime.InvokeVoidAsync("console.log", $"BLAZOR: setupFieldClickDetection function exists: {setupExists}");
+
+                    if (setupExists)
+                    {
+                        await JSRuntime.InvokeVoidAsync("setupFieldClickDetection", fieldMapJson);
+                    }
+                    else
+                    {
+                        await JSRuntime.InvokeVoidAsync("console.error", "BLAZOR: setupFieldClickDetection function not found!");
+                    }
+                }
+                else
+                {
+                    await JSRuntime.InvokeVoidAsync("console.log", "BLAZOR: No fieldMap found in server response");
+                }
 
                 // Update fields for current page
                 await JSRuntime.InvokeVoidAsync("console.log", $"[PAGINATION DEBUG] Filtering fields for page {pageNumber}");
@@ -808,6 +1000,105 @@
         }
 
         StateHasChanged();
+    }
+
+    private List<object> currentFieldMap = new List<object>();
+
+    private async Task HandleImageClick(MouseEventArgs e)
+    {
+        await JSRuntime.InvokeVoidAsync("console.log", $"BLAZOR: Image clicked at: OffsetX={e.OffsetX}, OffsetY={e.OffsetY}, ClientX={e.ClientX}, ClientY={e.ClientY}");
+
+        try
+        {
+            // Use JavaScript to handle the actual field detection and selection
+            await JSRuntime.InvokeVoidAsync("handleFieldClick", e.OffsetX, e.OffsetY, DotNetObjectReference.Create(this));
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", $"BLAZOR: Error in HandleImageClick: {ex.Message}");
+        }
+    }
+
+    private async Task<EditableField> FindFieldAtCoordinatesAsync(double clickX, double clickY)
+    {
+        // Find field at clicked coordinates using current page fields
+        var pageFields = EditableFields.Where(f => f.Page == CurrentPage).ToList();
+
+        await JSRuntime.InvokeVoidAsync("console.log", $"BLAZOR: Checking {pageFields.Count} fields on page {CurrentPage}");
+
+        foreach (var field in pageFields)
+        {
+            // Use the same coordinate conversion as the server (PdfCoordinateConverter)
+            const float SCALE_FACTOR = 150.0f / 72.0f; // Same as server
+            const float STANDARD_PAGE_HEIGHT = 792.0f; // US Letter height
+
+            // Convert PDF coordinates to display coordinates (same logic as server)
+            var displayX = field.X * SCALE_FACTOR;
+            var displayY = (STANDARD_PAGE_HEIGHT - field.Y) * SCALE_FACTOR;
+            var displayWidth = field.Width * SCALE_FACTOR;
+            var displayHeight = field.Height * SCALE_FACTOR;
+
+            // For display, Y coordinate needs to be adjusted for field height since we converted bottom-left to top-left
+            displayY -= displayHeight;
+
+            await JSRuntime.InvokeVoidAsync("console.log",
+                $"BLAZOR: Field '{field.Name}' bounds: PDF({field.X}, {field.Y}, {field.Width}, {field.Height}) -> Display({displayX:F1}, {displayY:F1}, {displayWidth:F1}, {displayHeight:F1})");
+
+            // Check if click is within field bounds
+            if (clickX >= displayX && clickX <= displayX + displayWidth &&
+                clickY >= displayY && clickY <= displayY + displayHeight)
+            {
+                await JSRuntime.InvokeVoidAsync("console.log", $"BLAZOR: Click ({clickX}, {clickY}) is inside field '{field.Name}'");
+                return field;
+            }
+        }
+
+        await JSRuntime.InvokeVoidAsync("console.log", $"BLAZOR: Click ({clickX}, {clickY}) did not match any field bounds");
+        return null;
+    }
+
+    [JSInvokable]
+    public async Task SelectFieldByName(string fieldName)
+    {
+        var field = EditableFields.FirstOrDefault(f => f.Name == fieldName);
+        if (field != null)
+        {
+            await SelectField(field);
+        }
+    }
+
+    private async Task HandleImageRightClick(MouseEventArgs e)
+    {
+        await JSRuntime.InvokeVoidAsync("console.log", $"Right-click on image at: x={e.OffsetX}, y={e.OffsetY}");
+
+        // Use JavaScript to handle right-click detection and show context menu
+        await JSRuntime.InvokeVoidAsync("handleFieldRightClick", e.OffsetX, e.OffsetY, DotNetObjectReference.Create(this));
+    }
+
+    [JSInvokable]
+    public async Task DeleteFieldByName(string fieldName)
+    {
+        var field = EditableFields.FirstOrDefault(f => f.Name == fieldName);
+        if (field != null)
+        {
+            // Store for potential undo
+            var deletedFieldData = new
+            {
+                field = field,
+                index = EditableFields.IndexOf(field)
+            };
+
+            DeleteField(field);
+
+            // Show confirmation message
+            await JSRuntime.InvokeVoidAsync("showFieldDeletedMessage", fieldName);
+
+            // Refresh preview if showing field boxes
+            if (ShowFieldBoxes)
+            {
+                await LoadPageWithFieldBoxes(CurrentPage);
+            }
+        }
     }
     
     

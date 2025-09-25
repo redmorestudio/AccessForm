@@ -2679,11 +2679,14 @@ app.MapPost("/api/pdf-page-with-field-boxes", async (HttpRequest request, ILogge
         // Draw the original PDF page
         canvas.DrawBitmap(originalBitmap, 0, 0);
         
+        // Create field map for click detection
+        var fieldMap = new List<object>();
+
         // Parse and draw field boxes if provided
         if (!string.IsNullOrEmpty(fieldsJson))
         {
             var fields = System.Text.Json.JsonSerializer.Deserialize<List<System.Text.Json.JsonElement>>(fieldsJson);
-            
+
             // Get PDF page dimensions for coordinate conversion
             using var pdfStream = new MemoryStream(pdfBytes);
             using var pdfDoc = new PdfLoadedDocument(pdfStream);
@@ -2752,20 +2755,42 @@ app.MapPost("/api/pdf-page-with-field-boxes", async (HttpRequest request, ILogge
 
                     canvas.DrawRect(x, y, width, height, borderPaint);
 
-                    // Add selection indicator for selected fields
+                    // Add VERY OBVIOUS selection indicator for selected fields
                     if (isSelected)
                     {
+                        // Draw thick bright selection border
                         using var selectionPaint = new SkiaSharp.SKPaint
                         {
                             Style = SkiaSharp.SKPaintStyle.Stroke,
-                            StrokeWidth = 1,
+                            StrokeWidth = 6,
                             IsAntialias = true,
-                            Color = SkiaSharp.SKColors.Blue.WithAlpha(100),
-                            PathEffect = SkiaSharp.SKPathEffect.CreateDash(new float[] { 5, 5 }, 0)
+                            Color = SkiaSharp.SKColors.Red
                         };
 
-                        // Draw dashed outline slightly outside the main border
-                        canvas.DrawRect(x - 2, y - 2, width + 4, height + 4, selectionPaint);
+                        // Draw thick red outline
+                        canvas.DrawRect(x - 3, y - 3, width + 6, height + 6, selectionPaint);
+
+                        // Add animated dashed outline for extra visibility
+                        using var dashedPaint = new SkiaSharp.SKPaint
+                        {
+                            Style = SkiaSharp.SKPaintStyle.Stroke,
+                            StrokeWidth = 2,
+                            IsAntialias = true,
+                            Color = SkiaSharp.SKColors.Yellow,
+                            PathEffect = SkiaSharp.SKPathEffect.CreateDash(new float[] { 8, 4 }, 0)
+                        };
+
+                        // Draw yellow dashed outline outside the red border
+                        canvas.DrawRect(x - 6, y - 6, width + 12, height + 12, dashedPaint);
+
+                        // Add bright selection background overlay
+                        using var overlayPaint = new SkiaSharp.SKPaint
+                        {
+                            Style = SkiaSharp.SKPaintStyle.Fill,
+                            Color = SkiaSharp.SKColors.Red.WithAlpha(60)
+                        };
+
+                        canvas.DrawRect(x, y, width, height, overlayPaint);
                     }
                     
                     // Draw field name label
@@ -2792,6 +2817,23 @@ app.MapPost("/api/pdf-page-with-field-boxes", async (HttpRequest request, ILogge
                     
                     // Log what we're drawing
                     logger.LogInformation($"Drew field '{fieldName}' at ({x}, {y}) with size {width}x{height} on page {pageNumber}");
+
+                    // Add field to click map with display coordinates
+                    fieldMap.Add(new
+                    {
+                        id = fieldName,
+                        name = fieldName,
+                        type = fieldType,
+                        bounds = new
+                        {
+                            x = Math.Round(x, 1),
+                            y = Math.Round(y, 1),
+                            width = Math.Round(width, 1),
+                            height = Math.Round(height, 1)
+                        },
+                        page = pageNumber,
+                        isSelected = isSelected
+                    });
                 }
             }
         }
@@ -2802,7 +2844,11 @@ app.MapPost("/api/pdf-page-with-field-boxes", async (HttpRequest request, ILogge
         var imageBytes = data.ToArray();
         
         var base64Image = Convert.ToBase64String(imageBytes);
-        return Results.Ok(new { imageData = base64Image });
+        return Results.Ok(new
+        {
+            imageData = base64Image,
+            fieldMap = fieldMap
+        });
     }
     catch (Exception ex)
     {
