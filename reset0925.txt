@@ -1,0 +1,208 @@
+# AccessForm PDF System Architecture Overview
+Date: 2024-09-25
+
+## What It Does
+
+The AccessForm system converts Word documents (.docx) into accessible PDF/UA compliant PDFs with properly detected and labeled form fields. It's designed specifically for government and enterprise forms that need to meet accessibility standards.
+
+### Core Capabilities:
+- Converts Word documents to PDF with form field preservation
+- Detects form fields using multiple AI services (Claude Vision, Google Document AI)
+- Creates PDF/UA compliant documents for accessibility
+- Provides a visual Tag Structure Editor for manual field corrections
+- Supports multi-page documents with accurate page detection
+- Generates semantic labels and tooltips for form fields
+- Allows batch processing and field type conversion
+
+## How It Works
+
+### 1. Document Processing Pipeline
+
+**Input Stage:**
+- User uploads .docx file via web interface
+- Document is converted to initial PDF using Syncfusion library
+- Text content is extracted for context analysis
+
+**Field Detection Stage:**
+- **Claude Vision API** visually analyzes PDF pages to detect form fields
+  - Returns field locations, types, and page assignments
+  - Uses visual cues like underlines, boxes, and checkboxes
+- **Google Document AI** (optional) provides OCR and additional field detection
+- **Syncfusion** extracts existing form field metadata from Word
+- **Field Merger** combines results from all sources, deduplicating and validating
+
+**PDF Enhancement Stage:**
+- **PassportPDF Service** ensures PDF/UA compliance
+  - Adds proper tag structure for screen readers
+  - Embeds field tooltips with [PAGE:X] markers for page tracking
+  - Validates and corrects field properties
+- **Python Scripts** (PyMuPDF) rebuild fields with correct properties
+  - `pdf_field_injector.py` - Creates new fields
+  - `pdf_field_cleaner.py` - Removes malformed fields
+  - `pdf_field_updater.py` - Updates field properties
+
+**Output Stage:**
+- Final PDF with accessible form fields
+- Tag Structure Editor for manual review/correction
+- Export options for different compliance levels
+
+### 2. Web Interface (Blazor WebAssembly)
+
+**Main Components:**
+- `Pages/Index.razor` - Main upload and processing interface
+- `Pages/TagModificationModal.razor` - Field property editor
+- `Pages/FieldEditor.razor` - Visual field boundary editor
+
+**Key Features:**
+- Real-time field preview on PDF pages
+- Drag-and-drop field repositioning
+- Inline editing of field properties (name, type, tooltip, page)
+- Batch operations for field management
+- Visual indicators for field validation status
+
+### 3. API Endpoints (Program.cs)
+
+**Primary Processing:**
+- `/api/process-with-passportpdf-auto` - Main document processing pipeline
+- `/api/extract-tag-structure` - Retrieves field structure for editing
+- `/api/update-pdf-fields-v4` - Applies field updates using Python rebuild
+
+**Utility Endpoints:**
+- `/api/extract-pdf-fields` - Lists all fields in a PDF
+- `/api/pdf-page-preview` - Generates page thumbnails with field overlays
+- `/api/test-page-detection` - Debug tool for page detection logic
+
+## System Architecture
+
+### Service Layer (C#/.NET 8)
+
+**Core Services:**
+- `ConfigurableFieldDetectionService` - Orchestrates detection pipeline
+- `ClaudeVisionFieldDetector` - Claude Vision API integration
+- `PassportPdfService` - PDF/UA compliance and accessibility
+- `PdfCoordinateConverter` - Coordinate system transformations
+- `MultiSourceFieldCombiner` - Merges fields from multiple sources
+- `GoogleDocumentAiService` - Google Document AI integration
+- `PdfCompleteRebuildService` - Python script orchestration
+
+**Supporting Services:**
+- `FieldTooltipGenerator` - Creates semantic tooltips
+- `CostTrackingService` - Tracks API usage costs
+- `DebugCacheService` - Caches intermediate results for debugging
+- `AccessibilityService` - Accessibility validation and reporting
+
+### Python Layer
+
+**Key Scripts:**
+- Field manipulation using PyMuPDF (fitz) library
+- Direct PDF structure modification
+- Preserves document integrity while updating fields
+- Handles complex field types (radio buttons, checkboxes, text fields)
+
+### Data Flow
+
+```
+Word Document → Syncfusion → Base PDF
+                    ↓
+            Claude Vision API → Field Detection
+                    ↓
+            Field Merger ← Google Doc AI (optional)
+                    ↓
+            PassportPDF → PDF/UA + Tooltips
+                    ↓
+            Python Rebuild → Final Fields
+                    ↓
+            Tag Structure Editor → Manual Corrections
+                    ↓
+            Final Accessible PDF
+```
+
+## Where We Want to Go
+
+### Immediate Improvements Needed
+
+1. **Field Detection Accuracy**
+   - Fine-tune Claude Vision prompts for better detection
+   - Add confidence scores to field detections
+   - Implement field relationship detection (label-to-field mapping)
+
+2. **User Experience**
+   - Streamline the Tag Structure Editor interface
+   - Add bulk field operations (select multiple, batch edit)
+   - Implement undo/redo functionality
+   - Add keyboard shortcuts for common operations
+
+3. **Performance Optimization**
+   - Cache Claude Vision results to reduce API calls
+   - Parallelize field detection across pages
+   - Optimize Python script execution time
+
+### Future Enhancements
+
+1. **Advanced Field Intelligence**
+   - Auto-generate field names from context
+   - Detect field validation rules (required, format, etc.)
+   - Suggest field types based on labels and context
+   - Group related fields automatically
+
+2. **Template System**
+   - Save field detection patterns as templates
+   - Apply templates to similar documents
+   - Learn from user corrections to improve future detections
+
+3. **Integration Capabilities**
+   - REST API for programmatic access
+   - Webhook notifications for async processing
+   - Integration with document management systems
+   - Export to various form formats (XFA, FDF, XFDF)
+
+4. **Accessibility Enhancements**
+   - WCAG 2.1 AAA compliance checking
+   - Automated alt-text generation for images
+   - Reading order optimization
+   - Language detection and tagging
+
+5. **Batch Processing**
+   - Queue management for multiple documents
+   - Progress tracking and notifications
+   - Error recovery and retry logic
+   - Parallel processing capabilities
+
+## Technical Stack
+
+- **Backend:** ASP.NET Core 8, C#
+- **Frontend:** Blazor WebAssembly
+- **PDF Processing:** Syncfusion, PyMuPDF, PassportPDF API
+- **AI Services:** Claude Vision API, Google Document AI
+- **Database:** Currently file-based, ready for database integration
+- **Deployment:** Docker-ready, supports Windows/Mac/Linux
+
+## Current State & Recent Fixes
+
+The system is now successfully handling multi-page PDFs with correct page detection. The recent fix involved:
+- Adding [PAGE:X] markers to all field tooltips in PassportPDF processing
+- Removing faulty coordinate-based page detection
+- Ensuring Tag Structure Editor reads page info from tooltips
+- Full implementation of page editing in the UI
+
+The system is production-ready for basic use cases but needs the improvements listed above for enterprise deployment.
+
+## Key Configuration
+
+Default ports:
+- Development: http://localhost:5001
+- Testing: http://localhost:5002
+
+Environment variables:
+- `ANTHROPIC_API_KEY` - Claude Vision API access
+- `PASSPORT_PDF_API_KEY` - PassportPDF service
+- `GOOGLE_APPLICATION_CREDENTIALS` - Google Document AI
+
+## Next Steps
+
+1. Stabilize current functionality with comprehensive testing
+2. Implement confidence scoring for field detections
+3. Improve UI/UX based on user feedback
+4. Add template system for common form types
+5. Develop comprehensive API documentation
+6. Create deployment guides for various environments
