@@ -23,16 +23,11 @@ namespace WordToPdfConverter.Services
         // Font mapping for ZapfDingbats and other problematic fonts
         private readonly Dictionary<char, string> _zapfDingbatsMapping = new()
         {
-            { 'q', "☐" },      // Empty checkbox
-            { '\x71', "☐" },   // Empty checkbox (hex)
-            { '4', "☑" },      // Checked checkbox
-            { '\x34', "☑" },   // Checked checkbox (hex)
-            { 'n', "✓" },      // Checkmark
-            { '\x6E', "✓" },   // Checkmark (hex)
-            { 'l', "●" },      // Filled circle (radio selected)
-            { '\x6C', "●" },   // Filled circle (hex)
-            { 'm', "○" },      // Empty circle (radio unselected)
-            { '\x6D', "○" },   // Empty circle (hex)
+            { 'q', "☐" },      // Empty checkbox (q = \x71)
+            { '4', "☑" },      // Checked checkbox (4 = \x34)
+            { 'n', "✓" },      // Checkmark (n = \x6E)
+            { 'l', "●" },      // Filled circle/radio selected (l = \x6C)
+            { 'm', "○" },      // Empty circle/radio unselected (m = \x6D)
             { '●', "●" },      // Keep bullet as is
             { '○', "○" },      // Keep empty circle as is
         };

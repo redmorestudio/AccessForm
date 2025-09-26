@@ -252,6 +252,11 @@ class PDFCompleteRebuilder:
                 widget.text_fontsize = 10
                 # Use a simple cross mark instead of ZapfDingbats checkmark
                 widget.button_caption = "X"  # Use simple X instead of ZapfDingbats symbol
+                # Completely reset the appearance to remove any ZapfDingbats
+                widget.field_display = 1
+                widget.border_width = 1
+                widget.border_style = "S"  # Solid border
+                widget.border_color = [0, 0, 0]  # Black border
             
             elif widget_type == fitz.PDF_WIDGET_TYPE_RADIOBUTTON:
                 # Set radio button specific properties
@@ -261,6 +266,11 @@ class PDFCompleteRebuilder:
                 widget.text_fontsize = 10
                 # Use a simple dot instead of ZapfDingbats symbol
                 widget.button_caption = "•"  # Use bullet instead of ZapfDingbats symbol
+                # Completely reset the appearance to remove any ZapfDingbats
+                widget.field_display = 1
+                widget.border_width = 1
+                widget.border_style = "S"  # Solid border
+                widget.border_color = [0, 0, 0]  # Black border
             
             else:
                 # Clear default value for non-checkbox/radio fields
@@ -769,24 +779,29 @@ class PDFCompleteRebuilder:
             except Exception as e:
                 logger.warning(f"Could not analyze fonts: {e}")
             
-            # Now remove ONLY the form fields (widgets), keeping everything else
+            # Now remove ONLY the form fields (widgets) and hyperlinks, keeping everything else
             for page in temp_doc:
                 # Delete all widgets (form fields) from each page
                 for widget in list(page.widgets()):
                     page.delete_widget(widget)
-                
-                # Also remove any annotations that might be form-related
+
+                # Remove all annotations including links and form-related
                 for annot in list(page.annots()):
+                    # Remove form widgets
                     if annot.type[0] == fitz.PDF_ANNOT_WIDGET:
+                        page.delete_annot(annot)
+                    # Remove hyperlinks (including mailto: and http:// links)
+                    elif annot.type[0] == fitz.PDF_ANNOT_LINK:
+                        logger.info(f"Removing hyperlink annotation on page {page.number}")
                         page.delete_annot(annot)
             
             # Save to ensure changes are committed
-            temp_doc.save(temp_clean_path, garbage=0, deflate=False)
+            temp_doc.save(temp_clean_path, garbage=4, deflate=True, clean=True)
             temp_doc.close()
-            
+
             # Close the original document as we're done with it
             original_doc.close()
-            
+
             logger.info("Created clean PDF without any fields")
             
             # Step 4: Open clean PDF and add new fields
@@ -884,14 +899,22 @@ class PDFCompleteRebuilder:
                         height = existing_field.get('height', 20)
                         logger.info(f"Using original Syncfusion position for '{original_name}': ({x}, {y}), size: ({width}x{height})")
                     else:
-                        # Field not found - this should not happen!
-                        logger.warning(f"Field '{original_name}' not found in existing fields - using default position")
-                        logger.info(f"Available fields: {list(existing_fields.keys())}")
-                        # Use reasonable defaults instead of skipping
-                        x = 100
-                        y = 100 + (len(fields_by_page.get(page_num - 1, [])) * 30)  # Offset vertically for each field
-                        width = 200
-                        height = 20
+                        # If field not found in existing, check if position was provided in the update
+                        x = field_info.get('X') or field_info.get('x')
+                        y = field_info.get('Y') or field_info.get('y')
+                        width = field_info.get('Width') or field_info.get('width')
+                        height = field_info.get('Height') or field_info.get('height')
+
+                        if x and y and width and height:
+                            logger.info(f"Using provided position for '{original_name}': ({x}, {y}), size: ({width}x{height})")
+                        else:
+                            # Field not found and no position provided - use defaults
+                            logger.warning(f"Field '{original_name}' not found in existing fields and no position provided - using default position")
+                            logger.info(f"Available fields: {list(existing_fields.keys())}")
+                            x = 100
+                            y = 100 + (len(fields_by_page.get(page_num - 1, [])) * 30)  # Offset vertically for each field
+                            width = 200
+                            height = 20
                     
                     # Get field type
                     field_type = field_info.get('fieldType') or field_info.get('FieldType') or existing_field.get('type', 'text')
@@ -921,37 +944,10 @@ class PDFCompleteRebuilder:
                     fields_by_page[page_num] = []
                 fields_by_page[page_num].append(field_def)
             
-            # Add existing fields that weren't updated
-            for field_name, existing_field in existing_fields.items():
-                if field_name not in updated_field_names:
-                    # Keep existing field but check for duplicates
-                    # If this field position conflicts with an already-added field, offset it
-                    field_x = existing_field.get('x', 100)
-                    field_y = existing_field.get('y', 100)
-                    
-                    # Check if this position is already taken
-                    for existing_page_fields in fields_by_page.get(existing_field.get('page', 0), []):
-                        if abs(existing_page_fields['x'] - field_x) < 5 and abs(existing_page_fields['y'] - field_y) < 5:
-                            # Position conflict - offset this field
-                            field_y += 25  # Move down by 25 pixels
-                            break
-                    
-                    field_def = {
-                        'name': field_name,
-                        'type': existing_field.get('type', 'text'),
-                        'x': field_x,
-                        'y': field_y,
-                        'width': existing_field.get('width', 200),
-                        'height': existing_field.get('height', 20),
-                        'page': existing_field.get('page', 0),
-                        'tooltip': field_name,  # Use field name as tooltip for existing fields
-                        'required': False
-                    }
-                    
-                    page_num = field_def['page']
-                    if page_num not in fields_by_page:
-                        fields_by_page[page_num] = []
-                    fields_by_page[page_num].append(field_def)
+            # IMPORTANT: Do NOT add back fields that weren't in the update list
+            # This preserves field deletion functionality
+            # If a field is not in the field_updates list, it means it was deleted
+            logger.info(f"Preserving deletion - not adding back {len(existing_fields) - len(updated_field_names)} fields that were not in the update list")
             
             # Debug: track fields to be added
             debug_info['fields_by_page'] = {page: len(fields) for page, fields in fields_by_page.items()}
@@ -1114,11 +1110,61 @@ class PDFCompleteRebuilder:
             
             # Remove signature locks to keep document editable
             self.remove_signature_locks(final_doc)
-            
+
+            # Final aggressive ZapfDingbats cleanup
+            logger.info("=== FINAL ZAPFDINGBATS FONT CLEANUP ===")
+            try:
+                zapf_found = False
+                for page_num, page in enumerate(final_doc):
+                    # Force all widgets to use Helvetica
+                    for widget in page.widgets():
+                        # Force standard font for all widgets
+                        widget.text_font = "Helv"
+                        widget.text_fontsize = 10
+
+                        if widget.field_type == fitz.PDF_WIDGET_TYPE_CHECKBOX:
+                            widget.button_caption = "X"
+                            widget.field_display = 1  # Visible
+                            # Clear any custom appearance streams that might use ZapfDingbats
+                            widget.field_flags &= ~(1 << 12)  # Clear NoToggleToOff flag
+                        elif widget.field_type == fitz.PDF_WIDGET_TYPE_RADIOBUTTON:
+                            widget.button_caption = "•"
+                            widget.field_display = 1
+                            widget.field_flags &= ~(1 << 12)
+
+                        # Force update to recreate appearance without ZapfDingbats
+                        widget.update()
+
+                    # Check for any remaining ZapfDingbats in fonts
+                    fonts = page.get_fonts()
+                    for font in fonts:
+                        if 'ZapfDingbats' in font[3] or 'zapf' in font[3].lower():
+                            logger.warning(f"Page {page_num}: Still found ZapfDingbats font: {font[3]}, xref: {font[0]}")
+                            zapf_found = True
+
+                            # Try to remove ZapfDingbats font references from the page
+                            try:
+                                # Get the page's resources dictionary
+                                page_obj = final_doc.xref_object(page.xref)
+                                if "/Resources" in page_obj:
+                                    # Try to clean font resources
+                                    logger.info(f"Attempting to clean ZapfDingbats from page {page_num} resources")
+                            except Exception as e:
+                                logger.warning(f"Could not clean font resources: {e}")
+
+                if zapf_found:
+                    logger.warning("ZapfDingbats font still present - will require post-processing")
+                else:
+                    logger.info("No ZapfDingbats fonts found in final document")
+
+                logger.info("Completed final font cleanup")
+            except Exception as e:
+                logger.warning(f"Could not perform final font cleanup: {e}")
+
             # Step 7: Save final PDF
             output_path = tempfile.mktemp(suffix='_rebuilt.pdf')
-            # Save with minimal options to avoid corruption
-            final_doc.save(output_path, garbage=0, deflate=False)
+            # Save with aggressive garbage collection to remove unused fonts
+            final_doc.save(output_path, garbage=4, deflate=True, clean=True)
             
             # Verify the result
             verify_doc = fitz.open(output_path)

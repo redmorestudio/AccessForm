@@ -16,9 +16,9 @@
                 </h5>
                 <button type="button" class="btn-close" @onclick="Cancel"></button>
             </div>
-            <div class="modal-body" style="overflow-y: auto; max-height: calc(95vh - 100px);">
-                <div class="row">
-                    <div class="col-md-6">
+            <div class="modal-body" style="overflow: hidden; height: calc(95vh - 100px);">
+                <div class="row h-100" style="overflow: hidden;">
+                    <div class="col-md-6 d-flex flex-column" style="overflow: hidden; height: 100%;">
                         <h5>PDF Preview - Page @CurrentPage</h5>
                         <div class="pdf-preview-controls mb-2">
                             <button class="btn btn-sm btn-secondary" @onclick="PreviousPage" disabled="@(CurrentPage <= 1)">
@@ -29,7 +29,7 @@
                                 Next <i class="fas fa-chevron-right"></i>
                             </button>
                         </div>
-                        <div class="pdf-preview-panel" @ref="previewPanel">
+                        <div class="pdf-preview-panel" id="pdfPreviewPanel" @ref="previewPanel">
                             <div class="pdf-page-container">
                                 @if (!string.IsNullOrEmpty(CurrentPageImage))
                                 {
@@ -53,7 +53,7 @@
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-md-6 d-flex flex-column" style="overflow: hidden; height: 100%;">
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <h5>Form Fields (@EditableFields.Count fields)</h5>
                             <div class="btn-group btn-group-sm">
@@ -92,7 +92,7 @@
                                 <small>@(ShowFieldBoxes ? "Boxes shown - edit and update" : "Click Update to show field boxes")</small>
                             </span>
                         </div>
-                        <div class="fields-panel">
+                        <div class="fields-panel" id="fieldsPanel">
                             <table class="table table-sm table-hover">
                                 <thead class="table-light sticky-top">
                                     <tr>
@@ -288,10 +288,8 @@
                                 </div>
                             </div>
                         }
-                    </div>
-                </div>
-                
-                <div class="bulk-operations mt-3">
+
+                        <div class="bulk-operations mt-3">
                     <h5>Bulk Operations</h5>
                     <div class="d-flex flex-wrap gap-2 mb-2">
                         <button class="btn btn-warning" @onclick="ResetToOriginalFields">
@@ -308,7 +306,7 @@
                         </button>
                     </div>
                 </div>
-                
+
                 @if (ValidationMessages.Any())
                 {
                     <div class="alert alert-warning mt-3">
@@ -321,6 +319,8 @@
                         </ul>
                     </div>
                 }
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <div class="d-flex justify-content-between w-100">
@@ -337,8 +337,11 @@
 
 <style>
     .pdf-preview-panel {
-        height: 500px;
-        overflow: auto;
+        flex: 1;
+        min-height: 0;
+        height: 100%;
+        overflow-y: auto;
+        overflow-x: auto;
         border: 1px solid #dee2e6;
         border-radius: 4px;
         background: #f5f5f5;
@@ -360,8 +363,12 @@
     
     
     .fields-panel {
-        height: 400px;
+        flex: 1;
+        min-height: 0;
+        height: 100%;
         overflow-y: auto;
+        display: flex;
+        flex-direction: column;
         border: 1px solid #dee2e6;
         border-radius: 4px;
         background: white;
@@ -575,6 +582,27 @@
             console.info(message);
         }
         // Could add a temporary toast notification here
+    };
+
+    window.scrollFieldIntoView = function(fieldIndex) {
+        // Scroll the fields panel to show the selected field row
+        const fieldsPanel = document.getElementById('fieldsPanel');
+        if (!fieldsPanel) return;
+
+        const rows = fieldsPanel.querySelectorAll('tbody tr');
+        if (rows && rows[fieldIndex - 1]) {
+            rows[fieldIndex - 1].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    };
+
+    window.scrollPreviewToField = function(fieldY) {
+        // Scroll the preview panel to show the field at position Y
+        const previewPanel = document.getElementById('pdfPreviewPanel');
+        if (!previewPanel) return;
+
+        // Convert field Y to scroll position (accounting for panel offset)
+        const scrollPosition = fieldY - 100; // Offset to center the field
+        previewPanel.scrollTo({ top: scrollPosition, behavior: 'smooth' });
     };
 </script>
 
@@ -993,13 +1021,28 @@
     {
         SelectedField = field;
 
+        // If field is on a different page, switch to that page
+        if (field.Page != CurrentPage)
+        {
+            CurrentPage = field.Page;
+            await LoadPageWithFieldBoxes(CurrentPage);
+        }
         // If field boxes are currently shown, refresh to highlight the selected field
-        if (ShowFieldBoxes)
+        else if (ShowFieldBoxes)
         {
             await LoadPageWithFieldBoxes(CurrentPage);
         }
 
         StateHasChanged();
+
+        // Scroll the selected field into view in the tag list
+        await JSRuntime.InvokeVoidAsync("scrollFieldIntoView", field.OriginalIndex);
+
+        // Scroll the preview to show the field if it has position data
+        if (field.Y > 0)
+        {
+            await JSRuntime.InvokeVoidAsync("scrollPreviewToField", field.Y);
+        }
     }
 
     private List<object> currentFieldMap = new List<object>();
