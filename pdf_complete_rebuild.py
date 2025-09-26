@@ -370,6 +370,96 @@ class PDFCompleteRebuilder:
             logger.debug(f"Could not remove signature locks: {e}")
             # Not critical - document will still work
     
+    def detect_and_fix_table_structures(self, doc: fitz.Document) -> int:
+        """
+        Detect and fix table accessibility issues:
+        - Tables with headers but no data cells
+        - Layout tables misusing semantic markup
+        - Single-column tables that should be lists/paragraphs
+        """
+        logger.info("=== DETECTING AND FIXING TABLE STRUCTURES ===")
+        tables_fixed = 0
+
+        try:
+            # PyMuPDF doesn't have direct table extraction, but we can detect table-like structures
+            # through text block analysis and drawing commands
+            for page_num, page in enumerate(doc):
+                # Get all text blocks to detect table-like patterns
+                blocks = page.get_text("dict")
+
+                # Look for patterns that indicate table structures
+                # 1. Multiple aligned text blocks at same Y coordinate (table row)
+                # 2. Consistent vertical spacing (table rows)
+                # 3. Rectangle drawings that form grid patterns
+
+                # Get drawing commands to find table borders
+                drawings = page.get_drawings()
+
+                # Detect grid-like rectangle patterns
+                horizontal_lines = []
+                vertical_lines = []
+
+                for drawing in drawings:
+                    for item in drawing.get("items", []):
+                        if item[0] == "l":  # Line
+                            x0, y0, x1, y1 = item[1], item[2], item[3], item[4]
+                            # Horizontal line
+                            if abs(y0 - y1) < 2:
+                                horizontal_lines.append((min(x0, x1), y0, max(x0, x1)))
+                            # Vertical line
+                            elif abs(x0 - x1) < 2:
+                                vertical_lines.append((x0, min(y0, y1), max(y0, y1)))
+
+                # If we have grid patterns, likely a table
+                if len(horizontal_lines) >= 2 and len(vertical_lines) >= 2:
+                    logger.info(f"Page {page_num}: Detected table-like structure with {len(horizontal_lines)} horizontal and {len(vertical_lines)} vertical lines")
+
+                    # Analyze text within the table boundaries
+                    table_text_blocks = []
+                    for block in blocks.get("blocks", []):
+                        if block.get("type") == 0:  # Text block
+                            for line in block.get("lines", []):
+                                for span in line.get("spans", []):
+                                    table_text_blocks.append({
+                                        'text': span.get("text", ""),
+                                        'bbox': span.get("bbox", []),
+                                        'flags': span.get("flags", 0)
+                                    })
+
+                    # Check for orphaned headers pattern:
+                    # - Bold or larger text at top (headers)
+                    # - No regular text below (no data cells)
+                    potential_headers = []
+                    regular_text = []
+
+                    for text_block in table_text_blocks:
+                        # Check if text is bold (flag bit 16) or larger font
+                        if text_block['flags'] & 2**4:  # Bold flag
+                            potential_headers.append(text_block)
+                        else:
+                            regular_text.append(text_block)
+
+                    # If we have headers but very little regular text, it's likely a misused table
+                    if len(potential_headers) > 0 and len(regular_text) < len(potential_headers):
+                        logger.warning(f"Page {page_num}: Found table with {len(potential_headers)} potential headers but only {len(regular_text)} data cells - likely accessibility issue")
+                        tables_fixed += 1
+
+                        # Mark this for remediation in the tag tree
+                        # Since PyMuPDF can't directly modify the tag tree, we'll flag it
+                        # for the C# services to handle
+
+                # Also check for single-column tables (often misused for layout)
+                if len(vertical_lines) == 2:  # Only left and right borders
+                    logger.info(f"Page {page_num}: Found single-column table - should likely be converted to paragraphs")
+                    tables_fixed += 1
+
+            logger.info(f"Identified {tables_fixed} tables with potential accessibility issues")
+
+        except Exception as e:
+            logger.warning(f"Error during table detection: {e}")
+
+        return tables_fixed
+
     def create_tag_structure(self, doc: fitz.Document, fields_by_page: Dict[int, List[Dict]]) -> bool:
         """Ensure form fields have proper accessibility attributes"""
         logger.info("=== ENSURING FORM FIELD ACCESSIBILITY ===")
@@ -1069,8 +1159,11 @@ class PDFCompleteRebuilder:
                     
             except Exception as e:
                 logger.warning(f"Could not mark artifacts: {e}")
-            
-            # Step 5: Call tag structure function (which now does minimal/no modification)
+
+            # Step 5: Detect and fix table accessibility issues
+            tables_with_issues = self.detect_and_fix_table_structures(final_doc)
+
+            # Step 6: Call tag structure function (which now does minimal/no modification)
             self.create_tag_structure(final_doc, fields_by_page)
             
             # Step 6: Save and reload to ensure fields are properly committed

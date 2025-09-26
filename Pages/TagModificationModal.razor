@@ -199,10 +199,19 @@
                         @if (SelectedField != null)
                         {
                             <div class="expanded-editor mt-3 p-3 border rounded bg-light">
-                                <h6 class="mb-3">
-                                    <i class="fas fa-edit me-2"></i>
-                                    Editing Field: <strong>@SelectedField.Name</strong>
-                                </h6>
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-edit me-2"></i>
+                                        Editing Field: <strong>@SelectedField.Name</strong>
+                                    </h6>
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="ToggleFieldEditor">
+                                        <i class="fas fa-@(IsFieldEditorCollapsed ? "expand" : "compress")-alt"></i>
+                                        @(IsFieldEditorCollapsed ? "Expand" : "Collapse")
+                                    </button>
+                                </div>
+
+                                @if (!IsFieldEditorCollapsed)
+                                {
                                 <div class="row">
                                     <div class="col-md-6">
                                         <div class="mb-2">
@@ -286,6 +295,21 @@
                                         Next Field <i class="fas fa-arrow-right"></i>
                                     </button>
                                 </div>
+                                }
+                                else
+                                {
+                                    <div class="d-flex gap-2">
+                                        <button class="btn btn-sm btn-primary" @onclick="() => NavigateToField(-1)" title="Previous Field">
+                                            <i class="fas fa-arrow-left"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-primary" @onclick="() => NavigateToField(1)" title="Next Field">
+                                            <i class="fas fa-arrow-right"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-success" @onclick="UpdatePdfPreview" title="Update Preview">
+                                            <i class="fas fa-sync"></i>
+                                        </button>
+                                    </div>
+                                }
                             </div>
                         }
 
@@ -587,22 +611,66 @@
     window.scrollFieldIntoView = function(fieldIndex) {
         // Scroll the fields panel to show the selected field row
         const fieldsPanel = document.getElementById('fieldsPanel');
-        if (!fieldsPanel) return;
+        if (!fieldsPanel) {
+            console.log('scrollFieldIntoView: fieldsPanel not found');
+            return;
+        }
 
         const rows = fieldsPanel.querySelectorAll('tbody tr');
         if (rows && rows[fieldIndex - 1]) {
-            rows[fieldIndex - 1].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const targetRow = rows[fieldIndex - 1];
+
+            // Get the position of the row relative to the fields panel
+            const rowTop = targetRow.offsetTop;
+            const rowHeight = targetRow.offsetHeight;
+            const panelHeight = fieldsPanel.clientHeight;
+            const panelScroll = fieldsPanel.scrollTop;
+
+            // Calculate if row is visible
+            const rowBottom = rowTop + rowHeight;
+            const visibleTop = panelScroll;
+            const visibleBottom = panelScroll + panelHeight;
+
+            // Only scroll if the row is not fully visible
+            if (rowTop < visibleTop || rowBottom > visibleBottom) {
+                // Center the row in the panel
+                const scrollTarget = rowTop - (panelHeight / 2) + (rowHeight / 2);
+                fieldsPanel.scrollTo({ top: Math.max(0, scrollTarget), behavior: 'smooth' });
+                console.log(`scrollFieldIntoView: Scrolled to field ${fieldIndex} at position ${scrollTarget}`);
+            } else {
+                console.log(`scrollFieldIntoView: Field ${fieldIndex} already visible`);
+            }
+        } else {
+            console.log(`scrollFieldIntoView: Row ${fieldIndex - 1} not found`);
         }
     };
 
     window.scrollPreviewToField = function(fieldY) {
         // Scroll the preview panel to show the field at position Y
         const previewPanel = document.getElementById('pdfPreviewPanel');
-        if (!previewPanel) return;
+        if (!previewPanel) {
+            console.log('scrollPreviewToField: previewPanel not found');
+            return;
+        }
 
-        // Convert field Y to scroll position (accounting for panel offset)
-        const scrollPosition = fieldY - 100; // Offset to center the field
+        // Get the image element inside the preview panel
+        const pageImage = previewPanel.querySelector('.pdf-page-image');
+        if (!pageImage) {
+            console.log('scrollPreviewToField: page image not found');
+            return;
+        }
+
+        // Convert PDF Y coordinate to display Y
+        // PDF coordinates are 72 DPI, display is 150 DPI
+        const scale = 150 / 72;
+        const displayY = fieldY * scale;
+
+        // Center the field in the viewport
+        const panelHeight = previewPanel.clientHeight;
+        const scrollPosition = Math.max(0, displayY - panelHeight / 2);
+
         previewPanel.scrollTo({ top: scrollPosition, behavior: 'smooth' });
+        console.log(`scrollPreviewToField: Scrolled to Y=${fieldY} (display Y=${displayY}, scroll=${scrollPosition})`);
     };
 </script>
 
@@ -628,7 +696,10 @@
     
     // Field selection state
     private EditableField SelectedField = null;
-    
+
+    // UI state
+    private bool IsFieldEditorCollapsed { get; set; } = false;
+
     // Sorting state
     private string sortBy = "original";
     private bool sortAscending = true;
@@ -1491,7 +1562,13 @@
         IsVisible = false;
         await IsVisibleChanged.InvokeAsync(false);
     }
-    
+
+    private void ToggleFieldEditor()
+    {
+        IsFieldEditorCollapsed = !IsFieldEditorCollapsed;
+        StateHasChanged();
+    }
+
     public class EditableField
     {
         public string Name { get; set; }
