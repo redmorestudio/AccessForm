@@ -569,14 +569,19 @@ namespace WordToPdfConverter.Services
             if (string.IsNullOrEmpty(name))
                 return "Field";
 
-            // Remove common prefixes
-            name = name.Replace("Textformfield", "")
-                      .Replace("formfield", "")
-                      .Replace("_", " ")
-                      .Trim();
+            // DON'T CLEAN SYNCFUSION NATIVE FIELD NAMES!
+            // Syncfusion creates names like "text332aba" which are perfect for machine processing
+            // Only clean names that have obvious prefixes to remove
+            if (name.Contains("Textformfield") || name.Contains("formfield"))
+            {
+                name = name.Replace("Textformfield", "")
+                          .Replace("formfield", "")
+                          .Replace("_", " ")
+                          .Trim();
+            }
 
-            // If it's just a hash, make it more readable
-            if (name.Length > 10 && !name.Contains(" "))
+            // If after cleaning we have nothing, return "Field"
+            if (string.IsNullOrWhiteSpace(name))
             {
                 name = "Field";
             }
@@ -831,11 +836,16 @@ namespace WordToPdfConverter.Services
                 
                 var bounds = new RectangleF(field.X, pdfY, field.Width, field.Height);
 
-                // Get intelligent field name for accessibility
-                string intelligentFieldName = GetIntelligentFieldName(field);
+                // Only get intelligent field name if Claude Vision is enabled
+                // Otherwise use the raw Syncfusion field name (like "text332aba")
+                string fieldNameToUse = field.FieldName;
+                if (config.Services.UseClaudeVision || config.Services.UseClaudeValidation)
+                {
+                    fieldNameToUse = GetIntelligentFieldName(field);
+                }
 
                 // Apply smart sizing based on field type
-                bounds = ApplySmartFieldSizing(bounds, field.FieldType, intelligentFieldName);
+                bounds = ApplySmartFieldSizing(bounds, field.FieldType, fieldNameToUse);
 
                 // Add the field based on type
                 PdfField pdfField = null;
@@ -844,7 +854,7 @@ namespace WordToPdfConverter.Services
                 _logger.LogInformation($"[PDF FIELD CREATION] Creating field type: {field.FieldType}");
                 _logger.LogInformation($"[PDF FIELD CREATION] Original ShortId: {field.ShortId}");
                 _logger.LogInformation($"[PDF FIELD CREATION] Original FieldName: {field.FieldName}");
-                _logger.LogInformation($"[PDF FIELD CREATION] Intelligent name to use: {intelligentFieldName}");
+                _logger.LogInformation($"[PDF FIELD CREATION] Field name to use: {fieldNameToUse}");
                 _logger.LogInformation($"[PDF FIELD CREATION] Tooltip: {tooltip}");
                 _logger.LogInformation($"[PDF FIELD CREATION] Source: {field.Source}");
                 _logger.LogInformation($"[PDF FIELD CREATION] Page: {field.PageNumber}, X: {field.X}, Y: {field.Y}");
@@ -852,9 +862,9 @@ namespace WordToPdfConverter.Services
                 switch (field.FieldType.ToLower())
                 {
                     case "checkbox":
-                        _logger.LogInformation($"[CHECKBOX CREATION] Creating checkbox with name: '{intelligentFieldName}'");
+                        _logger.LogInformation($"[CHECKBOX CREATION] Creating checkbox with name: '{fieldNameToUse}'");
                         var checkField = new PdfCheckBoxField(pdfDoc.Pages[field.PageNumber - 1],
-                            intelligentFieldName);
+                            fieldNameToUse);
                         checkField.Bounds = bounds;
                         checkField.ToolTip = $"[PAGE:{field.PageNumber}] {tooltip}";
                         pdfField = checkField;
@@ -862,9 +872,9 @@ namespace WordToPdfConverter.Services
                         break;
                         
                     case "radio":
-                        _logger.LogInformation($"[RADIO CREATION] Creating radio with name: '{intelligentFieldName}'");
+                        _logger.LogInformation($"[RADIO CREATION] Creating radio with name: '{fieldNameToUse}'");
                         var radioField = new PdfRadioButtonListField(pdfDoc.Pages[field.PageNumber - 1],
-                            intelligentFieldName);
+                            fieldNameToUse);
                         // Radio button list needs items, add a default one
                         var radioItem = new PdfRadioButtonListItem("Option1");
                         radioItem.Bounds = bounds;
@@ -875,10 +885,10 @@ namespace WordToPdfConverter.Services
                         break;
                         
                     case "signature":
-                        _logger.LogInformation($"[SIGNATURE CREATION] Creating signature field with name: '{intelligentFieldName}'");
+                        _logger.LogInformation($"[SIGNATURE CREATION] Creating signature field with name: '{fieldNameToUse}'");
                         // CREATE TEXT FIELD INSTEAD OF SIGNATURE FIELD TO PREVENT DOCUMENT LOCKING
                         var sigTextField = new PdfTextBoxField(pdfDoc.Pages[field.PageNumber - 1],
-                            intelligentFieldName);
+                            fieldNameToUse);
                         sigTextField.Bounds = bounds;
                         sigTextField.ToolTip = tooltip + " (Signature)";
                         sigTextField.BackColor = new PdfColor(245, 245, 245); // Light gray background
@@ -887,10 +897,10 @@ namespace WordToPdfConverter.Services
                         break;
                         
                     default:
-                        _logger.LogInformation($"[TEXT FIELD CREATION] Creating text field with name: '{intelligentFieldName}' for type: {field.FieldType}");
+                        _logger.LogInformation($"[TEXT FIELD CREATION] Creating text field with name: '{fieldNameToUse}' for type: {field.FieldType}");
                         // Create text field for all text-based types
                         var textField = new PdfTextBoxField(pdfDoc.Pages[field.PageNumber - 1],
-                            intelligentFieldName);
+                            fieldNameToUse);
                         _logger.LogInformation($"[TEXT FIELD CREATED] Name after creation: '{textField.Name}'");
                         textField.Bounds = bounds;
                         

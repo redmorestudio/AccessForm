@@ -3811,28 +3811,28 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
         await stream.CopyToAsync(ms);
         var fileBytes = ms.ToArray();
 
-        // Force PassportPDF with AI for maximum accessibility
+        // PassportPDF endpoint should use ONLY Syncfusion for machine-readable field names
         var config = new WordToPdfConverter.Models.FieldDetectionConfig
         {
             Services = new WordToPdfConverter.Models.ServiceSelection
             {
                 UseSyncfusion = true,
-                UseClaudeVision = true,
+                UseClaudeVision = false,  // NO Claude Vision - we want machine tags
                 UseGoogle = false,
-                UseClaudeValidation = true
+                UseClaudeValidation = false  // NO Claude Validation - we want machine tags
             },
             Mode = WordToPdfConverter.Models.ProcessingMode.Sequential
         };
 
-        logger.LogInformation($"Processing {file.FileName} with PassportPDF for full PDF/UA compliance");
+        logger.LogInformation($"Processing {file.FileName} with PassportPDF for full PDF/UA compliance (Syncfusion fields only)");
 
         // First convert with field detection
         var (pdfBytes, fields) = await fieldService.ConvertWithConfig(fileBytes, file.FileName, config);
 
-        // Log enhanced field names that will be preserved in PDF
+        // Log field names that will be preserved in PDF
         if (fields != null && fields.Count > 0)
         {
-            logger.LogInformation($"[PASSPORT DEBUG] Processing {fields.Count} enhanced fields with human-readable names");
+            logger.LogInformation($"[PASSPORT DEBUG] Processing {fields.Count} Syncfusion fields with machine-readable names");
             var sampleFields = fields.Take(3).ToList();
             foreach (var field in sampleFields)
             {
@@ -3880,7 +3880,20 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
             {
                 fieldsDetected = fields?.Count ?? 0,
                 services = "PassportPDF + Anthropic Claude"
-            }
+            },
+            // CRITICAL: Include the detected fields for the frontend
+            fields = fields?.Select(f => new {
+                name = f.FieldName,
+                type = f.FieldType?.ToLower() ?? "text",
+                x = f.X,
+                y = f.Y,
+                width = f.Width,
+                height = f.Height,
+                page = f.PageNumber,
+                tooltip = f.ValidationNotes ?? f.Tooltip ?? f.FieldName,
+                isRequired = false,
+                source = f.Source
+            }).ToArray() ?? new object[0]
         });
     }
     catch (Exception ex)
