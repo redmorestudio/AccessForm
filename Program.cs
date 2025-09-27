@@ -1371,6 +1371,19 @@ app.MapPost("/api/convert-with-ai", async (
                 processingTime = processingTime,
                 aiAnalysis = aiAnalysis
             },
+            // CRITICAL: Include the detected fields for the frontend
+            fields = detectedPipelineFields?.Select(f => new {
+                name = f.FieldName,
+                type = f.FieldType?.ToLower() ?? "text",
+                x = f.X,
+                y = f.Y,
+                width = f.Width,
+                height = f.Height,
+                page = f.PageNumber,
+                tooltip = f.ValidationNotes ?? f.Tooltip ?? f.FieldName,
+                isRequired = false,
+                source = f.Source
+            }).ToArray() ?? new object[0],
             // Include debug info separately
             debugInfo = debugInfo,
             debugId = debugCache.StoreDebugData(debugInfo)
@@ -3717,7 +3730,9 @@ app.MapPost("/api/convert-with-config", async (
         logger.LogInformation($"Processing {file.FileName} with config");
         var (pdfBytes, fields) = await fieldService.ConvertWithConfig(fileBytes, file.FileName, config);
 
-        // Return response in expected format
+        logger.LogInformation($"Field detection completed. Found {fields?.Count ?? 0} fields");
+
+        // Return response in expected format WITH detected fields for the frontend
         return Results.Ok(new
         {
             normalPdf = new
@@ -3737,15 +3752,28 @@ app.MapPost("/api/convert-with-config", async (
                 compliance = "WCAG 2.1 AA",
                 fieldsProcessed = fields?.Count ?? 0,
                 measuresApplied = 12,
-                aiEnhanced = false,
+                aiEnhanced = config.Services.UseClaudeVision || config.Services.UseClaudeValidation,
                 accessibilityScore = 85,
                 processingTime = 0
             },
             debugInfo = new
             {
                 fieldsDetected = fields?.Count ?? 0,
-                services = "Syncfusion"
-            }
+                services = "Configurable Field Detection"
+            },
+            // CRITICAL: Include the detected fields for the frontend
+            fields = fields?.Select(f => new {
+                name = f.FieldName,
+                type = f.FieldType?.ToLower() ?? "text",
+                x = f.X,
+                y = f.Y,
+                width = f.Width,
+                height = f.Height,
+                page = f.PageNumber,
+                tooltip = f.ValidationNotes ?? f.Tooltip ?? f.FieldName,
+                isRequired = false,
+                source = f.Source
+            }).ToArray() ?? new object[0]
         });
     }
     catch (Exception ex)

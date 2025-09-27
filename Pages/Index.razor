@@ -1258,7 +1258,48 @@
                 {
                     await JSRuntime.InvokeVoidAsync("console.log", "ProcessApiResponse: No debugId in response");
                 }
-                
+
+                // Parse detected fields if present (for Word documents with field detection)
+                await JSRuntime.InvokeVoidAsync("console.log", "Checking for fields in response...");
+                if (result.TryGetProperty("fields", out JsonElement fields) && fields.ValueKind == JsonValueKind.Array)
+                {
+                    var detectedFields = new List<TagModificationModal.EditableField>();
+
+                    foreach (var field in fields.EnumerateArray())
+                    {
+                        var editableField = new TagModificationModal.EditableField
+                        {
+                            Name = field.GetProperty("name").GetString() ?? "Unknown",
+                            OriginalName = field.GetProperty("name").GetString() ?? "Unknown",
+                            Type = field.GetProperty("type").GetString() ?? "text",
+                            X = (float)field.GetProperty("x").GetDouble(),
+                            Y = (float)field.GetProperty("y").GetDouble(),
+                            Width = (float)field.GetProperty("width").GetDouble(),
+                            Height = (float)field.GetProperty("height").GetDouble(),
+                            Page = field.GetProperty("page").GetInt32(),
+                            Tooltip = field.TryGetProperty("tooltip", out var tooltipElement) ? tooltipElement.GetString() : "",
+                            IsRequired = field.TryGetProperty("isRequired", out var requiredElement) && requiredElement.GetBoolean(),
+                            OriginalIndex = detectedFields.Count + 1
+                        };
+
+                        detectedFields.Add(editableField);
+                    }
+
+                    await JSRuntime.InvokeVoidAsync("console.log", $"Parsed {detectedFields.Count} detected fields from response");
+
+                    // CRITICAL: Store the fields for the field editor
+                    if (detectedFields.Count > 0)
+                    {
+                        // Store fields and PDF data for the field editor
+                        var fieldsJson = System.Text.Json.JsonSerializer.Serialize(detectedFields);
+                        await JSRuntime.InvokeVoidAsync("sessionStorage.setItem", "tempDetectedFields", fieldsJson);
+                        await JSRuntime.InvokeVoidAsync("sessionStorage.setItem", "tempPdfData", processingResults.AccessibleFileData);
+                        await JSRuntime.InvokeVoidAsync("sessionStorage.setItem", "tempPdfFileName", processingResults.AccessibleFileName);
+
+                        await JSRuntime.InvokeVoidAsync("console.log", "Stored detected fields in session storage for field editor");
+                    }
+                }
+
                 // Parse tag structure if present
                 await JSRuntime.InvokeVoidAsync("console.log", "Checking for tagStructure in response...");
                 if (result.TryGetProperty("tagStructure", out JsonElement tagStructure))
@@ -1782,7 +1823,41 @@
                             });
                         }
                     }
-                    
+
+                    // CRITICAL: If no fields found in tag structure, check session storage for detected fields
+                    if (currentFields.Count == 0)
+                    {
+                        await JSRuntime.InvokeVoidAsync("console.log", "No fields in tag structure, checking session storage for detected fields...");
+                        var sessionFieldsJson = await JSRuntime.InvokeAsync<string>("sessionStorage.getItem", "tempDetectedFields");
+                        if (!string.IsNullOrEmpty(sessionFieldsJson))
+                        {
+                            await JSRuntime.InvokeVoidAsync("console.log", $"Found session storage fields: {sessionFieldsJson.Substring(0, Math.Min(200, sessionFieldsJson.Length))}...");
+                            var sessionFields = JsonSerializer.Deserialize<List<TagModificationModal.EditableField>>(sessionFieldsJson);
+                            foreach (var sessionField in sessionFields)
+                            {
+                                currentFields.Add(new TagModificationModal.EditableField
+                                {
+                                    Name = sessionField.Name,
+                                    OriginalName = sessionField.OriginalName,
+                                    Type = sessionField.Type,
+                                    Tooltip = sessionField.Tooltip,
+                                    IsRequired = sessionField.IsRequired,
+                                    Page = sessionField.Page,
+                                    X = sessionField.X,
+                                    Y = sessionField.Y,
+                                    Width = sessionField.Width,
+                                    Height = sessionField.Height,
+                                    OriginalIndex = sessionField.OriginalIndex
+                                });
+                            }
+                            await JSRuntime.InvokeVoidAsync("console.log", $"Loaded {currentFields.Count} fields from session storage");
+                        }
+                        else
+                        {
+                            await JSRuntime.InvokeVoidAsync("console.log", "No fields found in session storage either");
+                        }
+                    }
+
                     showTagEditor = true;
                     StateHasChanged();
                 }
