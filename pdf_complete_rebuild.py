@@ -155,12 +155,12 @@ class PDFCompleteRebuilder:
             page_height = page.rect.height  # ~792 points per page
             logger.info(f"[COORD DEBUG] Field '{field_name}' page {page_num}: raw_Y={y}, page_height={page_height}")
 
-            # CRITICAL FIX: Coordinates from C# are already in correct PDF coordinate system
-            # C# Syncfusion provides coordinates that are page-relative and bottom-left origin
-            # No conversion needed - use coordinates as-is
-            y_converted = y  # Use Y coordinate directly - already in correct PDF coordinate system
+            # CRITICAL FIX: Convert from top-left origin (C# display coords) to bottom-left origin (PyMuPDF)
+            # C# sends coordinates in top-left origin format (Y=0 at top, increases downward)
+            # PyMuPDF requires bottom-left origin format (Y=0 at bottom, increases upward)
+            y_converted = page_height - y - height  # Convert from top-left to bottom-left origin
 
-            logger.info(f"[COORD DEBUG] Field '{field_name}' page {page_num}: using_Y={y_converted} (no conversion needed)")
+            logger.info(f"[COORD DEBUG] Field '{field_name}' page {page_num}: using_Y={y_converted} (converted from top-left to bottom-left)")
             
             # Adjust for checkbox/radio button dimensions
             if field_type in ['checkbox', 'radio', 'radiobutton']:
