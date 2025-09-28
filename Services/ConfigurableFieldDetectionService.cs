@@ -1743,7 +1743,7 @@ Document:
                             enhancedFields.Add(enhanced);
                             _logger.LogDebug($"Enhanced field {sfField.ShortId}: '{sfField.FieldName}' → '{bestMatch.FieldName}' (type: {compatibleType})");
                         }
-                        else
+                        else if (!isLikelyPhantom)  // Only add non-phantom fields that don't have matches
                         {
                             // No more labels available - ensure field has a reasonable name
                             if (string.IsNullOrEmpty(sfField.FieldName) || sfField.FieldName == "Field")
@@ -1753,6 +1753,11 @@ Document:
                             }
                             sfField.Tooltip = FieldTooltipGenerator.GenerateTooltip(sfField.FieldType, sfField.FieldName);
                             enhancedFields.Add(sfField);
+                        }
+                        else
+                        {
+                            // This is a phantom field with no match - skip it entirely
+                            _logger.LogInformation($"Skipping phantom field {sfField.ShortId} ('{sfField.FieldName}') - no Claude label and detected as phantom");
                         }
                     }
                 }
@@ -1897,10 +1902,23 @@ Document:
         {
             // Detect fields that are likely phantoms (false positives that throw off matching)
 
-            // Check if field has no name or a suspicious auto-generated name
+            // Check for Syncfusion's 12-character hex-like auto-generated names (e.g., "a1bb168e5744")
+            bool hasGibberishName = false;
+            if (!string.IsNullOrEmpty(field.FieldName) && field.FieldName.Length == 12)
+            {
+                // Check if all characters are hex digits (0-9, a-f)
+                hasGibberishName = field.FieldName.All(c => "0123456789abcdef".Contains(char.ToLower(c)));
+                if (hasGibberishName)
+                {
+                    _logger.LogDebug($"Detected gibberish Syncfusion name: {field.FieldName}");
+                }
+            }
+
+            // Check if field has no name or other suspicious auto-generated names
             bool hasNoMeaningfulName = string.IsNullOrEmpty(field.FieldName) ||
-                                       field.FieldName.Length == 12 && field.FieldName.All(c => char.IsLetterOrDigit(c)) ||
-                                       field.FieldName.StartsWith("field_", StringComparison.OrdinalIgnoreCase);
+                                       hasGibberishName ||
+                                       field.FieldName.StartsWith("field_", StringComparison.OrdinalIgnoreCase) ||
+                                       field.FieldName == "Field";  // Generic default name
 
             // Check if field is at suspicious location (e.g., very bottom of page)
             const float BOTTOM_THRESHOLD = 100f; // Fields with Y < 100 are near bottom in PDF coordinates
@@ -1911,12 +1929,21 @@ Document:
                                           field.Width > 500 || field.Height > 100;
 
             // A field is likely phantom if:
-            // 1. It has no meaningful name AND is at the bottom of the page
-            // 2. It has suspicious dimensions
-            // 3. It's a Syncfusion-detected field with no proper name at an edge location
-            return (hasNoMeaningfulName && isNearBottom) ||
-                   hasSuspiciousDimensions ||
-                   (field.Source == "Syncfusion" && hasNoMeaningfulName && (isNearBottom || field.Y > 750));
+            // 1. It has a gibberish 12-char hex name (high confidence phantom)
+            // 2. It has no meaningful name AND is at the bottom of the page
+            // 3. It has suspicious dimensions
+            // 4. It's a Syncfusion-detected field with no proper name at an edge location
+            bool isPhantom = hasGibberishName ||  // This alone is enough to mark as phantom
+                            (hasNoMeaningfulName && isNearBottom) ||
+                            hasSuspiciousDimensions ||
+                            (field.Source == "Syncfusion" && hasNoMeaningfulName && (isNearBottom || field.Y > 750));
+
+            if (isPhantom)
+            {
+                _logger.LogWarning($"Field {field.ShortId} marked as likely phantom: Name='{field.FieldName}', Y={field.Y}, Source={field.Source}");
+            }
+
+            return isPhantom;
         }
     }
 }
