@@ -3825,20 +3825,25 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
         await stream.CopyToAsync(ms);
         var fileBytes = ms.ToArray();
 
-        // PassportPDF endpoint should use ONLY Syncfusion for machine-readable field names
+        // Read config from form data to allow user control
         var config = new WordToPdfConverter.Models.FieldDetectionConfig
         {
             Services = new WordToPdfConverter.Models.ServiceSelection
             {
-                UseSyncfusion = true,
-                UseClaudeVision = false,  // NO Claude Vision - we want machine tags
-                UseGoogle = false,
-                UseClaudeValidation = false  // NO Claude Validation - we want machine tags
+                UseSyncfusion = request.Form["useSyncfusion"].ToString()?.ToLower() == "true",
+                UseClaudeVision = request.Form["useClaudeVision"].ToString()?.ToLower() == "true",
+                UseGoogle = request.Form["useGoogle"].ToString()?.ToLower() == "true",
+                UseClaudeValidation = request.Form["useClaudeValidation"].ToString()?.ToLower() == "true"
             },
-            Mode = WordToPdfConverter.Models.ProcessingMode.Sequential
+            Mode = request.Form["mode"].ToString() switch
+            {
+                "Simultaneous" => WordToPdfConverter.Models.ProcessingMode.Simultaneous,
+                "SyncfusionWithValidation" => WordToPdfConverter.Models.ProcessingMode.SyncfusionWithValidation,
+                _ => WordToPdfConverter.Models.ProcessingMode.Sequential
+            }
         };
 
-        logger.LogInformation($"Processing {file.FileName} with PassportPDF for full PDF/UA compliance (Syncfusion fields only)");
+        logger.LogInformation($"Processing {file.FileName} with PassportPDF - Config: Syncfusion={config.Services.UseSyncfusion}, ClaudeVision={config.Services.UseClaudeVision}");
 
         // First convert with field detection
         var (pdfBytes, fields) = await fieldService.ConvertWithConfig(fileBytes, file.FileName, config);

@@ -509,9 +509,20 @@ window.accessForm = {
                         }, 100);
 
                         const file = files[0];
-                        const endpoint = '/api/process-with-passportpdf-auto';
+                        const endpoint = '/api/convert-with-config';
 
-                        const result = await window.accessForm.uploadOriginalFile(endpoint, file);
+                        // Get the configuration from checkboxes
+                        const config = {
+                            useSyncfusion: document.querySelector('#useSyncfusion')?.checked ?? true,
+                            useGoogle: document.querySelector('#useGoogle')?.checked ?? false,
+                            useClaudeVision: document.querySelector('#useClaudeVision')?.checked ?? false,
+                            useClaudeValidation: document.querySelector('#useClaudeValidation')?.checked ?? false,
+                            mode: document.querySelector('input[name="processingMode"]:checked')?.value ?? 'Sequential',
+                            debugMode: document.querySelector('#debugMode')?.checked ?? true,
+                            showFieldIds: document.querySelector('#showFieldIds')?.checked ?? true
+                        };
+
+                        const result = await window.accessForm.uploadOriginalFile(endpoint, file, config);
 
                         // Clear intervals
                         if (timerInterval) clearInterval(timerInterval);
