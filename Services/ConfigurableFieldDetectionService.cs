@@ -1807,21 +1807,52 @@ Document:
                             enhancedFields.Add(enhanced);
                             _logger.LogDebug($"Enhanced field {sfField.ShortId}: '{sfField.FieldName}' → '{bestMatch.FieldName}' (type: {compatibleType})");
                         }
-                        else if (!isLikelyPhantom)  // Only add non-phantom fields that don't have matches
-                        {
-                            // No more labels available - ensure field has a reasonable name
-                            if (string.IsNullOrEmpty(sfField.FieldName) || sfField.FieldName == "Field")
-                            {
-                                // Generate a better default name based on type and position
-                                sfField.FieldName = $"{sfField.FieldType}_{enhancedFields.Count + 1}";
-                            }
-                            sfField.Tooltip = FieldTooltipGenerator.GenerateTooltip(sfField.FieldType, sfField.FieldName);
-                            enhancedFields.Add(sfField);
-                        }
                         else
                         {
-                            // This is a phantom field with no match - skip it entirely
-                            _logger.LogInformation($"Skipping phantom field {sfField.ShortId} ('{sfField.FieldName}') - no Claude label and detected as phantom");
+                            // No Claude match found - check if we have unused Claude labels
+                            var unusedClaudeLabels = cvFieldsSorted.Where(cv => !usedLabels.Contains(cv.FieldName)).ToList();
+
+                            if (isLikelyPhantom && unusedClaudeLabels.Count == 0)
+                            {
+                                // This is a phantom field AND there are no unused Claude labels - skip it entirely
+                                _logger.LogInformation($"Skipping phantom field {sfField.ShortId} ('{sfField.FieldName}') - no Claude labels available and detected as phantom");
+                            }
+                            else if (isLikelyPhantom && unusedClaudeLabels.Count > 0)
+                            {
+                                // This is a phantom field BUT there are unused Claude labels - try one more match by index
+                                var nextUnusedLabel = unusedClaudeLabels.First();
+                                usedLabels.Add(nextUnusedLabel.FieldName);
+
+                                _logger.LogInformation($"Phantom field {sfField.ShortId} getting Claude label '{nextUnusedLabel.FieldName}' (unused labels available: {unusedClaudeLabels.Count})");
+
+                                var enhanced = new FieldDetectionResult
+                                {
+                                    ShortId = sfField.ShortId,
+                                    FieldName = nextUnusedLabel.FieldName,
+                                    FieldType = sfField.FieldType,
+                                    X = sfField.X,
+                                    Y = sfField.Y,
+                                    Width = sfField.Width,
+                                    Height = sfField.Height,
+                                    PageNumber = nextUnusedLabel.PageNumber > 0 ? nextUnusedLabel.PageNumber : sfField.PageNumber,
+                                    Source = "Syncfusion+Claude",
+                                    Confidence = sfField.Confidence * 0.8f, // Reduce confidence for phantom matches
+                                    IsValid = sfField.IsValid,
+                                    Tooltip = FieldTooltipGenerator.GenerateTooltip(sfField.FieldType, nextUnusedLabel.FieldName, nextUnusedLabel.PageNumber > 0 ? nextUnusedLabel.PageNumber : sfField.PageNumber)
+                                };
+                                enhancedFields.Add(enhanced);
+                            }
+                            else if (!isLikelyPhantom)
+                            {
+                                // Not a phantom field, no Claude match - ensure field has a reasonable name
+                                if (string.IsNullOrEmpty(sfField.FieldName) || sfField.FieldName == "Field")
+                                {
+                                    // Generate a better default name based on type and position
+                                    sfField.FieldName = $"{sfField.FieldType}_{enhancedFields.Count + 1}";
+                                }
+                                sfField.Tooltip = FieldTooltipGenerator.GenerateTooltip(sfField.FieldType, sfField.FieldName);
+                                enhancedFields.Add(sfField);
+                            }
                         }
                     }
                 }
