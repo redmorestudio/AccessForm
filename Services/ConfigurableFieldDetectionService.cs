@@ -142,8 +142,9 @@ namespace WordToPdfConverter.Services
                         string pdfMarkdown = "";
                         try
                         {
-                            // PdfToMarkdownConverter not available
-                            pdfMarkdown = ""; // PdfToMarkdownConverter not available
+                            var markdownLogger = _loggerFactory.CreateLogger<PdfToMarkdownConverter>();
+                            var markdownConverter = new PdfToMarkdownConverter(markdownLogger);
+                            pdfMarkdown = markdownConverter.ConvertToMarkdown(pdfBytes);
                             _logger.LogInformation($"Converted PDF to Markdown: {pdfMarkdown.Length} characters");
                             
                             // Log the markdown to a file for debugging
@@ -641,9 +642,10 @@ namespace WordToPdfConverter.Services
                 }
                 else
                 {
-                    // PdfToMarkdownConverter not available
-                    pdfMarkdown = "";
-                    _logger.LogInformation($"PdfToMarkdownConverter not available, using empty markdown");
+                    var markdownLogger = _loggerFactory.CreateLogger<PdfToMarkdownConverter>();
+                    var markdownConverter = new PdfToMarkdownConverter(markdownLogger);
+                    pdfMarkdown = markdownConverter.ConvertToMarkdown(pdfBytes);
+                    _logger.LogInformation($"Converted PDF to Markdown for analysis: {pdfMarkdown.Length} characters");
                 }
                 
                 // Debug: Write markdown to file if we have it
