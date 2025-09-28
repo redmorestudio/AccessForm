@@ -886,9 +886,19 @@
                 height = f.Height,
                 isSelected = SelectedField != null && SelectedField == f
             }).ToList();
-            
+
+            // Log coordinate check before sending
+            Console.WriteLine($"[SEND-TO-SERVER] Preparing to send {fieldsForJson.Count} fields");
+            foreach (var f in fieldsForJson)
+            {
+                if (f.x < 0 || f.y < 0 || f.width <= 0 || f.height <= 0 || f.x > 1000 || f.y > 1000)
+                {
+                    Console.WriteLine($"[COORD-CHECK] WARNING: Field '{f.name}' has unusual coords: x={f.x}, y={f.y}, w={f.width}, h={f.height}");
+                }
+            }
+
             var fieldsJson = System.Text.Json.JsonSerializer.Serialize(fieldsForJson);
-            
+
             // Log what we're sending to the server
             await JSRuntime.InvokeVoidAsync("console.log", "Sending fields to server:", fieldsJson);
             
@@ -1218,11 +1228,22 @@
     
     private void DeleteField(EditableField field)
     {
+        // Log field being deleted
+        Console.WriteLine($"[DELETE] Removing field '{field.Name}' with coords: X={field.X}, Y={field.Y}, W={field.Width}, H={field.Height}");
+
         EditableFields.Remove(field);
         if (SelectedField == field)
         {
             SelectedField = null;
         }
+
+        // Log remaining fields after deletion
+        Console.WriteLine($"[DELETE] Remaining fields ({EditableFields.Count}):");
+        foreach (var f in EditableFields)
+        {
+            Console.WriteLine($"  - '{f.Name}': X={f.X}, Y={f.Y}, W={f.Width}, H={f.Height}");
+        }
+
         StateHasChanged();
     }
     

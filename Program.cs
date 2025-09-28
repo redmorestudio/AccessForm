@@ -2759,9 +2759,20 @@ app.MapPost("/api/pdf-page-with-field-boxes", async (HttpRequest request, ILogge
                     string fieldType = field.GetProperty("type").GetString();
                     string fieldName = field.GetProperty("name").GetString();
                     bool isSelected = field.TryGetProperty("isSelected", out var selectedElement) && selectedElement.GetBoolean();
-                    
+
+                    // DEFENSIVE CHECK: Validate coordinates are reasonable
+                    if (x < 0 || y < 0 || width <= 0 || height <= 0)
+                    {
+                        logger.LogWarning($"[COORD WARNING] Field '{fieldName}' has invalid coordinates: x={x}, y={y}, w={width}, h={height}");
+                    }
+
+                    if (x > 1000 || y > 1000)
+                    {
+                        logger.LogWarning($"[COORD WARNING] Field '{fieldName}' has unusually large coordinates: x={x}, y={y}");
+                    }
+
                     // Log received field data
-                    logger.LogInformation($"Received field '{fieldName}': x={x}, y={y}, w={width}, h={height}, type={fieldType}");
+                    logger.LogInformation($"Received field '{fieldName}': x={x}, y={y}, w={width}, h={height}, type={fieldType}, page={pageNumber}");
 
                     // Use PdfCoordinateConverter for consistent coordinate transformation
                     var (displayX, displayY) = WordToPdfConverter.Services.PdfCoordinateConverter.PdfToDisplay(x, y, pageHeight);
@@ -3704,6 +3715,9 @@ app.MapPost("/api/convert-with-config", async (
         var fileBytes = ms.ToArray();
 
         // Read config from form data instead of hardcoding!
+        // Log the raw form values to debug
+        logger.LogInformation($"Raw form values: useClaudeVision='{request.Form["useClaudeVision"]}' (type: {request.Form["useClaudeVision"].GetType()})");
+
         var config = new WordToPdfConverter.Models.FieldDetectionConfig
         {
             Services = new WordToPdfConverter.Models.ServiceSelection

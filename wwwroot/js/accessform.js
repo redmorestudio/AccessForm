@@ -290,13 +290,13 @@ window.accessForm = {
             
             // Add configuration parameters if provided
             if (config) {
-                if (config.useSyncfusion !== undefined) formData.append("useSyncfusion", config.useSyncfusion);
-                if (config.useGoogle !== undefined) formData.append("useGoogle", config.useGoogle);
-                if (config.useClaudeVision !== undefined) formData.append("useClaudeVision", config.useClaudeVision);
-                if (config.useClaudeValidation !== undefined) formData.append("useClaudeValidation", config.useClaudeValidation);
+                if (config.useSyncfusion !== undefined) formData.append("useSyncfusion", String(config.useSyncfusion));
+                if (config.useGoogle !== undefined) formData.append("useGoogle", String(config.useGoogle));
+                if (config.useClaudeVision !== undefined) formData.append("useClaudeVision", String(config.useClaudeVision));
+                if (config.useClaudeValidation !== undefined) formData.append("useClaudeValidation", String(config.useClaudeValidation));
                 if (config.mode !== undefined) formData.append("mode", config.mode);
-                if (config.debugMode !== undefined) formData.append("debugMode", config.debugMode);
-                if (config.showFieldIds !== undefined) formData.append("showFieldIds", config.showFieldIds);
+                if (config.debugMode !== undefined) formData.append("debugMode", String(config.debugMode));
+                if (config.showFieldIds !== undefined) formData.append("showFieldIds", String(config.showFieldIds));
                 console.log(`uploadOriginalFile: Added config parameters`, config);
             }
             
@@ -351,13 +351,13 @@ window.accessForm = {
             
             // Add configuration parameters if provided
             if (config) {
-                if (config.useSyncfusion !== undefined) formData.append("useSyncfusion", config.useSyncfusion);
-                if (config.useGoogle !== undefined) formData.append("useGoogle", config.useGoogle);
-                if (config.useClaudeVision !== undefined) formData.append("useClaudeVision", config.useClaudeVision);
-                if (config.useClaudeValidation !== undefined) formData.append("useClaudeValidation", config.useClaudeValidation);
+                if (config.useSyncfusion !== undefined) formData.append("useSyncfusion", String(config.useSyncfusion));
+                if (config.useGoogle !== undefined) formData.append("useGoogle", String(config.useGoogle));
+                if (config.useClaudeVision !== undefined) formData.append("useClaudeVision", String(config.useClaudeVision));
+                if (config.useClaudeValidation !== undefined) formData.append("useClaudeValidation", String(config.useClaudeValidation));
                 if (config.mode !== undefined) formData.append("mode", config.mode);
-                if (config.debugMode !== undefined) formData.append("debugMode", config.debugMode);
-                if (config.showFieldIds !== undefined) formData.append("showFieldIds", config.showFieldIds);
+                if (config.debugMode !== undefined) formData.append("debugMode", String(config.debugMode));
+                if (config.showFieldIds !== undefined) formData.append("showFieldIds", String(config.showFieldIds));
                 console.log(`uploadFileDirectly: Added config parameters`, config);
             }
             
