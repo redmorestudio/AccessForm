@@ -2774,14 +2774,15 @@ app.MapPost("/api/pdf-page-with-field-boxes", async (HttpRequest request, ILogge
                     // Log received field data
                     logger.LogInformation($"Received field '{fieldName}': x={x}, y={y}, w={width}, h={height}, type={fieldType}, page={pageNumber}");
 
-                    // Use PdfCoordinateConverter for consistent coordinate transformation
-                    var (displayX, displayY) = WordToPdfConverter.Services.PdfCoordinateConverter.PdfToDisplay(x, y, pageHeight);
-                    var (displayWidth, displayHeight) = WordToPdfConverter.Services.PdfCoordinateConverter.ScaleDimensions(width, height);
+                    // FIXED: Remove double-scaling bug - coordinates are already in PDF points from ConvertPercentageToPdfBounds
+                    // No need to apply PdfCoordinateConverter scaling again since Claude Vision fields are pre-converted
+                    // Just convert from bottom-left origin (PDF) to top-left origin (display) without scaling
+                    var displayX = x;
+                    var displayY = pageHeight - y - height;  // Convert bottom-left to top-left origin
+                    var displayWidth = width;
+                    var displayHeight = height;
 
-                    // For display, Y coordinate needs to be adjusted for field height since we converted bottom-left to top-left
-                    displayY -= displayHeight;
-
-                    // Update variables with converted values
+                    // Update variables with converted values (no scaling, just coordinate system conversion)
                     x = displayX;
                     y = displayY;
                     width = displayWidth;
