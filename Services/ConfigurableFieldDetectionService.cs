@@ -1400,7 +1400,22 @@ Document:
             byte[] pdfBytes, List<FieldDetectionResult> existingFields, string extractedText = null)
         {
             _logger.LogInformation($"Enhancing {existingFields.Count} fields with Claude labels");
-            
+
+            // Get page dimensions from first page
+            float pageWidth = 612;  // Default to letter size
+            float pageHeight = 792;
+
+            using (var loadedDocument = new Syncfusion.Pdf.Parsing.PdfLoadedDocument(pdfBytes))
+            {
+                if (loadedDocument.Pages.Count > 0)
+                {
+                    var firstPage = loadedDocument.Pages[0];
+                    pageWidth = firstPage.Size.Width;
+                    pageHeight = firstPage.Size.Height;
+                    _logger.LogInformation($"Page dimensions: {pageWidth} x {pageHeight}");
+                }
+            }
+
             // Get field names from text if available
             List<string> textFieldNames = null;
             if (!string.IsNullOrEmpty(extractedText))
@@ -1408,31 +1423,55 @@ Document:
                 textFieldNames = await AnalyzeTextForFieldNames(extractedText);
                 _logger.LogInformation($"Got {textFieldNames?.Count ?? 0} field names from text analysis");
             }
-            
+
             // Call the vision detector with extracted text/markdown to get labels
             // Pass the extractedText (which is actually markdown) to help Claude with field naming
             var visionResults = await _visionDetector.AnalyzePdfWithVision(pdfBytes, 5, extractedText);
-            
+
             // Extract all Claude-detected fields
             var claudeFields = new List<FieldDetectionResult>();
             foreach (var page in visionResults)
             {
                 foreach (var vField in page.Fields)
                 {
-                    // Even if bounds are null/zero, we can still use the labels
+                    // Convert Claude's percentage coordinates to PDF coordinates if available
+                    float x = 0, y = 0, width = 100, height = 20;
+                    bool hasCoordinates = false;
+
+                    if (vField.Bounds != null && (vField.Bounds.XPercent > 0 || vField.Bounds.YPercent > 0))
+                    {
+                        // Claude gives percentages with TOP-LEFT origin
+                        x = (vField.Bounds.XPercent / 100f) * pageWidth;
+                        float yFromTop = (vField.Bounds.YPercent / 100f) * pageHeight;
+
+                        // Get field height first for proper conversion
+                        height = (vField.Bounds.HeightPercent / 100f) * pageHeight;
+                        width = (vField.Bounds.WidthPercent / 100f) * pageWidth;
+
+                        // CRITICAL: Convert Y from top-left to bottom-left origin
+                        // PDF coordinates have origin at bottom-left
+                        y = pageHeight - yFromTop - height;  // NOT just pageHeight - yFromTop!
+
+                        hasCoordinates = true;
+                        _logger.LogDebug($"Claude field '{vField.FieldName}': " +
+                            $"Percent({vField.Bounds.XPercent}, {vField.Bounds.YPercent}) -> " +
+                            $"PDF({x:F1}, {y:F1}) [converted from top Y={yFromTop:F1}]");
+                    }
+
                     claudeFields.Add(new FieldDetectionResult
                     {
                         ShortId = $"CV_temp",
                         FieldName = vField.FieldName,
                         FieldType = vField.FieldType,
-                        X = 0,  // We'll match by order, not position
-                        Y = 0,
-                        Width = 100,
-                        Height = 20,
+                        X = x,
+                        Y = y,
+                        Width = width,
+                        Height = height,
                         PageNumber = page.PageNumber,
                         Source = "ClaudeVision",
-                        Confidence = 0.9f,
-                        IsValid = true
+                        Confidence = hasCoordinates ? 0.95f : 0.9f,
+                        IsValid = true,
+                        HasValidCoordinates = hasCoordinates  // Track if we have real coordinates
                     });
                 }
             }
@@ -1522,7 +1561,32 @@ Document:
                              sfField.FieldName?.Contains(cv.FieldName ?? "", StringComparison.OrdinalIgnoreCase) == true));
                     }
 
-                    // If still no match, try index-based matching (since coordinates are 0,0)
+                    // If still no match and we have valid coordinates, try proximity matching
+                    if (bestMatch == null && !isLikelyPhantom)
+                    {
+                        // Check if we have any Claude fields with valid coordinates for proximity matching
+                        var claudeFieldsWithCoords = cvFieldsSorted.Where(f => f.HasValidCoordinates && !usedLabels.Contains(f.FieldName)).ToList();
+                        if (claudeFieldsWithCoords.Count > 0)
+                        {
+                            // Find the closest Claude field by position
+                            double minDistance = double.MaxValue;
+                            foreach (var cvField in claudeFieldsWithCoords)
+                            {
+                                double distance = Math.Sqrt(Math.Pow(sfField.X - cvField.X, 2) + Math.Pow(sfField.Y - cvField.Y, 2));
+                                if (distance < minDistance && distance < 100) // Within 100 pixels
+                                {
+                                    minDistance = distance;
+                                    bestMatch = cvField;
+                                }
+                            }
+                            if (bestMatch != null)
+                            {
+                                _logger.LogDebug($"Matched {sfField.FieldName} to {bestMatch.FieldName} by proximity (distance: {minDistance:F1})");
+                            }
+                        }
+                    }
+
+                    // If still no match, try index-based matching when coordinates aren't available
                     if (bestMatch == null && !isLikelyPhantom) // Don't force-match phantom fields
                     {
                         // Match by index order - find the next unused Claude field
@@ -1566,15 +1630,15 @@ Document:
                         _logger.LogDebug($"Matching checkbox at Y={sfField.Y}, X={sfField.X}");
                         
                         // First check if we have any Claude fields with valid coordinates
-                        var hasValidCoordinates = cvFieldsSorted.Any(f => f.Y > 0);
+                        var hasValidCoordinates = cvFieldsSorted.Any(f => f.HasValidCoordinates);
                         
                         if (hasValidCoordinates)
                         {
                             // Use position-based matching
                             foreach (var cvField in cvFieldsSorted)
                             {
-                                // Skip fields with invalid coordinates
-                                if (cvField.Y <= 0)
+                                // Skip fields without valid coordinates
+                                if (!cvField.HasValidCoordinates)
                                     continue;
                                     
                                 // For checkboxes, don't skip used labels - multiple checkboxes can share a label

@@ -103,6 +103,7 @@ namespace WordToPdfConverter.Models
         public string ValidationNotes { get; set; }
         public string Tooltip { get; set; } = "";
         public bool RequiredField { get; set; } = false;
+        public bool HasValidCoordinates { get; set; } = false;  // Track if field has valid coordinates
         public List<string> Options { get; set; } = new List<string>();
         public Dictionary<string, string> ValidationRules { get; set; } = new Dictionary<string, string>();
         public Dictionary<string, object> DebugInfo { get; set; } = new Dictionary<string, object>();
