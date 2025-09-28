@@ -185,7 +185,7 @@
                                             </td>
                                             <td>
                                                 <button class="btn btn-sm btn-danger" 
-                                                        @onclick="() => DeleteField(field)"
+                                                        @onclick="async () => await DeleteFieldAsync(field)"
                                                         @onclick:stopPropagation="true">
                                                     <i class="fas fa-trash"></i>
                                                 </button>
@@ -1226,7 +1226,7 @@
     }
     
     
-    private void DeleteField(EditableField field)
+    private async Task DeleteFieldAsync(EditableField field)
     {
         // Log field being deleted
         Console.WriteLine($"[DELETE] Removing field '{field.Name}' with coords: X={field.X}, Y={field.Y}, W={field.Width}, H={field.Height}");
@@ -1244,7 +1244,19 @@
             Console.WriteLine($"  - '{f.Name}': X={f.X}, Y={f.Y}, W={f.Width}, H={f.Height}");
         }
 
+        // Automatically refresh the preview if field boxes are shown
+        if (ShowFieldBoxes)
+        {
+            await LoadPageWithFieldBoxes(CurrentPage);
+        }
+
         StateHasChanged();
+    }
+
+    private void DeleteField(EditableField field)
+    {
+        // Synchronous wrapper for backwards compatibility
+        _ = DeleteFieldAsync(field);
     }
     
     private void AddNewField()
