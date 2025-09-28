@@ -1545,6 +1545,8 @@ Document:
                     if (isLikelyPhantom)
                     {
                         _logger.LogWarning($"Detected likely phantom field at Y={sfField.Y}, X={sfField.X}: {sfField.FieldName ?? "unnamed"}");
+                        _logger.LogInformation($"Skipping phantom field {sfField.ShortId} ('{sfField.FieldName}') - detected as phantom with hex name");
+                        continue; // Skip phantom fields entirely - don't try to match them with Claude labels
                     }
 
                     // First, try to match by name exactly
