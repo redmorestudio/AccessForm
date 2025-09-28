@@ -2796,26 +2796,39 @@ app.MapPost("/api/pdf-page-with-field-boxes", async (HttpRequest request, ILogge
                         IsAntialias = true
                     };
                     
-                    // Color based on field type
-                    fillPaint.Color = fieldType?.ToLower() switch
-                    {
-                        "checkbox" => SkiaSharp.SKColors.Blue.WithAlpha(30),
-                        "date" => SkiaSharp.SKColors.Green.WithAlpha(30),
-                        "signature" => SkiaSharp.SKColors.Purple.WithAlpha(30),
-                        "email" => SkiaSharp.SKColors.Orange.WithAlpha(30),
-                        "phone" => SkiaSharp.SKColors.Cyan.WithAlpha(30),
-                        _ => SkiaSharp.SKColors.Red.WithAlpha(30)
-                    };
+                    // Check if field name looks suspicious (unnamed or Syncfusion ID)
+                    bool isSuspicious = string.IsNullOrEmpty(fieldName) ||
+                                        fieldName.Length == 12 && fieldName.All(c => char.IsLetterOrDigit(c)) ||
+                                        fieldName.StartsWith("field_") ||
+                                        fieldName.Contains("unnamed", StringComparison.OrdinalIgnoreCase);
+
+                    // Color based on field type - blue as primary, red for suspicious fields
+                    fillPaint.Color = isSuspicious
+                        ? SkiaSharp.SKColors.Red.WithAlpha(40)  // Red for suspicious/unnamed fields
+                        : fieldType?.ToLower() switch
+                        {
+                            "checkbox" => SkiaSharp.SKColors.DodgerBlue.WithAlpha(30),
+                            "date" => SkiaSharp.SKColors.Green.WithAlpha(30),
+                            "signature" => SkiaSharp.SKColors.Purple.WithAlpha(30),
+                            "email" => SkiaSharp.SKColors.Teal.WithAlpha(30),
+                            "phone" => SkiaSharp.SKColors.SlateBlue.WithAlpha(30),
+                            "multiline" or "textarea" => SkiaSharp.SKColors.CornflowerBlue.WithAlpha(30),
+                            _ => SkiaSharp.SKColors.Blue.WithAlpha(30)  // Default blue for text fields
+                        };
                     
                     canvas.DrawRect(x, y, width, height, fillPaint);
                     
-                    // Draw border - thicker and more prominent if selected
+                    // Draw border - thicker and more prominent if selected or suspicious
                     using var borderPaint = new SkiaSharp.SKPaint
                     {
                         Style = SkiaSharp.SKPaintStyle.Stroke,
-                        StrokeWidth = isSelected ? 4 : 2,
+                        StrokeWidth = isSelected ? 4 : (isSuspicious ? 3 : 2),
                         IsAntialias = true,
-                        Color = isSelected ? SkiaSharp.SKColors.Blue : fillPaint.Color.WithAlpha(200)
+                        Color = isSelected
+                            ? SkiaSharp.SKColors.DarkBlue  // Dark blue for selected
+                            : isSuspicious
+                                ? SkiaSharp.SKColors.DarkRed.WithAlpha(200)  // Dark red border for suspicious
+                                : fillPaint.Color.WithAlpha(200)
                     };
 
                     canvas.DrawRect(x, y, width, height, borderPaint);
@@ -2829,10 +2842,10 @@ app.MapPost("/api/pdf-page-with-field-boxes", async (HttpRequest request, ILogge
                             Style = SkiaSharp.SKPaintStyle.Stroke,
                             StrokeWidth = 6,
                             IsAntialias = true,
-                            Color = SkiaSharp.SKColors.Red
+                            Color = SkiaSharp.SKColors.DarkBlue  // Changed from Red to DarkBlue
                         };
 
-                        // Draw thick red outline
+                        // Draw thick blue outline
                         canvas.DrawRect(x - 3, y - 3, width + 6, height + 6, selectionPaint);
 
                         // Add animated dashed outline for extra visibility
@@ -2841,11 +2854,11 @@ app.MapPost("/api/pdf-page-with-field-boxes", async (HttpRequest request, ILogge
                             Style = SkiaSharp.SKPaintStyle.Stroke,
                             StrokeWidth = 2,
                             IsAntialias = true,
-                            Color = SkiaSharp.SKColors.Yellow,
+                            Color = SkiaSharp.SKColors.LightBlue,  // Changed from Yellow to LightBlue
                             PathEffect = SkiaSharp.SKPathEffect.CreateDash(new float[] { 8, 4 }, 0)
                         };
 
-                        // Draw yellow dashed outline outside the red border
+                        // Draw light blue dashed outline outside the dark blue border
                         canvas.DrawRect(x - 6, y - 6, width + 12, height + 12, dashedPaint);
 
                         // Add bright selection background overlay
