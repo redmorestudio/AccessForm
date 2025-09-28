@@ -212,11 +212,14 @@ namespace WordToPdfConverter.Services
                 await RunSimultaneousDetection(wordBytes, fileName, config, detectedFields);
             }
             
-            // Remove false positives
+            // DISABLED: Don't filter out "invalid" fields - we want ALL detected fields
+            // Let the user see everything Syncfusion found
+            /*
             if (!config.DebugMode)
             {
                 detectedFields = detectedFields.Where(f => f.IsValid).ToList();
             }
+            */
             
             // Create final PDF with detected fields
             pdfBytes = await CreatePdfWithFields(pdfBytes, detectedFields, config);
@@ -528,23 +531,29 @@ namespace WordToPdfConverter.Services
 
         private bool IsSuspiciousFieldLoaded(PdfLoadedField field)
         {
+            // DISABLED ALL FILTERING - We want ALL fields that Syncfusion detects
+            // Let Claude Vision and Claude Validation handle any false positives
+            return false;
+
+            /* ORIGINAL CODE - DISABLED because it was filtering out valid fields
             var name = field.Name;
             var bounds = GetLoadedFieldBounds(field);
-            
+
             // Be more liberal - only filter out really obvious false positives
             // Since we have Claude validation to catch false positives later
-            
+
             // Only filter out extremely small fields that are clearly artifacts
             if (bounds.Width < 5 || bounds.Height < 5)
             {
                 _logger.LogDebug($"Filtering tiny field: {name} ({bounds.Width}x{bounds.Height})");
                 return true;
             }
-            
+
             // Keep fields even if they have generic names - Claude will label them better
             // Don't filter based on name anymore since we'll get better names from Claude
-            
+
             return false;
+            */
         }
 
         private string DetermineFieldTypeLoaded(PdfLoadedField field)
