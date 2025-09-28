@@ -1807,62 +1807,85 @@ Document:
                             enhancedFields.Add(enhanced);
                             _logger.LogDebug($"Enhanced field {sfField.ShortId}: '{sfField.FieldName}' → '{bestMatch.FieldName}' (type: {compatibleType})");
                         }
+                        else if (!isLikelyPhantom)
+                        {
+                            // Not a phantom field, no Claude match - ensure field has a reasonable name
+                            if (string.IsNullOrEmpty(sfField.FieldName) || sfField.FieldName == "Field")
+                            {
+                                // Generate a better default name based on type and position
+                                sfField.FieldName = $"{sfField.FieldType}_{enhancedFields.Count + 1}";
+                            }
+                            sfField.Tooltip = FieldTooltipGenerator.GenerateTooltip(sfField.FieldType, sfField.FieldName);
+                            enhancedFields.Add(sfField);
+                        }
                         else
                         {
-                            // No Claude match found - check if we have unused Claude labels
-                            var unusedClaudeLabels = cvFieldsSorted.Where(cv => !usedLabels.Contains(cv.FieldName)).ToList();
-
-                            if (isLikelyPhantom && unusedClaudeLabels.Count == 0)
-                            {
-                                // This is a phantom field AND there are no unused Claude labels - skip it entirely
-                                _logger.LogInformation($"Skipping phantom field {sfField.ShortId} ('{sfField.FieldName}') - no Claude labels available and detected as phantom");
-                            }
-                            else if (isLikelyPhantom && unusedClaudeLabels.Count > 0)
-                            {
-                                // This is a phantom field BUT there are unused Claude labels - try one more match by index
-                                var nextUnusedLabel = unusedClaudeLabels.First();
-                                usedLabels.Add(nextUnusedLabel.FieldName);
-
-                                _logger.LogInformation($"Phantom field {sfField.ShortId} getting Claude label '{nextUnusedLabel.FieldName}' (unused labels available: {unusedClaudeLabels.Count})");
-
-                                var enhanced = new FieldDetectionResult
-                                {
-                                    ShortId = sfField.ShortId,
-                                    FieldName = nextUnusedLabel.FieldName,
-                                    FieldType = sfField.FieldType,
-                                    X = sfField.X,
-                                    Y = sfField.Y,
-                                    Width = sfField.Width,
-                                    Height = sfField.Height,
-                                    PageNumber = nextUnusedLabel.PageNumber > 0 ? nextUnusedLabel.PageNumber : sfField.PageNumber,
-                                    Source = "Syncfusion+Claude",
-                                    Confidence = sfField.Confidence * 0.8f, // Reduce confidence for phantom matches
-                                    IsValid = sfField.IsValid,
-                                    Tooltip = FieldTooltipGenerator.GenerateTooltip(sfField.FieldType, nextUnusedLabel.FieldName, nextUnusedLabel.PageNumber > 0 ? nextUnusedLabel.PageNumber : sfField.PageNumber)
-                                };
-                                enhancedFields.Add(enhanced);
-                            }
-                            else if (!isLikelyPhantom)
-                            {
-                                // Not a phantom field, no Claude match - ensure field has a reasonable name
-                                if (string.IsNullOrEmpty(sfField.FieldName) || sfField.FieldName == "Field")
-                                {
-                                    // Generate a better default name based on type and position
-                                    sfField.FieldName = $"{sfField.FieldType}_{enhancedFields.Count + 1}";
-                                }
-                                sfField.Tooltip = FieldTooltipGenerator.GenerateTooltip(sfField.FieldType, sfField.FieldName);
-                                enhancedFields.Add(sfField);
-                            }
+                            // This is a phantom field with no match - skip it entirely
+                            _logger.LogInformation($"Skipping phantom field {sfField.ShortId} ('{sfField.FieldName}') - no Claude label and detected as phantom");
                         }
                     }
                 }
             }
-            
+
+            // Add any unused Claude fields that didn't get matched with Syncfusion fields
+            var allUsedLabels = new HashSet<string>();
+            foreach (var sfPageGroup in sfFieldsByPage)
+            {
+                var pageNum = sfPageGroup.Key;
+                var cvPageGroup = cvFieldsByPage.FirstOrDefault(g => g.Key == pageNum);
+                var cvFields = cvPageGroup?.ToList() ?? new List<FieldDetectionResult>();
+
+                foreach (var cvField in cvFields)
+                {
+                    // Check if this Claude field was used in any enhanced field
+                    bool wasUsed = enhancedFields.Any(ef => ef.FieldName == cvField.FieldName && ef.Source == "Syncfusion+Claude");
+                    if (wasUsed)
+                    {
+                        allUsedLabels.Add(cvField.FieldName);
+                    }
+                }
+            }
+
+            // Add unused Claude fields as pure Claude fields
+            foreach (var sfPageGroup in sfFieldsByPage)
+            {
+                var pageNum = sfPageGroup.Key;
+                var cvPageGroup = cvFieldsByPage.FirstOrDefault(g => g.Key == pageNum);
+                var cvFields = cvPageGroup?.ToList() ?? new List<FieldDetectionResult>();
+
+                foreach (var cvField in cvFields)
+                {
+                    if (!allUsedLabels.Contains(cvField.FieldName) && cvField.HasValidCoordinates)
+                    {
+                        // This Claude field wasn't matched with any Syncfusion field - add it as pure Claude
+                        _logger.LogInformation($"Adding unmatched Claude field: {cvField.FieldName} at ({cvField.X:F1}, {cvField.Y:F1})");
+
+                        var pureClaudeField = new FieldDetectionResult
+                        {
+                            ShortId = $"CV_{enhancedFields.Count + 1}",
+                            FieldName = cvField.FieldName,
+                            FieldType = cvField.FieldType,
+                            X = cvField.X,
+                            Y = cvField.Y,
+                            Width = cvField.Width,
+                            Height = cvField.Height,
+                            PageNumber = cvField.PageNumber,
+                            Source = "ClaudeVision",
+                            Confidence = cvField.Confidence * 0.9f, // Slightly reduce confidence for unmatched fields
+                            IsValid = true,
+                            HasValidCoordinates = cvField.HasValidCoordinates,
+                            Tooltip = FieldTooltipGenerator.GenerateTooltip(cvField.FieldType, cvField.FieldName, cvField.PageNumber)
+                        };
+                        enhancedFields.Add(pureClaudeField);
+                    }
+                }
+            }
+
             // Keep non-Syncfusion fields as-is
             enhancedFields.AddRange(existingFields.Where(f => f.Source != "Syncfusion"));
-            
+
             _logger.LogInformation($"Field enhancement complete: {existingFields.Count} → {enhancedFields.Count} fields");
-            
+
             return enhancedFields;
         }
 
