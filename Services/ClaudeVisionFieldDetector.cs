@@ -744,20 +744,26 @@ IMPORTANT: Use the document context above to accurately name fields. For example
         public static Syncfusion.Drawing.RectangleF ConvertPercentageToPdfBounds(
             BoundingBox percentBounds,
             float pageWidth,
-            float pageHeight)
+            float pageHeight,
+            ILogger logger = null)
         {
             // Apply scaling factor to correct for typical misalignment
             // Vision models often over-estimate field sizes
-            const float SCALE_FACTOR = 0.6f;  // Reduce size by 40%
+            const float SCALE_FACTOR = 0.9f;  // Reduce size by only 10% - was 0.6f (too aggressive)
             const float MIN_WIDTH = 50f;
             const float MIN_HEIGHT = 15f;
             const float MAX_WIDTH = 400f;
             const float MAX_HEIGHT = 60f;
 
+            // Log original percentages for debugging
+            logger?.LogDebug($"[COORDINATE-CONVERSION] Original percentages: X={percentBounds.XPercent:F1}%, Y={percentBounds.YPercent:F1}%, W={percentBounds.WidthPercent:F1}%, H={percentBounds.HeightPercent:F1}%");
+
             // Convert percentages to points
             float x = (percentBounds.XPercent / 100f) * pageWidth;
-            float width = (percentBounds.WidthPercent / 100f) * pageWidth * SCALE_FACTOR;
-            float height = (percentBounds.HeightPercent / 100f) * pageHeight * SCALE_FACTOR;
+            float widthBeforeScale = (percentBounds.WidthPercent / 100f) * pageWidth;
+            float heightBeforeScale = (percentBounds.HeightPercent / 100f) * pageHeight;
+            float width = widthBeforeScale * SCALE_FACTOR;
+            float height = heightBeforeScale * SCALE_FACTOR;
 
             // CRITICAL: Convert Y from top-left origin to bottom-left origin
             // Claude provides Y as distance from top (top-left origin)
@@ -765,9 +771,21 @@ IMPORTANT: Use the document context above to accurately name fields. For example
             float yFromTop = (percentBounds.YPercent / 100f) * pageHeight;
             float y = pageHeight - yFromTop - height;  // Convert to bottom-left origin
 
+            // Log before size limits for debugging
+            logger?.LogDebug($"[COORDINATE-CONVERSION] Before limits: X={x:F1}, Y={y:F1}, W={width:F1} (was {widthBeforeScale:F1}), H={height:F1} (was {heightBeforeScale:F1})");
+
             // Apply reasonable limits
             width = Math.Max(MIN_WIDTH, Math.Min(MAX_WIDTH, width));
             height = Math.Max(MIN_HEIGHT, Math.Min(MAX_HEIGHT, height));
+
+            // Log final result
+            logger?.LogInformation($"[COORDINATE-CONVERSION] Final PDF bounds: X={x:F1}, Y={y:F1}, W={width:F1}, H={height:F1} (Page: {pageWidth:F0}x{pageHeight:F0})");
+
+            // Validate bounds are within page
+            if (x < 0 || y < 0 || x + width > pageWidth || y + height > pageHeight)
+            {
+                logger?.LogWarning($"[COORDINATE-CONVERSION] ⚠️  Field bounds outside page! X={x:F1}, Y={y:F1}, W={width:F1}, H={height:F1} vs Page={pageWidth:F0}x{pageHeight:F0}");
+            }
 
             return new Syncfusion.Drawing.RectangleF(x, y, width, height);
         }

@@ -653,13 +653,40 @@ namespace WordToPdfConverter.Services
                 {
                     var debugPath = "/tmp/claude_vision_markdown.md";
                     System.IO.File.WriteAllText(debugPath, pdfMarkdown);
-                    _logger.LogInformation($"Wrote markdown context to {debugPath}");
-                    
-                    // Check for specific labels
+                    _logger.LogInformation($"📄 [MARKDOWN-ANALYSIS] Wrote markdown context to {debugPath}");
+
+                    // Enhanced markdown analysis
+                    var lines = pdfMarkdown.Split('\n');
+                    var tables = lines.Where(l => l.Contains("|")).Count();
+                    var checkboxes = lines.Where(l => l.Contains("[ ]") || l.Contains("[x]") || l.Contains("[X]")).Count();
+                    var underscores = lines.Where(l => l.Contains("___") || l.Contains("_____")).Count();
+
+                    _logger.LogInformation($"📊 [MARKDOWN-ANALYSIS] Content summary: {lines.Length} lines, {tables} table rows, {checkboxes} checkboxes, {underscores} underscore fields");
+
+                    // Log first 500 characters for preview
+                    var preview = pdfMarkdown.Length > 500 ? pdfMarkdown.Substring(0, 500) + "..." : pdfMarkdown;
+                    _logger.LogDebug($"📝 [MARKDOWN-PREVIEW] First 500 chars:\n{preview}");
+
+                    // Check for specific labels and patterns
                     if (pdfMarkdown.Contains("Date Sent") || pdfMarkdown.Contains("Delivered"))
                     {
-                        _logger.LogInformation("Markdown contains 'Date Sent/Delivered' label");
+                        _logger.LogInformation("🎯 [MARKDOWN-ANALYSIS] Contains 'Date Sent/Delivered' labels");
                     }
+
+                    if (pdfMarkdown.Contains("Contract") && pdfMarkdown.Contains("Amount"))
+                    {
+                        _logger.LogInformation("🎯 [MARKDOWN-ANALYSIS] Contains contract/amount fields");
+                    }
+
+                    // Check for table structures
+                    if (tables > 5)
+                    {
+                        _logger.LogInformation($"🏗️ [MARKDOWN-ANALYSIS] High table density detected ({tables} rows) - complex form structure");
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("⚠️ [MARKDOWN-ANALYSIS] No markdown content generated - Marker may not be working properly");
                 }
             }
             catch (Exception ex)
@@ -713,7 +740,8 @@ namespace WordToPdfConverter.Services
                     var pdfBounds = ClaudeVisionFieldDetector.ConvertPercentageToPdfBounds(
                         vField.Bounds,
                         pageWidth,
-                        pageHeight
+                        pageHeight,
+                        _logger
                     );
 
                     _logger.LogDebug($"Claude field '{vField.FieldName}' converted bounds: X={pdfBounds.X:F1}, Y={pdfBounds.Y:F1}, W={pdfBounds.Width:F1}, H={pdfBounds.Height:F1}");
