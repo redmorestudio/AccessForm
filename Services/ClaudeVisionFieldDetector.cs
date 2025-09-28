@@ -738,10 +738,12 @@ IMPORTANT: Use the document context above to accurately name fields. For example
 
         /// <summary>
         /// Converts percentage-based bounds to actual PDF coordinates with corrections
+        /// IMPORTANT: Claude Vision provides top-left origin coordinates (Y=0 at top)
+        /// This method converts to PDF's bottom-left origin (Y=0 at bottom)
         /// </summary>
         public static Syncfusion.Drawing.RectangleF ConvertPercentageToPdfBounds(
-            BoundingBox percentBounds, 
-            float pageWidth, 
+            BoundingBox percentBounds,
+            float pageWidth,
             float pageHeight)
         {
             // Apply scaling factor to correct for typical misalignment
@@ -751,17 +753,22 @@ IMPORTANT: Use the document context above to accurately name fields. For example
             const float MIN_HEIGHT = 15f;
             const float MAX_WIDTH = 400f;
             const float MAX_HEIGHT = 60f;
-            
-            // Convert percentages to actual coordinates
+
+            // Convert percentages to points
             float x = (percentBounds.XPercent / 100f) * pageWidth;
-            float y = (percentBounds.YPercent / 100f) * pageHeight;
             float width = (percentBounds.WidthPercent / 100f) * pageWidth * SCALE_FACTOR;
             float height = (percentBounds.HeightPercent / 100f) * pageHeight * SCALE_FACTOR;
-            
+
+            // CRITICAL: Convert Y from top-left origin to bottom-left origin
+            // Claude provides Y as distance from top (top-left origin)
+            // PDF needs Y as distance from bottom (bottom-left origin)
+            float yFromTop = (percentBounds.YPercent / 100f) * pageHeight;
+            float y = pageHeight - yFromTop - height;  // Convert to bottom-left origin
+
             // Apply reasonable limits
             width = Math.Max(MIN_WIDTH, Math.Min(MAX_WIDTH, width));
             height = Math.Max(MIN_HEIGHT, Math.Min(MAX_HEIGHT, height));
-            
+
             return new Syncfusion.Drawing.RectangleF(x, y, width, height);
         }
     }

@@ -247,9 +247,14 @@
                                     </div>
                                     <div class="col-md-3">
                                         <div class="mb-2">
-                                            <label class="form-label small">Y Position</label>
-                                            <input type="number" class="form-control" 
-                                                   @bind="SelectedField.Y" 
+                                            <label class="form-label small">
+                                                Y Position
+                                                <span class="badge @GetPositionBadgeClass(SelectedField.Y)" title="PDF Coordinate (bottom-left origin)">
+                                                    @GetPositionDescription(SelectedField.Y)
+                                                </span>
+                                            </label>
+                                            <input type="number" class="form-control"
+                                                   @bind="SelectedField.Y"
                                                    @bind:event="oninput"
                                                    step="1" />
                                         </div>
@@ -660,17 +665,22 @@
             return;
         }
 
-        // Convert PDF Y coordinate to display Y
+        // Convert PDF Y coordinate (bottom-left origin) to display Y (top-left origin)
         // PDF coordinates are 72 DPI, display is 150 DPI
         const scale = 150 / 72;
-        const displayY = fieldY * scale;
+        const pageHeight = 792; // US Letter height in points (PDF coordinates)
+
+        // IMPORTANT: Invert Y coordinate for display
+        // In PDF: Y=82 means near bottom (82 points from bottom)
+        // In Display: Need to convert to distance from top
+        const displayY = (pageHeight - fieldY) * scale;
 
         // Center the field in the viewport
         const panelHeight = previewPanel.clientHeight;
         const scrollPosition = Math.max(0, displayY - panelHeight / 2);
 
         previewPanel.scrollTo({ top: scrollPosition, behavior: 'smooth' });
-        console.log(`scrollPreviewToField: Scrolled to Y=${fieldY} (display Y=${displayY}, scroll=${scrollPosition})`);
+        console.log(`scrollPreviewToField: PDF Y=${fieldY} (${fieldY < 100 ? 'BOTTOM' : fieldY > 700 ? 'TOP' : 'MIDDLE'} of page) -> Display Y=${displayY}, scroll=${scrollPosition}`);
     };
 </script>
 
@@ -1621,5 +1631,33 @@
     {
         public string Value { get; set; }
         public string Display { get; set; }
+    }
+
+    private string GetPositionDescription(float yCoordinate)
+    {
+        // PDF coordinates use bottom-left origin
+        // US Letter page height is 792 points
+        const float pageHeight = 792f;
+
+        if (yCoordinate <= 100)
+            return "Bottom";
+        else if (yCoordinate >= pageHeight - 100)
+            return "Top";
+        else
+            return "Middle";
+    }
+
+    private string GetPositionBadgeClass(float yCoordinate)
+    {
+        // PDF coordinates use bottom-left origin
+        // US Letter page height is 792 points
+        const float pageHeight = 792f;
+
+        if (yCoordinate <= 100)
+            return "bg-danger"; // Bottom - red to indicate low Y value
+        else if (yCoordinate >= pageHeight - 100)
+            return "bg-success"; // Top - green to indicate high Y value
+        else
+            return "bg-secondary"; // Middle - neutral gray
     }
 }

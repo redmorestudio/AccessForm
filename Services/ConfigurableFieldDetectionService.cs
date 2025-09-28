@@ -666,22 +666,56 @@ namespace WordToPdfConverter.Services
             }
             
             var visionResults = await _visionDetector.AnalyzePdfWithVision(pdfBytes, 5, pdfMarkdown);
-            
+
+            _logger.LogInformation($"[CV_DEBUG] Claude Vision returned {visionResults.Count} pages");
+
             foreach (var page in visionResults)
             {
+                _logger.LogInformation($"[CV_DEBUG] Processing Claude Vision page {page.PageNumber} with {page.Fields.Count} fields");
+
                 foreach (var vField in page.Fields)
                 {
                     var shortId = $"CV{++_fieldCounter}";
-                    
+
                     // Check if bounds are actually populated
                     if (vField.Bounds == null)
                     {
                         _logger.LogWarning($"Claude Vision field '{vField.FieldName}' has null bounds - skipping coordinate extraction");
                         continue;
                     }
-                    
-                    _logger.LogDebug($"Claude field '{vField.FieldName}' bounds: X={vField.Bounds.X:F1}, Y={vField.Bounds.Y:F1}, W={vField.Bounds.Width:F1}, H={vField.Bounds.Height:F1}");
-                    
+
+                    // Get the page dimensions to convert from percentages
+                    float pageWidth = 612f;  // Default to US Letter
+                    float pageHeight = 792f;
+
+                    // Try to get actual page dimensions from the PDF
+                    try
+                    {
+                        using (var pdfStream = new MemoryStream(pdfBytes))
+                        using (var pdfDoc = new PdfLoadedDocument(pdfStream))
+                        {
+                            if (page.PageNumber > 0 && page.PageNumber <= pdfDoc.Pages.Count)
+                            {
+                                var pdfPage = pdfDoc.Pages[page.PageNumber - 1];
+                                pageWidth = pdfPage.Size.Width;
+                                pageHeight = pdfPage.Size.Height;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning($"Could not get page dimensions for Claude Vision field conversion: {ex.Message}");
+                    }
+
+                    // Convert percentage bounds to PDF coordinates (bottom-left origin)
+                    var pdfBounds = ClaudeVisionFieldDetector.ConvertPercentageToPdfBounds(
+                        vField.Bounds,
+                        pageWidth,
+                        pageHeight
+                    );
+
+                    _logger.LogDebug($"Claude field '{vField.FieldName}' converted bounds: X={pdfBounds.X:F1}, Y={pdfBounds.Y:F1}, W={pdfBounds.Width:F1}, H={pdfBounds.Height:F1}");
+
                     // [CLAUDE_VISION_DEBUG] - Log page transfer - EASY TO REMOVE
                     _logger.LogInformation($"[CLAUDE_VISION_DEBUG] Transferring field '{vField.FieldName}' from page {vField.PageNumber} to FieldDetectionResult with page {page.PageNumber}");
 
@@ -690,10 +724,10 @@ namespace WordToPdfConverter.Services
                         ShortId = shortId,
                         FieldName = vField.FieldName,
                         FieldType = vField.FieldType,
-                        X = vField.Bounds.X,
-                        Y = vField.Bounds.Y,
-                        Width = vField.Bounds.Width,
-                        Height = vField.Bounds.Height,
+                        X = pdfBounds.X,
+                        Y = pdfBounds.Y,
+                        Width = pdfBounds.Width,
+                        Height = pdfBounds.Height,
                         PageNumber = page.PageNumber,
                         Source = "ClaudeVision",
                         Confidence = 0.9f,
@@ -822,17 +856,13 @@ namespace WordToPdfConverter.Services
             // Add detected fields
             foreach (var field in fields.Where(f => f.IsValid))
             {
-                // Syncfusion fields already have PDF coordinates (bottom-left origin)
-                // Only convert if the field is NOT from Syncfusion
+                // All field sources now properly store coordinates in PDF format (bottom-left origin):
+                // - Syncfusion: Already in PDF coordinates
+                // - ClaudeVision: Converted to PDF coordinates by ConvertPercentageToPdfBounds
+                // - Syncfusion+Claude: Already in PDF coordinates
+                // - Google: Already in PDF coordinates
+                // No coordinate conversion needed!
                 float pdfY = field.Y;
-
-                if (field.Source != "Syncfusion" && !field.Source.StartsWith("Syncfusion"))
-                {
-                    // For non-Syncfusion sources, convert from top-left to bottom-left origin
-                    var page = pdfDoc.Pages[field.PageNumber - 1];
-                    float pageHeight = page.Size.Height;
-                    pdfY = pageHeight - field.Y - field.Height;
-                }
 
                 // COORDINATES ARE ALREADY PAGE-RELATIVE - DON'T ADD PAGE OFFSETS!
                 // Syncfusion provides page-relative coordinates (0-792 per page)
@@ -1395,10 +1425,10 @@ Document:
                         ShortId = $"CV_temp",
                         FieldName = vField.FieldName,
                         FieldType = vField.FieldType,
-                        X = vField.Bounds?.X ?? 0,
-                        Y = vField.Bounds?.Y ?? 0,
-                        Width = vField.Bounds?.Width ?? 100,
-                        Height = vField.Bounds?.Height ?? 20,
+                        X = 0,  // We'll match by order, not position
+                        Y = 0,
+                        Width = 100,
+                        Height = 20,
                         PageNumber = page.PageNumber,
                         Source = "ClaudeVision",
                         Confidence = 0.9f,
@@ -1424,11 +1454,25 @@ Document:
                 var cvPageGroup = cvFieldsByPage.FirstOrDefault(g => g.Key == pageNum);
                 var cvFields = cvPageGroup?.ToList() ?? new List<FieldDetectionResult>();
                 
-                // Sort BOTH by position for proper matching
+                // Sort Syncfusion fields by position, Claude fields maintain their detection order
                 var sfFieldsSorted = sfFields.OrderBy(f => f.Y).ThenBy(f => f.X).ToList();
-                var cvFieldsSorted = cvFields.OrderBy(f => f.Y).ThenBy(f => f.X).ToList();  // Sort by position, not name!
-                
+                var cvFieldsSorted = cvFields.ToList();  // Keep Claude fields in their original order
+
                 _logger.LogInformation($"Page {pageNum}: {sfFields.Count} Syncfusion fields, {cvFields.Count} Claude labels");
+
+                // DEBUG: Log Claude Vision fields and their coordinates
+                if (cvFields.Count > 0)
+                {
+                    _logger.LogInformation($"[CV_DEBUG] Claude Vision fields on page {pageNum}:");
+                    foreach (var cvf in cvFieldsSorted)
+                    {
+                        _logger.LogInformation($"[CV_DEBUG]   - {cvf.FieldName}: X={cvf.X:F1}, Y={cvf.Y:F1}, W={cvf.Width:F1}, H={cvf.Height:F1}");
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning($"[CV_DEBUG] No Claude Vision fields found on page {pageNum}!");
+                }
                 
                 // Debug: Log the last few fields to see what's happening at the bottom
                 if (sfFieldsSorted.Count > 0)
@@ -1448,59 +1492,66 @@ Document:
                 // Match fields - first by name, then by position
                 var usedLabels = new HashSet<string>();
                 
+                // Detect potential phantom fields before processing
+                var phantomFields = new List<FieldDetectionResult>();
+
                 // Process all Syncfusion fields
                 foreach (var sfField in sfFieldsSorted)
                 {
                     FieldDetectionResult bestMatch = null;
-                    
+
+                    // Check if this might be a phantom field
+                    bool isLikelyPhantom = IsLikelyPhantomField(sfField);
+
+                    if (isLikelyPhantom)
+                    {
+                        _logger.LogWarning($"Detected likely phantom field at Y={sfField.Y}, X={sfField.X}: {sfField.FieldName ?? "unnamed"}");
+                    }
+
                     // First, try to match by name exactly
-                    bestMatch = cvFieldsSorted.FirstOrDefault(cv => 
+                    bestMatch = cvFieldsSorted.FirstOrDefault(cv =>
                         !usedLabels.Contains(cv.FieldName) &&
                         string.Equals(cv.FieldName, sfField.FieldName, StringComparison.OrdinalIgnoreCase));
-                    
+
                     // If no name match, try partial name match
                     if (bestMatch == null)
                     {
-                        bestMatch = cvFieldsSorted.FirstOrDefault(cv => 
+                        bestMatch = cvFieldsSorted.FirstOrDefault(cv =>
                             !usedLabels.Contains(cv.FieldName) &&
                             (cv.FieldName?.Contains(sfField.FieldName ?? "", StringComparison.OrdinalIgnoreCase) == true ||
                              sfField.FieldName?.Contains(cv.FieldName ?? "", StringComparison.OrdinalIgnoreCase) == true));
                     }
-                    
-                    // If still no match, find closest by position with type preference
-                    if (bestMatch == null)
+
+                    // If still no match, try index-based matching (since coordinates are 0,0)
+                    if (bestMatch == null && !isLikelyPhantom) // Don't force-match phantom fields
                     {
-                        double minDistance = double.MaxValue;
+                        // Match by index order - find the next unused Claude field
                         foreach (var cvField in cvFieldsSorted)
                         {
                             if (usedLabels.Contains(cvField.FieldName))
                                 continue;
-                                
-                            double dx = sfField.X - cvField.X;
-                            double dy = sfField.Y - cvField.Y;
-                            double distance = Math.Sqrt(dx * dx + dy * dy);
-                            
-                            // Prefer matching field types (checkbox to checkbox, text to text/date)
-                            var typeCompatible = 
+
+                            // Prefer matching field types
+                            var typeCompatible =
                                 (sfField.FieldType.ToLower() == "checkbox" && cvField.FieldType.ToLower() == "checkbox") ||
                                 (sfField.FieldType.ToLower() != "checkbox" && cvField.FieldType.ToLower() != "checkbox");
-                            
-                            // Add type penalty if types don't match
-                            if (!typeCompatible)
+
+                            if (typeCompatible)
                             {
-                                distance += 1000; // Large penalty for type mismatch
-                            }
-                            
-                            if (distance < minDistance)
-                            {
-                                minDistance = distance;
                                 bestMatch = cvField;
+                                _logger.LogDebug($"Matched {sfField.FieldName} to {bestMatch.FieldName} by index order");
+                                break;
                             }
                         }
-                        
-                        if (bestMatch != null)
+
+                        // If no type-compatible match, take any unused field
+                        if (bestMatch == null)
                         {
-                            _logger.LogDebug($"Matched {sfField.FieldName} to {bestMatch.FieldName} by position (distance: {minDistance})");
+                            bestMatch = cvFieldsSorted.FirstOrDefault(cv => !usedLabels.Contains(cv.FieldName));
+                            if (bestMatch != null)
+                            {
+                                _logger.LogDebug($"Matched {sfField.FieldName} to {bestMatch.FieldName} by index (no type match)");
+                            }
                         }
                     }
                     
@@ -1841,6 +1892,31 @@ Document:
             _logger.LogInformation($"Fields by source: {string.Join(", ", fieldsBySource)}");
             
             return matchedFields;
+        }
+        private bool IsLikelyPhantomField(FieldDetectionResult field)
+        {
+            // Detect fields that are likely phantoms (false positives that throw off matching)
+
+            // Check if field has no name or a suspicious auto-generated name
+            bool hasNoMeaningfulName = string.IsNullOrEmpty(field.FieldName) ||
+                                       field.FieldName.Length == 12 && field.FieldName.All(c => char.IsLetterOrDigit(c)) ||
+                                       field.FieldName.StartsWith("field_", StringComparison.OrdinalIgnoreCase);
+
+            // Check if field is at suspicious location (e.g., very bottom of page)
+            const float BOTTOM_THRESHOLD = 100f; // Fields with Y < 100 are near bottom in PDF coordinates
+            bool isNearBottom = field.Y < BOTTOM_THRESHOLD;
+
+            // Check if field has suspicious dimensions
+            bool hasSuspiciousDimensions = field.Width <= 0 || field.Height <= 0 ||
+                                          field.Width > 500 || field.Height > 100;
+
+            // A field is likely phantom if:
+            // 1. It has no meaningful name AND is at the bottom of the page
+            // 2. It has suspicious dimensions
+            // 3. It's a Syncfusion-detected field with no proper name at an edge location
+            return (hasNoMeaningfulName && isNearBottom) ||
+                   hasSuspiciousDimensions ||
+                   (field.Source == "Syncfusion" && hasNoMeaningfulName && (isNearBottom || field.Y > 750));
         }
     }
 }
