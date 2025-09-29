@@ -100,9 +100,17 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        if (IsVisible && Fields != null && Fields.Any() && string.IsNullOrEmpty(SessionId))
+        if (IsVisible && Fields != null && Fields.Any())
         {
-            await CreateSession();
+            if (string.IsNullOrEmpty(SessionId))
+            {
+                await CreateSession();
+            }
+            else
+            {
+                // Refresh session with current fields to pick up any new fields added
+                await CreateSession();
+            }
         }
     }
 
@@ -112,19 +120,29 @@
         {
             ErrorMessage = "";
 
-            // Convert fields to format expected by the API
-            var apiFields = Fields.Select(f =>
+            // Convert fields to format expected by the API (FieldDetectionResult)
+            var apiFields = Fields.Select((f, index) =>
             {
                 var fieldElement = (JsonElement)f;
                 return new
                 {
-                    name = fieldElement.GetProperty("name").GetString(),
-                    x = fieldElement.GetProperty("x").GetDouble(),
-                    y = fieldElement.GetProperty("y").GetDouble(),
-                    width = fieldElement.GetProperty("width").GetDouble(),
-                    height = fieldElement.GetProperty("height").GetDouble(),
-                    type = fieldElement.TryGetProperty("type", out var typeElement) ? typeElement.GetString() : "text",
-                    page = fieldElement.GetProperty("page").GetInt32()
+                    ShortId = $"F{index + 1}",
+                    FieldName = fieldElement.GetProperty("name").GetString(),
+                    FieldType = fieldElement.TryGetProperty("type", out var typeElement) ? typeElement.GetString() : "text",
+                    X = (float)fieldElement.GetProperty("x").GetDouble(),
+                    Y = (float)fieldElement.GetProperty("y").GetDouble(),
+                    Width = (float)fieldElement.GetProperty("width").GetDouble(),
+                    Height = (float)fieldElement.GetProperty("height").GetDouble(),
+                    CoordinateSystem = "PDF",
+                    CoordinateOrigin = "Bottom-Left",
+                    PageNumber = fieldElement.GetProperty("page").GetInt32(),
+                    Source = "UI",
+                    Confidence = 1.0f,
+                    IsValid = true,
+                    ValidationNotes = "",
+                    Tooltip = "",
+                    RequiredField = false,
+                    HasValidCoordinates = true
                 };
             }).ToList();
 
@@ -328,13 +346,14 @@
 <style>
     .cascade-correction-panel {
         position: fixed;
-        top: 10%;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 90%;
-        max-width: 900px;
+        top: 0;
+        right: 0;
+        width: 450px;
+        height: 100vh;
         z-index: 1050;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+        background-color: white;
+        overflow-y: auto;
     }
 
     .field-table-container {

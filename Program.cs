@@ -84,6 +84,27 @@ builder.Services.AddSingleton<DebugCacheService>();
 builder.Services.AddScoped<AiDebugProcessor>();
 builder.Services.AddScoped<LlamaGroqService>();
 builder.Services.AddHttpClient();
+builder.Services.AddHttpContextAccessor();
+
+// Configure HttpClient for Blazor components with base address
+builder.Services.AddScoped(sp =>
+{
+    var httpContext = sp.GetService<IHttpContextAccessor>()?.HttpContext;
+    var client = sp.GetRequiredService<IHttpClientFactory>().CreateClient();
+
+    if (httpContext != null)
+    {
+        var request = httpContext.Request;
+        client.BaseAddress = new Uri($"{request.Scheme}://{request.Host}");
+    }
+    else
+    {
+        // Fallback for when HttpContext is not available
+        client.BaseAddress = new Uri("http://localhost:5002");
+    }
+
+    return client;
+});
 
 // Add PassportPDF services
 builder.Services.AddScoped<PassportPdfService>();
@@ -5482,38 +5503,32 @@ app.MapGet("/api/logs", (ILogger<Program> logger) =>
 });
 
 // Cascade Correction API Endpoints
-// Create a new cascade correction session with detected fields
-app.MapPost("/api/cascade-correction/session", async (HttpRequest request, WordToPdfConverter.Services.InteractiveCascadeCorrector cascadeCorrector, ILogger<Program> logger) =>
+// Diagnostic endpoint to test service resolution
+app.MapGet("/api/cascade-correction/test", (WordToPdfConverter.Services.InteractiveCascadeCorrector cascadeCorrector, ILogger<Program> logger) =>
 {
+    logger.LogInformation("[CASCADE-TEST] Service resolution test endpoint hit");
     try
     {
-        // Read JSON body containing fields
-        using var reader = new StreamReader(request.Body);
-        var json = await reader.ReadToEndAsync();
-        var fields = JsonSerializer.Deserialize<List<FieldDetectionResult>>(json,
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-        if (fields == null || !fields.Any())
-        {
-            return Results.BadRequest(new { error = "No fields provided" });
-        }
-
-        logger.LogInformation($"[Cascade Correction] Creating session with {fields.Count} fields");
-
-        // Create session and return session ID
-        var sessionId = cascadeCorrector.CreateSession(fields);
-
-        return Results.Ok(new {
-            sessionId = sessionId,
-            fieldCount = fields.Count,
-            message = "Cascade correction session created"
-        });
+        logger.LogInformation("[CASCADE-TEST] InteractiveCascadeCorrector successfully resolved");
+        return Results.Ok(new { status = "success", message = "InteractiveCascadeCorrector service is working" });
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "[Cascade Correction] Failed to create session");
-        return Results.Problem($"Failed to create cascade correction session: {ex.Message}");
+        logger.LogError(ex, "[CASCADE-TEST] Error testing service");
+        return Results.Problem($"Service test failed: {ex.Message}");
     }
+});
+
+// Create a new cascade correction session with detected fields
+app.MapPost("/api/cascade-correction/session", (HttpContext context) =>
+{
+    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("[CASCADE-TEST] Route hit successfully!");
+
+    return Results.Ok(new {
+        message = "Route is working",
+        timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+    });
 });
 
 // Get the current field table for a session

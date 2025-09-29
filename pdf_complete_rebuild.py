@@ -979,25 +979,48 @@ class PDFCompleteRebuilder:
                             page_num = int(y / 792) + 1 if y % 792 != 0 else int(y / 792)
                         logger.info(f"Field '{new_name}' at Y={y} assigned to page {page_num} (auto-detected)")
                     
-                    # ALWAYS use existing field positions when available
+                    # COORDINATE SYSTEM FIX: Always use existing field positions when available
                     # Field updates should ONLY change name, type, and tooltip
-                    # NEVER change the position from what Syncfusion originally extracted
+                    # NEVER trust incoming coordinates when we have existing field positions
                     if existing_field:
-                        # Use original Syncfusion positions
+                        # Use original existing positions (already in PDF coordinate space)
                         x = existing_field.get('x', 100)
-                        y = existing_field.get('y', 100)
+                        y = existing_field.get('y', 100)  # This is already in PyMuPDF bottom-left format
                         width = existing_field.get('width', 200)
                         height = existing_field.get('height', 20)
-                        logger.info(f"Using original Syncfusion position for '{original_name}': ({x}, {y}), size: ({width}x{height})")
+                        logger.info(f"Using existing field position for '{original_name}': ({x}, {y}), size: ({width}x{height}) [trusted coordinates]")
                     else:
-                        # If field not found in existing, check if position was provided in the update
-                        x = field_info.get('X') or field_info.get('x')
-                        y = field_info.get('Y') or field_info.get('y')
-                        width = field_info.get('Width') or field_info.get('width')
-                        height = field_info.get('Height') or field_info.get('height')
+                        # Field not found in existing fields - this could be a new field
+                        # Check if position was provided in the update
+                        update_x = field_info.get('X') or field_info.get('x')
+                        update_y = field_info.get('Y') or field_info.get('y')
+                        update_width = field_info.get('Width') or field_info.get('width')
+                        update_height = field_info.get('Height') or field_info.get('height')
 
-                        if x and y and width and height:
-                            logger.info(f"Using provided position for '{original_name}': ({x}, {y}), size: ({width}x{height})")
+                        if update_x is not None and update_y is not None and update_width and update_height:
+                            # For new fields, we need to be careful about coordinate system conversion
+                            # The incoming coordinates might be in UI coordinate system (top-left origin)
+                            # We need to convert them to PyMuPDF coordinate system (bottom-left origin)
+
+                            # Check if these coordinates look reasonable for a PDF page
+                            # Standard PDF page is ~792 points tall
+                            page_height = 792.0  # Standard letter size height
+
+                            # If Y coordinate is very large (> 600), it might be in top-left format
+                            if update_y > page_height * 0.75:  # If Y > 594 (75% of page height)
+                                # This looks like top-left format, convert to bottom-left
+                                x = float(update_x)
+                                y = page_height - float(update_y) - float(update_height)
+                                width = float(update_width)
+                                height = float(update_height)
+                                logger.info(f"Converted coordinates for new field '{original_name}': UI({update_x}, {update_y}) -> PDF({x}, {y})")
+                            else:
+                                # Assume coordinates are already in PDF format
+                                x = float(update_x)
+                                y = float(update_y)
+                                width = float(update_width)
+                                height = float(update_height)
+                                logger.info(f"Using provided PDF coordinates for new field '{original_name}': ({x}, {y}), size: ({width}x{height})")
                         else:
                             # Field not found and no position provided - use defaults
                             logger.warning(f"Field '{original_name}' not found in existing fields and no position provided - using default position")
