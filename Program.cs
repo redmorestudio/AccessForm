@@ -70,6 +70,7 @@ builder.Services.AddScoped<WordToPdfConverter.Services.GoogleDocumentAiService>(
 builder.Services.AddScoped<WordToPdfConverter.Services.ClaudeBoundingBoxValidator>();
 builder.Services.AddScoped<WordToPdfConverter.Services.MultiSourceFieldCombiner>();
 builder.Services.AddScoped<WordToPdfConverter.Services.FieldTypeDetector>();
+builder.Services.AddSingleton<WordToPdfConverter.Services.InteractiveCascadeCorrector>(); // Singleton to maintain sessions
 
 // Add document preprocessing service for invisible text removal
 builder.Services.AddScoped<WordToPdfConverter.Services.DocumentPreprocessingService>();
@@ -5477,6 +5478,148 @@ app.MapGet("/api/logs", (ILogger<Program> logger) =>
     {
         logger.LogError(ex, "Failed to read log file");
         return Results.Problem($"Failed to read logs: {ex.Message}");
+    }
+});
+
+// Cascade Correction API Endpoints
+// Create a new cascade correction session with detected fields
+app.MapPost("/api/cascade-correction/session", async (HttpRequest request, WordToPdfConverter.Services.InteractiveCascadeCorrector cascadeCorrector, ILogger<Program> logger) =>
+{
+    try
+    {
+        // Read JSON body containing fields
+        using var reader = new StreamReader(request.Body);
+        var json = await reader.ReadToEndAsync();
+        var fields = JsonSerializer.Deserialize<List<FieldDetectionResult>>(json,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        if (fields == null || !fields.Any())
+        {
+            return Results.BadRequest(new { error = "No fields provided" });
+        }
+
+        logger.LogInformation($"[Cascade Correction] Creating session with {fields.Count} fields");
+
+        // Create session and return session ID
+        var sessionId = cascadeCorrector.CreateSession(fields);
+
+        return Results.Ok(new {
+            sessionId = sessionId,
+            fieldCount = fields.Count,
+            message = "Cascade correction session created"
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[Cascade Correction] Failed to create session");
+        return Results.Problem($"Failed to create cascade correction session: {ex.Message}");
+    }
+});
+
+// Get the current field table for a session
+app.MapGet("/api/cascade-correction/{sessionId}", (string sessionId, int? pageNumber, WordToPdfConverter.Services.InteractiveCascadeCorrector cascadeCorrector, ILogger<Program> logger) =>
+{
+    try
+    {
+        var table = cascadeCorrector.GetFieldTable(sessionId, pageNumber);
+
+        if (table == null)
+        {
+            return Results.NotFound(new { error = "Session not found" });
+        }
+
+        logger.LogInformation($"[Cascade Correction] Retrieved field table for session {sessionId}");
+
+        return Results.Ok(table);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, $"[Cascade Correction] Failed to get field table for session {sessionId}");
+        return Results.Problem($"Failed to retrieve field table: {ex.Message}");
+    }
+});
+
+// Execute a cascade correction command
+app.MapPost("/api/cascade-correction/{sessionId}/command", async (string sessionId, HttpRequest request, WordToPdfConverter.Services.InteractiveCascadeCorrector cascadeCorrector, ILogger<Program> logger) =>
+{
+    try
+    {
+        // Read JSON body containing command and args
+        using var reader = new StreamReader(request.Body);
+        var json = await reader.ReadToEndAsync();
+
+        // Parse JSON to anonymous type
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        string? command = null;
+        string[]? args = null;
+
+        if (root.TryGetProperty("command", out var commandElement))
+        {
+            command = commandElement.GetString();
+        }
+
+        if (root.TryGetProperty("args", out var argsElement) && argsElement.ValueKind == JsonValueKind.Array)
+        {
+            args = argsElement.EnumerateArray()
+                .Select(e => e.GetString() ?? string.Empty)
+                .ToArray();
+        }
+
+        if (string.IsNullOrEmpty(command))
+        {
+            return Results.BadRequest(new { error = "No command provided" });
+        }
+
+        logger.LogInformation($"[Cascade Correction] Executing command '{command}' for session {sessionId}");
+
+        var result = cascadeCorrector.ExecuteCommand(sessionId, command, args ?? Array.Empty<string>());
+
+        if (result == null)
+        {
+            return Results.NotFound(new { error = "Session not found" });
+        }
+
+        if (!result.Success)
+        {
+            logger.LogWarning($"[Cascade Correction] Command failed: {result.Message}");
+            return Results.BadRequest(result);
+        }
+
+        return Results.Ok(result);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, $"[Cascade Correction] Failed to execute command for session {sessionId}");
+        return Results.Problem($"Failed to execute command: {ex.Message}");
+    }
+});
+
+// Apply all corrections and get the final fields
+app.MapPost("/api/cascade-correction/{sessionId}/apply", (string sessionId, WordToPdfConverter.Services.InteractiveCascadeCorrector cascadeCorrector, ILogger<Program> logger) =>
+{
+    try
+    {
+        var correctedFields = cascadeCorrector.GetCorrectedFields(sessionId);
+
+        if (correctedFields == null)
+        {
+            return Results.NotFound(new { error = "Session not found" });
+        }
+
+        logger.LogInformation($"[Cascade Correction] Applied corrections for session {sessionId}, returning {correctedFields.Count} fields");
+
+        return Results.Ok(new {
+            success = true,
+            fields = correctedFields,
+            count = correctedFields.Count
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, $"[Cascade Correction] Failed to apply corrections for session {sessionId}");
+        return Results.Problem($"Failed to apply corrections: {ex.Message}");
     }
 });
 

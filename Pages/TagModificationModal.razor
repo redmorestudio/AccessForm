@@ -88,6 +88,9 @@
                             <button class="btn btn-sm btn-warning ms-2" @onclick="AddNewField">
                                 <i class="fas fa-plus"></i> Add Field
                             </button>
+                            <button class="btn btn-sm btn-info ms-2" @onclick="OpenCascadeCorrection">
+                                <i class="fas fa-stream"></i> Cascade Correction
+                            </button>
                             <span class="text-muted ms-2">
                                 <small>@(ShowFieldBoxes ? "Boxes shown - edit and update" : "Click Update to show field boxes")</small>
                             </span>
@@ -684,7 +687,20 @@
     };
 </script>
 
+<!-- Cascade Correction Panel -->
+@if (showCascadeCorrection)
+{
+    <CascadeCorrectionPanel @ref="cascadeCorrectionPanel"
+                            IsVisible="true"
+                            Fields="@ConvertFieldsForCorrection()"
+                            OnFieldsCorrected="HandleCascadeCorrection"
+                            OnClose="CloseCascadeCorrection" />
+}
+
 @code {
+    private CascadeCorrectionPanel cascadeCorrectionPanel;
+    private bool showCascadeCorrection = false;
+
     [Parameter] public bool IsVisible { get; set; }
     [Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
     [Parameter] public EventCallback<List<EditableField>> OnApplyChanges { get; set; }
@@ -1612,6 +1628,83 @@
     {
         IsFieldEditorCollapsed = !IsFieldEditorCollapsed;
         StateHasChanged();
+    }
+
+    private void OpenCascadeCorrection()
+    {
+        Console.WriteLine("OpenCascadeCorrection clicked!");
+        showCascadeCorrection = true;
+        StateHasChanged();
+    }
+
+    private void CloseCascadeCorrection()
+    {
+        showCascadeCorrection = false;
+        StateHasChanged();
+    }
+
+    private List<dynamic> ConvertFieldsForCorrection()
+    {
+        if (EditableFields == null || !EditableFields.Any())
+        {
+            Console.WriteLine("No fields to convert for cascade correction");
+            return new List<dynamic>();
+        }
+
+        // Convert to JSON and back to get JsonElement format expected by the component
+        var fieldsJson = System.Text.Json.JsonSerializer.Serialize(EditableFields.Select(f => new
+        {
+            name = f.Name,  // Use lowercase to match expected format
+            x = (double)f.X,
+            y = (double)f.Y,
+            width = (double)f.Width,
+            height = (double)f.Height,
+            type = f.Type ?? "text",
+            page = f.Page
+        }));
+
+        var jsonDoc = System.Text.Json.JsonDocument.Parse(fieldsJson);
+        var result = new List<dynamic>();
+
+        foreach (var element in jsonDoc.RootElement.EnumerateArray())
+        {
+            result.Add(element);
+        }
+
+        return result;
+    }
+
+    private async Task HandleCascadeCorrection(List<dynamic> correctedFields)
+    {
+        try
+        {
+            // Update the existing fields with corrected data
+            EditableFields.Clear();
+            foreach (var field in correctedFields)
+            {
+                var fieldData = field as JsonElement? ?? (JsonElement)field;
+                EditableFields.Add(new EditableField
+                {
+                    Name = fieldData.GetProperty("name").GetString(),
+                    OriginalName = fieldData.GetProperty("name").GetString(),
+                    Type = fieldData.GetProperty("type").GetString() ?? "text",
+                    X = (float)fieldData.GetProperty("x").GetDouble(),
+                    Y = (float)fieldData.GetProperty("y").GetDouble(),
+                    Width = (float)fieldData.GetProperty("width").GetDouble(),
+                    Height = (float)fieldData.GetProperty("height").GetDouble(),
+                    Page = fieldData.GetProperty("page").GetInt32()
+                });
+            }
+
+            // Refresh the preview
+            await UpdatePdfPreview();
+            showCascadeCorrection = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error applying cascade corrections: {ex.Message}");
+        }
     }
 
     public class EditableField
