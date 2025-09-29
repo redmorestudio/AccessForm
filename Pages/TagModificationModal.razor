@@ -780,8 +780,11 @@
     
     protected override async Task OnParametersSetAsync()
     {
+        await JSRuntime.InvokeVoidAsync("console.log", $"TagModificationModal.OnParametersSetAsync - Fields count: {Fields?.Count ?? 0}, EditableFields count before: {EditableFields?.Count ?? 0}");
+
         if (Fields != null && Fields.Any())
         {
+            await JSRuntime.InvokeVoidAsync("console.log", $"Populating EditableFields from {Fields.Count} Fields");
             EditableFields = new List<EditableField>();
             // Create new EditableField instances with proper OriginalName tracking
             for (int i = 0; i < Fields.Count; i++)
@@ -1630,9 +1633,13 @@
         StateHasChanged();
     }
 
-    private void OpenCascadeCorrection()
+    private async void OpenCascadeCorrection()
     {
-        Console.WriteLine("OpenCascadeCorrection clicked!");
+        await JSRuntime.InvokeVoidAsync("console.log", $"OpenCascadeCorrection clicked! EditableFields.Count = {EditableFields?.Count ?? 0}");
+        if (EditableFields != null && EditableFields.Any())
+        {
+            await JSRuntime.InvokeVoidAsync("console.log", $"First field: Name='{EditableFields.First().Name}', X={EditableFields.First().X}, Y={EditableFields.First().Y}");
+        }
         showCascadeCorrection = true;
         StateHasChanged();
     }
@@ -1645,11 +1652,15 @@
 
     private List<dynamic> ConvertFieldsForCorrection()
     {
+        Console.WriteLine($"ConvertFieldsForCorrection called. EditableFields count: {EditableFields?.Count ?? 0}");
+
         if (EditableFields == null || !EditableFields.Any())
         {
             Console.WriteLine("No fields to convert for cascade correction");
             return new List<dynamic>();
         }
+
+        Console.WriteLine($"Converting {EditableFields.Count} fields for cascade correction");
 
         // Convert to JSON and back to get JsonElement format expected by the component
         var fieldsJson = System.Text.Json.JsonSerializer.Serialize(EditableFields.Select(f => new
