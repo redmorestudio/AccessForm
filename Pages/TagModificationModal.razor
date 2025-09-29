@@ -914,7 +914,9 @@
             
             content.Add(new StringContent(fieldsJson), "fields");
             
-            var response = await client.PostAsync("http://localhost:5002/api/pdf-page-with-field-boxes", content);
+            // Add cache-buster to ensure fresh rendering with coordinate fixes
+            var cacheBuster = DateTime.Now.Ticks;
+            var response = await client.PostAsync($"http://localhost:5002/api/pdf-page-with-field-boxes?cb={cacheBuster}", content);
             
             if (response.IsSuccessStatusCode)
             {

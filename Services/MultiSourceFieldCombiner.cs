@@ -195,18 +195,22 @@ namespace WordToPdfConverter.Services
                             Confidence = 0.8f
                         };
                         
-                        // Fix the bounding box coordinate conversion
+                        // 🚨 COMBINER COORDINATE TRACKING - Third conversion attempt!
                         if (visionField.Bounds != null)
                         {
+                            _logger.LogWarning($"🔵🔵🔵 [COMBINER_COORD_1] ⚠️ THIRD COORDINATE CONVERSION in MultiSourceFieldCombiner!");
+                            _logger.LogWarning($"🔵🔵🔵   - Field: '{visionField.FieldName}' Type: {visionField.FieldType}");
+                            _logger.LogWarning($"🔵🔵🔵   - Input Percentages: X={visionField.Bounds.XPercent:F3}%, Y={visionField.Bounds.YPercent:F3}%, W={visionField.Bounds.WidthPercent:F3}%, H={visionField.Bounds.HeightPercent:F3}%");
+                            _logger.LogWarning($"🔵🔵🔵   - Page size for conversion: {pageWidth:F1} x {pageHeight:F1}");
+
                             // Vision gives percentages, convert to actual coordinates
                             // But apply corrections for typical misalignments
                             var originalBounds = ClaudeVisionFieldDetector.ConvertPercentageToPdfBounds(
-                                visionField.Bounds, pageWidth, pageHeight);
+                                visionField.Bounds, pageWidth, pageHeight, visionField.FieldName, _logger);
+                            _logger.LogWarning($"🔵🔵🔵 [COMBINER_COORD_2] ClaudeVisionFieldDetector returned: X={originalBounds.X:F1}, Y={originalBounds.Y:F1}, W={originalBounds.Width:F1}, H={originalBounds.Height:F1}");
+
                             combined.Bounds = CorrectBoundingBox(originalBounds, visionField.FieldType);
-                            
-                            _logger.LogDebug($"Vision field '{visionField.FieldName}' ({visionField.FieldType}): " +
-                                           $"Original bounds ({originalBounds.X:F1}, {originalBounds.Y:F1}, {originalBounds.Width:F1}x{originalBounds.Height:F1}) -> " +
-                                           $"Corrected ({combined.Bounds.X:F1}, {combined.Bounds.Y:F1}, {combined.Bounds.Width:F1}x{combined.Bounds.Height:F1})");
+                            _logger.LogWarning($"🔵🔵🔵 [COMBINER_COORD_3] After CorrectBoundingBox: X={combined.Bounds.X:F1}, Y={combined.Bounds.Y:F1}, W={combined.Bounds.Width:F1}, H={combined.Bounds.Height:F1}");
                         }
                         
                         combinedFields.Add(combined);

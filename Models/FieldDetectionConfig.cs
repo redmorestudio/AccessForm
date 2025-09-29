@@ -86,18 +86,26 @@ namespace WordToPdfConverter.Models
     
     /// <summary>
     /// Result from field detection with debug info
+    /// IMPORTANT: All coordinates are standardized to PDF coordinates (bottom-left origin, 72 DPI)
     /// </summary>
     public class FieldDetectionResult
     {
         public string ShortId { get; set; }  // e.g., "F1", "F2", etc.
         public string FieldName { get; set; }
         public string FieldType { get; set; }
+
+        // PDF Coordinates (bottom-left origin, 72 DPI) - our canonical format
         public float X { get; set; }
         public float Y { get; set; }
         public float Width { get; set; }
         public float Height { get; set; }
+
+        // Coordinate system tracking
+        public string CoordinateSystem { get; set; } = "PDF";  // Always "PDF" after standardization
+        public string CoordinateOrigin { get; set; } = "Bottom-Left";  // Always "Bottom-Left" for PDF
+
         public int PageNumber { get; set; }
-        public string Source { get; set; }
+        public string Source { get; set; }  // Detection source (Syncfusion, Claude Vision, etc.)
         public float Confidence { get; set; }
         public bool IsValid { get; set; } = true;
         public string ValidationNotes { get; set; }
@@ -107,5 +115,10 @@ namespace WordToPdfConverter.Models
         public List<string> Options { get; set; } = new List<string>();
         public Dictionary<string, string> ValidationRules { get; set; } = new Dictionary<string, string>();
         public Dictionary<string, object> DebugInfo { get; set; } = new Dictionary<string, object>();
+
+        /// <summary>
+        /// Track the original coordinate system for debugging
+        /// </summary>
+        public string OriginalCoordinateSystem { get; set; }
     }
 }

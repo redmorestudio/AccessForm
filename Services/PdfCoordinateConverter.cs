@@ -60,47 +60,16 @@ namespace WordToPdfConverter.Services
 
             if (document.Pages.Count == 1)
             {
-                logger?.LogInformation($"[COORD] Single-page document, Y={yCoordinate} assigned to page 1");
+                logger?.LogDebug($"Single-page document, Y={yCoordinate} assigned to page 1");
                 return 1;
             }
 
-            // FIXED COORDINATE DETECTION for multi-page documents
-            // Key insight: Syncfusion field coordinates are page-relative, not cumulative
-            // Fields on page 2+ often have Y coordinates near the top of their page (0-100 range)
+            // WARNING: This method should NOT be used for guessing pages based on Y coordinates
+            // Fields should already have their page numbers assigned from detection
+            // This is only a fallback for legacy code
+            logger?.LogWarning($"CalculatePageFromY called - this should not be used! Y={yCoordinate}");
 
-            logger?.LogInformation($"[COORD] Analyzing Y={yCoordinate} for {document.Pages.Count}-page document");
-
-            // Strategy: Fields with low Y values (near top of page) in multi-page docs are likely on page 2+
-            // This is because fields placed on later pages reset their Y coordinate to that page's coordinate system
-
-            if (yCoordinate >= 0 && yCoordinate <= 100)
-            {
-                // Low Y coordinate suggests this field is near the top of a page
-                // In multi-page docs, fields on page 2+ often appear with low Y values
-                // Check if this looks like a page 2 field based on common patterns
-
-                if (document.Pages.Count >= 2)
-                {
-                    logger?.LogInformation($"[COORD] Y={yCoordinate} is low (0-100), likely page 2 in multi-page doc");
-                    return 2;
-                }
-            }
-            else if (yCoordinate > 100 && yCoordinate < 400)
-            {
-                // Mid-range Y coordinates are typically page 1 fields
-                logger?.LogInformation($"[COORD] Y={yCoordinate} is mid-range (100-400), likely page 1");
-                return 1;
-            }
-            else if (yCoordinate >= 400)
-            {
-                // High Y coordinates could be lower on page 1, or could indicate cumulative positioning
-                // For now, assume page 1 but log for analysis
-                logger?.LogInformation($"[COORD] Y={yCoordinate} is high (400+), assuming page 1");
-                return 1;
-            }
-
-            // Default fallback
-            logger?.LogWarning($"[COORD] Could not determine page for Y={yCoordinate}, defaulting to page 1");
+            // Default to page 1 instead of guessing
             return 1;
         }
 
@@ -166,13 +135,8 @@ namespace WordToPdfConverter.Services
 
                 logger?.LogDebug($"Field '{field.Name}' has Y coordinate: {fieldY}");
 
-                // Use the fixed coordinate detection logic
-                if (document.Pages.Count > 1)
-                {
-                    int detectedPage = CalculatePageFromY(fieldY, document, logger);
-                    logger?.LogInformation($"[COORD DETECT] Field '{field.Name}' with Y={fieldY} assigned to page {detectedPage}");
-                    return detectedPage;
-                }
+                // Don't try to guess page from Y coordinate - just default to page 1
+                // Fields from Claude Vision will have correct page numbers already
             }
             catch (Exception ex)
             {

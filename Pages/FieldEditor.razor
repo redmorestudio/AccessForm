@@ -202,10 +202,10 @@
                                 <!-- Field overlay boxes -->
                                 @foreach (var field in Fields.Where(f => f.PageNumber == CurrentPage))
                                 {
-                                    <div style="position: absolute; 
-                                              left: @(field.X * PreviewScale)px; 
-                                              top: @(field.Y * PreviewScale)px; 
-                                              width: @(field.Width * PreviewScale)px; 
+                                    <div style="position: absolute;
+                                              left: @(field.X * PreviewScale)px;
+                                              top: @(field.Y * PreviewScale)px;
+                                              width: @(field.Width * PreviewScale)px;
                                               height: @(field.Height * PreviewScale)px;
                                               border: 2px solid @(field.IsSelected ? "blue" : "red");
                                               background-color: @(field.IsSelected ? "rgba(0,0,255,0.2)" : "rgba(255,0,0,0.1)");
@@ -331,7 +331,8 @@
                         Tooltip = f.Tooltip ?? "",
                         Source = f.Source ?? "",
                         Confidence = f.Confidence,
-                        TabIndex = f.TabIndex
+                        TabIndex = f.TabIndex,
+                        PageHeight = f.PageHeight
                     }).ToList();
 
                     TotalPages = result.TotalPages;
@@ -355,8 +356,66 @@
 
     private async Task LoadFields()
     {
-        // This method is called on component initialization
-        // No need to load sample data anymore
+        // Add test data matching the form that was processed
+        Fields = new List<EditableFieldDetectionResult>
+        {
+            new EditableFieldDetectionResult
+            {
+                ShortId = "Text1",
+                FieldName = "Contract Number",
+                FieldType = "text",
+                PageNumber = 1,
+                X = 520.32f,
+                Y = 82.57f,
+                Width = 50.0f,
+                Height = 14.0f,
+                PageHeight = 792,
+                Source = "Syncfusion"
+            },
+            new EditableFieldDetectionResult
+            {
+                ShortId = "Field1",
+                FieldName = "Customer Name",
+                FieldType = "text",
+                PageNumber = 1,
+                X = 40.55f,
+                Y = 114.40f,
+                Width = 200.0f,
+                Height = 14.0f,
+                PageHeight = 792,
+                Source = "Syncfusion"
+            },
+            new EditableFieldDetectionResult
+            {
+                ShortId = "Field2",
+                FieldName = "Case ID",
+                FieldType = "text",
+                PageNumber = 1,
+                X = 373.50f,
+                Y = 114.40f,
+                Width = 150.0f,
+                Height = 14.0f,
+                PageHeight = 792,
+                Source = "Syncfusion"
+            },
+            new EditableFieldDetectionResult
+            {
+                ShortId = "Field3",
+                FieldName = "Services Description",
+                FieldType = "textarea",
+                PageNumber = 1,
+                X = 40.55f,
+                Y = 150.50f,
+                Width = 300.0f,
+                Height = 14.0f,
+                PageHeight = 792,
+                Source = "Syncfusion"
+            }
+        };
+
+        // Set a test PDF preview URL
+        PdfPreviewUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+        StateHasChanged();
     }
     
     private void SelectField(EditableFieldDetectionResult field)
@@ -395,6 +454,7 @@
             Y = 100 + (Fields.Count * 30),
             Width = 200,
             Height = 20,
+            PageHeight = 792,
             IsNew = true,
             IsModified = true
         };
@@ -521,6 +581,7 @@
         public string? Tooltip { get; set; }
         public string? ValidationPattern { get; set; }
         public int TabIndex { get; set; }
+        public double PageHeight { get; set; }
     }
 
     // API response models
@@ -542,6 +603,7 @@
         public double Y { get; set; }
         public double Width { get; set; }
         public double Height { get; set; }
+        public double PageHeight { get; set; }
         public string? Tooltip { get; set; }
         public string? Source { get; set; }
         public float Confidence { get; set; }

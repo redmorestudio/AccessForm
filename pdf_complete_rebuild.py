@@ -155,12 +155,13 @@ class PDFCompleteRebuilder:
             page_height = page.rect.height  # ~792 points per page
             logger.info(f"[COORD DEBUG] Field '{field_name}' page {page_num}: raw_Y={y}, page_height={page_height}")
 
-            # CRITICAL FIX: Convert from top-left origin (C# display coords) to bottom-left origin (PyMuPDF)
-            # C# sends coordinates in top-left origin format (Y=0 at top, increases downward)
-            # PyMuPDF requires bottom-left origin format (Y=0 at bottom, increases upward)
-            y_converted = page_height - y - height  # Convert from top-left to bottom-left origin
+            # CRITICAL FIX: C# already stores coordinates in PDF native format (bottom-left origin)
+            # According to COORDINATE_SYSTEM_DOCUMENTATION.md, all coordinates are stored in PDF format
+            # ClaudeVisionFieldDetector.cs already converts from top-left to bottom-left at line 772
+            # NO additional conversion needed - coordinates are already in PyMuPDF format
+            y_converted = y  # Coordinates are already in PDF bottom-left origin format
 
-            logger.info(f"[COORD DEBUG] Field '{field_name}' page {page_num}: using_Y={y_converted} (converted from top-left to bottom-left)")
+            logger.info(f"[COORD DEBUG] Field '{field_name}' page {page_num}: using_Y={y_converted} (already in PDF bottom-left format)")
             
             # Adjust for checkbox/radio button dimensions
             if field_type in ['checkbox', 'radio', 'radiobutton']:

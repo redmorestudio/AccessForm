@@ -75,7 +75,32 @@ namespace WordToPdfConverter.Services
             _logger.LogInformation($"Config: Syncfusion={config.Services.UseSyncfusion}, Google={config.Services.UseGoogle}, " +
                                   $"ClaudeVision={config.Services.UseClaudeVision}, ClaudeValidation={config.Services.UseClaudeValidation}");
             _logger.LogInformation($"Timestamp: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
-            
+
+            // SIGNAL PATH ISOLATION: Determine exact detection mode
+            string detectionMode;
+            if (config.Services.UseSyncfusion && !config.Services.UseClaudeVision)
+            {
+                detectionMode = "SYNCFUSION_ONLY";
+                _logger.LogWarning($"🔒🔒🔒 [SIGNAL-PATH] SYNCFUSION-ONLY MODE - No Claude Vision will run");
+            }
+            else if (!config.Services.UseSyncfusion && config.Services.UseClaudeVision)
+            {
+                detectionMode = "CLAUDE_ONLY";
+                _logger.LogWarning($"🎯🎯🎯 [SIGNAL-PATH] CLAUDE-ONLY MODE - No Syncfusion will run");
+            }
+            else if (config.Services.UseSyncfusion && config.Services.UseClaudeVision)
+            {
+                detectionMode = "SYNCFUSION_PLUS_CLAUDE";
+                _logger.LogWarning($"🤝🤝🤝 [SIGNAL-PATH] SYNCFUSION+CLAUDE MODE - Both will run with proper coordination");
+            }
+            else
+            {
+                detectionMode = "NONE";
+                _logger.LogWarning($"⚠️⚠️⚠️ [SIGNAL-PATH] NO DETECTION MODE - No services enabled!");
+            }
+
+            _logger.LogInformation($"[SIGNAL-PATH] Detection mode: {detectionMode}");
+
             var detectedFields = new List<FieldDetectionResult>();
             byte[] pdfBytes = null;
             
@@ -131,7 +156,15 @@ namespace WordToPdfConverter.Services
                 
                 // PHASE 3: Add Claude Vision detection if requested
                 _logger.LogInformation($"[PHASE-3-CHECK] UseClaudeVision={config.Services.UseClaudeVision}, VisionDetector={(_visionDetector != null ? "Available" : "NULL")}");
-                if (config.Services.UseClaudeVision && _visionDetector != null)
+                _logger.LogWarning($"🔍🔍🔍 [PHASE-3-DEBUG] UseSyncfusion={config.Services.UseSyncfusion}, detectedFields.Count={detectedFields.Count}, Has Syncfusion fields={detectedFields.Any(f => f.Source == "Syncfusion")}");
+
+                // SIGNAL PATH GUARD: Only proceed with Claude Vision if explicitly enabled
+                if (detectionMode == "SYNCFUSION_ONLY")
+                {
+                    _logger.LogWarning($"🚫🚫🚫 [SIGNAL-PATH-GUARD] Blocking Claude Vision - in SYNCFUSION_ONLY mode");
+                    // Skip all Claude Vision processing
+                }
+                else if (config.Services.UseClaudeVision && _visionDetector != null)
                 {
                     // If we have Syncfusion fields, use Claude for labeling only
                     if (config.Services.UseSyncfusion && detectedFields.Any(f => f.Source == "Syncfusion"))
@@ -173,35 +206,60 @@ namespace WordToPdfConverter.Services
                     }
                     else
                     {
-                        // Otherwise do full Claude Vision detection
-                        _logger.LogInformation("PHASE 3: Claude Vision detection");
-                        var visionFields = await DetectWithClaudeVision(pdfBytes);
-                        
-                        // Merge vision fields - UPDATE existing fields with Claude's better labels
-                        _logger.LogInformation($"Merging {visionFields.Count} Claude Vision fields with {detectedFields.Count} existing fields");
-                        foreach (var visionField in visionFields)
+                        // Check if this is Claude-only mode (no other services enabled)
+                        bool isClaudeOnlyMode = !config.Services.UseSyncfusion && !config.Services.UseGoogle;
+
+                        if (isClaudeOnlyMode)
                         {
-                            // Find existing field at same position
-                            var existingField = detectedFields.FirstOrDefault(f => 
-                                f.PageNumber == visionField.PageNumber &&
-                                Math.Abs(f.X - visionField.X) < 10 &&
-                                Math.Abs(f.Y - visionField.Y) < 10);
-                            
-                            if (existingField != null)
+                            // CLAUDE-ONLY MODE: Use ONLY Claude Vision fields, no merging
+                            _logger.LogInformation("[CLAUDE-ONLY-MODE] Using ONLY Claude Vision - NO merging with existing fields");
+                            _logger.LogInformation($"[CLAUDE-ONLY-MODE] Clearing {detectedFields.Count} existing fields");
+
+                            // Clear any fields that somehow got in here
+                            detectedFields.Clear();
+
+                            // Do full Claude Vision detection
+                            var visionFields = await DetectWithClaudeVision(pdfBytes);
+
+                            _logger.LogInformation($"[CLAUDE-ONLY-MODE] Claude Vision detected {visionFields.Count} fields");
+
+                            // Use ONLY Claude fields
+                            detectedFields = visionFields;
+
+                            _logger.LogInformation($"[CLAUDE-ONLY-MODE] Final field count: {detectedFields.Count} (all from Claude Vision)");
+                        }
+                        else
+                        {
+                            // Mixed mode - we have some other fields to merge with
+                            _logger.LogInformation("PHASE 3: Claude Vision detection (merging with existing fields)");
+                            var visionFields = await DetectWithClaudeVision(pdfBytes);
+
+                            // Merge vision fields - UPDATE existing fields with Claude's better labels
+                            _logger.LogInformation($"Merging {visionFields.Count} Claude Vision fields with {detectedFields.Count} existing fields");
+                            foreach (var visionField in visionFields)
                             {
-                                // UPDATE the existing field with Claude's better information
-                                _logger.LogInformation($"Updating field '{existingField.FieldName}' -> '{visionField.FieldName}' (type: {existingField.FieldType} -> {visionField.FieldType})");
-                                existingField.FieldName = visionField.FieldName;
-                                existingField.FieldType = visionField.FieldType;
-                                if (!string.IsNullOrEmpty(visionField.Tooltip))
-                                    existingField.Tooltip = visionField.Tooltip;
-                                existingField.Source = $"{existingField.Source}+Claude";
-                            }
-                            else
-                            {
-                                // Add new field if it doesn't exist
-                                _logger.LogInformation($"Adding new Claude Vision field '{visionField.FieldName}' at ({visionField.X}, {visionField.Y})");
-                                detectedFields.Add(visionField);
+                                // Find existing field at same position
+                                var existingField = detectedFields.FirstOrDefault(f =>
+                                    f.PageNumber == visionField.PageNumber &&
+                                    Math.Abs(f.X - visionField.X) < 10 &&
+                                    Math.Abs(f.Y - visionField.Y) < 10);
+
+                                if (existingField != null)
+                                {
+                                    // UPDATE the existing field with Claude's better information
+                                    _logger.LogInformation($"Updating field '{existingField.FieldName}' -> '{visionField.FieldName}' (type: {existingField.FieldType} -> {visionField.FieldType})");
+                                    existingField.FieldName = visionField.FieldName;
+                                    existingField.FieldType = visionField.FieldType;
+                                    if (!string.IsNullOrEmpty(visionField.Tooltip))
+                                        existingField.Tooltip = visionField.Tooltip;
+                                    existingField.Source = $"{existingField.Source}+Claude";
+                                }
+                                else
+                                {
+                                    // Add new field if it doesn't exist
+                                    _logger.LogInformation($"Adding new Claude Vision field '{visionField.FieldName}' at ({visionField.X}, {visionField.Y})");
+                                    detectedFields.Add(visionField);
+                                }
                             }
                         }
                     }
@@ -321,13 +379,18 @@ namespace WordToPdfConverter.Services
 
                         // Clean implementation: Official Syncfusion method with coordinate fallback
                         
+                        // TEST: Use Syncfusion coordinates directly without conversion
+                        // Theory: Syncfusion PdfLoadedField.Bounds already gives us the correct coordinates
+                        // Let's test if we don't need any conversion at all
+                        _logger.LogWarning($"[NO_CONVERSION_TEST] Field '{field.Name}': Using Syncfusion Y={bounds.Y} directly (no conversion), Height={bounds.Height}");
+
                         var detectedField = new FieldDetectionResult
                         {
                             ShortId = shortId,
                             FieldName = CleanFieldName(field.Name),
                             FieldType = DetermineFieldTypeLoaded(field),
                             X = bounds.X,
-                            Y = bounds.Y,
+                            Y = bounds.Y,  // Use Syncfusion Y directly - no conversion
                             Width = bounds.Width,
                             Height = bounds.Height,
                             PageNumber = pageNum,
@@ -358,7 +421,18 @@ namespace WordToPdfConverter.Services
             
             // Handle duplicate field names across all field types
             fields = ResolveDuplicateFieldNames(fields);
-            
+
+            // 🟢 [COORDINATE-TRACKING] Log all Syncfusion field coordinates after extraction
+            _logger.LogWarning($"🟢 [SYNCFUSION-EXTRACTION-COMPLETE] Extracted {fields.Count} fields from Syncfusion:");
+            foreach (var field in fields.Take(5)) // Log first 5 fields
+            {
+                _logger.LogWarning($"🟢   Field '{field.FieldName}': X={field.X:F1}, Y={field.Y:F1}, W={field.Width:F1}, H={field.Height:F1}, Page={field.PageNumber}");
+            }
+            if (fields.Count > 5)
+            {
+                _logger.LogWarning($"🟢   ... and {fields.Count - 5} more fields");
+            }
+
             return (pdfBytes, fields);
         }
 
@@ -653,7 +727,7 @@ namespace WordToPdfConverter.Services
                 {
                     var debugPath = "/tmp/claude_vision_markdown.md";
                     System.IO.File.WriteAllText(debugPath, pdfMarkdown);
-                    _logger.LogInformation($"📄 [MARKDOWN-ANALYSIS] Wrote markdown context to {debugPath}");
+                    _logger.LogDebug($"[MARKDOWN-ANALYSIS] Wrote markdown context to {debugPath}");
 
                     // Enhanced markdown analysis
                     var lines = pdfMarkdown.Split('\n');
@@ -661,32 +735,32 @@ namespace WordToPdfConverter.Services
                     var checkboxes = lines.Where(l => l.Contains("[ ]") || l.Contains("[x]") || l.Contains("[X]")).Count();
                     var underscores = lines.Where(l => l.Contains("___") || l.Contains("_____")).Count();
 
-                    _logger.LogInformation($"📊 [MARKDOWN-ANALYSIS] Content summary: {lines.Length} lines, {tables} table rows, {checkboxes} checkboxes, {underscores} underscore fields");
+                    _logger.LogDebug($"[MARKDOWN-ANALYSIS] Content summary: {lines.Length} lines, {tables} table rows, {checkboxes} checkboxes, {underscores} underscore fields");
 
                     // Log first 500 characters for preview
                     var preview = pdfMarkdown.Length > 500 ? pdfMarkdown.Substring(0, 500) + "..." : pdfMarkdown;
-                    _logger.LogDebug($"📝 [MARKDOWN-PREVIEW] First 500 chars:\n{preview}");
+                    _logger.LogDebug($"[MARKDOWN-PREVIEW] First 500 chars:\n{preview}");
 
                     // Check for specific labels and patterns
                     if (pdfMarkdown.Contains("Date Sent") || pdfMarkdown.Contains("Delivered"))
                     {
-                        _logger.LogInformation("🎯 [MARKDOWN-ANALYSIS] Contains 'Date Sent/Delivered' labels");
+                        _logger.LogDebug("[MARKDOWN-ANALYSIS] Contains 'Date Sent/Delivered' labels");
                     }
 
                     if (pdfMarkdown.Contains("Contract") && pdfMarkdown.Contains("Amount"))
                     {
-                        _logger.LogInformation("🎯 [MARKDOWN-ANALYSIS] Contains contract/amount fields");
+                        _logger.LogDebug("[MARKDOWN-ANALYSIS] Contains contract/amount fields");
                     }
 
                     // Check for table structures
                     if (tables > 5)
                     {
-                        _logger.LogInformation($"🏗️ [MARKDOWN-ANALYSIS] High table density detected ({tables} rows) - complex form structure");
+                        _logger.LogDebug($"[MARKDOWN-ANALYSIS] High table density detected ({tables} rows) - complex form structure");
                     }
                 }
                 else
                 {
-                    _logger.LogWarning("⚠️ [MARKDOWN-ANALYSIS] No markdown content generated - Marker may not be working properly");
+                    _logger.LogWarning("[MARKDOWN-ANALYSIS] No markdown content generated - Marker may not be working properly");
                 }
             }
             catch (Exception ex)
@@ -741,6 +815,7 @@ namespace WordToPdfConverter.Services
                         vField.Bounds,
                         pageWidth,
                         pageHeight,
+                        vField.FieldName,
                         _logger
                     );
 
@@ -1456,12 +1531,18 @@ Document:
 
             // Call the vision detector with extracted text/markdown to get labels
             // Pass the extractedText (which is actually markdown) to help Claude with field naming
+            _logger.LogWarning($"🎯🎯🎯 [SYNCFUSION+CLAUDE] Calling Claude Vision with markdown context (length={extractedText?.Length ?? 0})");
             var visionResults = await _visionDetector.AnalyzePdfWithVision(pdfBytes, 5, extractedText);
+            _logger.LogWarning($"🎯🎯🎯 [SYNCFUSION+CLAUDE] Claude Vision returned {visionResults?.Count ?? 0} pages");
 
             // Extract all Claude-detected fields
             var claudeFields = new List<FieldDetectionResult>();
+            _logger.LogInformation($"🤝🤝🤝 [SYNCFUSION+CLAUDE] Processing {visionResults.Count} pages from Claude Vision to enhance Syncfusion fields");
+            _logger.LogInformation($"🤝🤝🤝 [SYNCFUSION+CLAUDE] Syncfusion has {existingFields.Count} fields, Claude will provide better labels and find additional fields");
+
             foreach (var page in visionResults)
             {
+                _logger.LogInformation($"🤝🤝🤝 [SYNCFUSION+CLAUDE] Processing page {page.PageNumber} with {page.Fields.Count} Claude-detected fields");
                 foreach (var vField in page.Fields)
                 {
                     // Convert Claude's percentage coordinates to PDF coordinates if available
@@ -1470,22 +1551,28 @@ Document:
 
                     if (vField.Bounds != null && (vField.Bounds.XPercent > 0 || vField.Bounds.YPercent > 0))
                     {
-                        // Claude gives percentages with TOP-LEFT origin
-                        x = (vField.Bounds.XPercent / 100f) * pageWidth;
-                        float yFromTop = (vField.Bounds.YPercent / 100f) * pageHeight;
+                        // 🎯 FIX: Use the PROPER conversion method instead of duplicate broken code
+                        _logger.LogWarning($"✅✅✅ [COORD_FIX] Using PROPER ClaudeVisionFieldDetector.ConvertPercentageToPdfBounds for field '{vField.FieldName}'");
+                        _logger.LogWarning($"✅✅✅   - Page dimensions: {pageWidth:F1} x {pageHeight:F1}");
+                        _logger.LogWarning($"✅✅✅   - Claude %: X={vField.Bounds.XPercent:F3}%, Y={vField.Bounds.YPercent:F3}%, W={vField.Bounds.WidthPercent:F3}%, H={vField.Bounds.HeightPercent:F3}%");
 
-                        // Get field height first for proper conversion
-                        height = (vField.Bounds.HeightPercent / 100f) * pageHeight;
-                        width = (vField.Bounds.WidthPercent / 100f) * pageWidth;
+                        // Use the CORRECT conversion method that has all the proper coordinate tracking
+                        var pdfBounds = ClaudeVisionFieldDetector.ConvertPercentageToPdfBounds(
+                            vField.Bounds,
+                            pageWidth,
+                            pageHeight,
+                            vField.FieldName,
+                            _logger
+                        );
 
-                        // CRITICAL: Convert Y from top-left to bottom-left origin
-                        // PDF coordinates have origin at bottom-left
-                        y = pageHeight - yFromTop - height;  // NOT just pageHeight - yFromTop!
-
+                        x = pdfBounds.X;
+                        y = pdfBounds.Y;
+                        width = pdfBounds.Width;
+                        height = pdfBounds.Height;
                         hasCoordinates = true;
-                        _logger.LogDebug($"Claude field '{vField.FieldName}': " +
-                            $"Percent({vField.Bounds.XPercent}, {vField.Bounds.YPercent}) -> " +
-                            $"PDF({x:F1}, {y:F1}) [converted from top Y={yFromTop:F1}]");
+
+                        _logger.LogWarning($"✅✅✅ [COORD_FIX_RESULT] After proper conversion: X={x:F1}, Y={y:F1}, W={width:F1}, H={height:F1}");
+                        _logger.LogWarning($"✅✅✅ [COORD_FIX_CHECK] Y value check: {y:F1} should be POSITIVE (not negative like before)");
                     }
 
                     claudeFields.Add(new FieldDetectionResult
@@ -1523,11 +1610,50 @@ Document:
                 var cvPageGroup = cvFieldsByPage.FirstOrDefault(g => g.Key == pageNum);
                 var cvFields = cvPageGroup?.ToList() ?? new List<FieldDetectionResult>();
                 
-                // Sort Syncfusion fields by position, Claude fields maintain their detection order
+                // SPATIAL SORTING FIX: Sort BOTH Syncfusion and Claude fields by position (top-to-bottom, left-to-right)
+                // This ensures field names align correctly with their visual positions
                 var sfFieldsSorted = sfFields.OrderBy(f => f.Y).ThenBy(f => f.X).ToList();
-                var cvFieldsSorted = cvFields.ToList();  // Keep Claude fields in their original order
+                var cvFieldsSorted = cvFields.OrderBy(f => f.Y).ThenBy(f => f.X).ToList();  // Also sort Claude fields spatially
 
-                _logger.LogInformation($"Page {pageNum}: {sfFields.Count} Syncfusion fields, {cvFields.Count} Claude labels");
+                // DEBUG: Log field coordinates for analysis
+                _logger.LogWarning($"🔍🔍🔍 [SPATIAL_DEBUG] Syncfusion fields (sorted by Y,X):");
+                for (int i = 0; i < sfFieldsSorted.Count; i++)
+                {
+                    var sf = sfFieldsSorted[i];
+                    _logger.LogWarning($"🔍🔍🔍   SF[{i}]: '{sf.FieldName}' at Y={sf.Y:F1}, X={sf.X:F1}");
+                }
+                _logger.LogWarning($"🔍🔍🔍 [SPATIAL_DEBUG] Claude fields (sorted by Y,X):");
+                for (int i = 0; i < cvFieldsSorted.Count; i++)
+                {
+                    var cv = cvFieldsSorted[i];
+                    _logger.LogWarning($"🔍🔍🔍   CV[{i}]: '{cv.FieldName}' at Y={cv.Y:F1}, X={cv.X:F1}");
+                }
+
+                _logger.LogWarning($"🔄🔄🔄 [FIELD_MATCHING] Page {pageNum}: Starting field matching");
+                _logger.LogWarning($"🔄🔄🔄   - Syncfusion fields: {sfFields.Count}");
+                _logger.LogWarning($"🔄🔄🔄   - Claude Vision fields: {cvFields.Count}");
+
+                // Log all Syncfusion fields for this page
+                _logger.LogWarning($"📋📋📋 [SF_FIELDS] Syncfusion fields on page {pageNum}:");
+                foreach (var sf in sfFieldsSorted.Take(5)) // Show first 5 for brevity
+                {
+                    _logger.LogWarning($"📋📋📋   [{sf.ShortId}] {sf.FieldName ?? "(unnamed)"} | Type={sf.FieldType} | Pos=({sf.X:F1}, {sf.Y:F1})");
+                }
+                if (sfFieldsSorted.Count > 5)
+                {
+                    _logger.LogWarning($"📋📋📋   ... and {sfFieldsSorted.Count - 5} more fields");
+                }
+
+                // Log all Claude Vision fields for this page
+                _logger.LogWarning($"👁️👁️👁️ [CV_FIELDS] Claude Vision fields on page {pageNum}:");
+                foreach (var cv in cvFieldsSorted.Take(5)) // Show first 5 for brevity
+                {
+                    _logger.LogWarning($"👁️👁️👁️   {cv.FieldName} | Type={cv.FieldType} | HasCoords={cv.HasValidCoordinates} | Pos=({cv.X:F1}, {cv.Y:F1})");
+                }
+                if (cvFieldsSorted.Count > 5)
+                {
+                    _logger.LogWarning($"👁️👁️👁️   ... and {cvFieldsSorted.Count - 5} more fields");
+                }
 
                 // DEBUG: Log Claude Vision fields and their coordinates
                 if (cvFields.Count > 0)
@@ -1584,6 +1710,11 @@ Document:
                         !usedLabels.Contains(cv.FieldName) &&
                         string.Equals(cv.FieldName, sfField.FieldName, StringComparison.OrdinalIgnoreCase));
 
+                    if (bestMatch != null)
+                    {
+                        _logger.LogWarning($"✅✅✅ [MATCH_NAME] Exact name match: SF '{sfField.FieldName}' -> CV '{bestMatch.FieldName}'");
+                    }
+
                     // If no name match, try partial name match
                     if (bestMatch == null)
                     {
@@ -1591,6 +1722,11 @@ Document:
                             !usedLabels.Contains(cv.FieldName) &&
                             (cv.FieldName?.Contains(sfField.FieldName ?? "", StringComparison.OrdinalIgnoreCase) == true ||
                              sfField.FieldName?.Contains(cv.FieldName ?? "", StringComparison.OrdinalIgnoreCase) == true));
+
+                        if (bestMatch != null)
+                        {
+                            _logger.LogWarning($"✅✅✅ [MATCH_PARTIAL] Partial name match: SF '{sfField.FieldName}' -> CV '{bestMatch.FieldName}'");
+                        }
                     }
 
                     // If still no match and we have valid coordinates, try proximity matching
@@ -1613,7 +1749,7 @@ Document:
                             }
                             if (bestMatch != null)
                             {
-                                _logger.LogDebug($"Matched {sfField.FieldName} to {bestMatch.FieldName} by proximity (distance: {minDistance:F1})");
+                                _logger.LogWarning($"✅✅✅ [MATCH_PROXIMITY] Proximity match (distance={minDistance:F1}px): SF '{sfField.FieldName}' at ({sfField.X:F1},{sfField.Y:F1}) -> CV '{bestMatch.FieldName}' at ({bestMatch.X:F1},{bestMatch.Y:F1})");
                             }
                         }
                     }
@@ -1635,7 +1771,7 @@ Document:
                             if (typeCompatible)
                             {
                                 bestMatch = cvField;
-                                _logger.LogDebug($"Matched {sfField.FieldName} to {bestMatch.FieldName} by index order");
+                                _logger.LogWarning($"✅✅✅ [MATCH_INDEX] Index order match (type compatible): SF '{sfField.FieldName}' -> CV '{bestMatch.FieldName}'");
                                 break;
                             }
                         }
@@ -1646,7 +1782,7 @@ Document:
                             bestMatch = cvFieldsSorted.FirstOrDefault(cv => !usedLabels.Contains(cv.FieldName));
                             if (bestMatch != null)
                             {
-                                _logger.LogDebug($"Matched {sfField.FieldName} to {bestMatch.FieldName} by index (no type match)");
+                                _logger.LogWarning($"⚠️⚠️⚠️ [MATCH_INDEX_FALLBACK] Index fallback (no type match): SF '{sfField.FieldName}' -> CV '{bestMatch.FieldName}'");
                             }
                         }
                     }
@@ -1686,7 +1822,7 @@ Document:
                                 {
                                     minYDistance = yDistance;
                                     checkboxMatch = cvField;
-                                    _logger.LogDebug($"    -> New best match: '{cvField.FieldName}' with yDist={yDistance}");
+                                    _logger.LogWarning($"    ✅ [CHECKBOX_MATCH] New best match: '{cvField.FieldName}' with yDist={yDistance:F1}");
                                 }
                             }
                         }
@@ -1717,7 +1853,7 @@ Document:
                             if (checkboxIndex >= 0 && checkboxIndex < checkboxLabels.Count)
                             {
                                 checkboxMatch = checkboxLabels[checkboxIndex];
-                                _logger.LogDebug($"Matched checkbox by index {checkboxIndex}: '{checkboxMatch.FieldName}'");
+                                _logger.LogWarning($"✅✅✅ [CHECKBOX_INDEX] Matched checkbox by index {checkboxIndex}: '{checkboxMatch.FieldName}'");
                             }
                         }
                         
@@ -1841,14 +1977,9 @@ Document:
                         }
                         else if (!isLikelyPhantom)
                         {
-                            // Not a phantom field, no Claude match - ensure field has a reasonable name
-                            if (string.IsNullOrEmpty(sfField.FieldName) || sfField.FieldName == "Field")
-                            {
-                                // Generate a better default name based on type and position
-                                sfField.FieldName = $"{sfField.FieldType}_{enhancedFields.Count + 1}";
-                            }
-                            sfField.Tooltip = FieldTooltipGenerator.GenerateTooltip(sfField.FieldType, sfField.FieldName);
-                            enhancedFields.Add(sfField);
+                            // SPURIOUS FIELD FIX: Skip Syncfusion fields that don't match any Claude field
+                            // This prevents unmatched fields like 6b60a6914fa4 from causing name misalignment
+                            _logger.LogInformation($"Skipping unmatched Syncfusion field {sfField.ShortId} ('{sfField.FieldName}') - no Claude label found");
                         }
                         else
                         {
@@ -1885,38 +2016,62 @@ Document:
                 var cvPageGroup = cvFieldsByPage.FirstOrDefault(g => g.Key == pageNum);
                 var cvFields = cvPageGroup?.ToList() ?? new List<FieldDetectionResult>();
 
-                foreach (var cvField in cvFields)
+                // REMOVED: Claude should NEVER contribute position information
+                // Claude is ONLY for naming and typing existing Syncfusion fields
+                // Count unmatched Claude fields but don't add them
+                int unmatchedClaudeFields = cvFields.Count(cvField => !allUsedLabels.Contains(cvField.FieldName) && cvField.HasValidCoordinates);
+                if (unmatchedClaudeFields > 0)
                 {
-                    if (!allUsedLabels.Contains(cvField.FieldName) && cvField.HasValidCoordinates)
-                    {
-                        // This Claude field wasn't matched with any Syncfusion field - add it as pure Claude
-                        _logger.LogInformation($"Adding unmatched Claude field: {cvField.FieldName} at ({cvField.X:F1}, {cvField.Y:F1})");
-
-                        var pureClaudeField = new FieldDetectionResult
-                        {
-                            ShortId = $"CV_{enhancedFields.Count + 1}",
-                            FieldName = cvField.FieldName,
-                            FieldType = cvField.FieldType,
-                            X = cvField.X,
-                            Y = cvField.Y,
-                            Width = cvField.Width,
-                            Height = cvField.Height,
-                            PageNumber = cvField.PageNumber,
-                            Source = "ClaudeVision",
-                            Confidence = cvField.Confidence * 0.9f, // Slightly reduce confidence for unmatched fields
-                            IsValid = true,
-                            HasValidCoordinates = cvField.HasValidCoordinates,
-                            Tooltip = FieldTooltipGenerator.GenerateTooltip(cvField.FieldType, cvField.FieldName, cvField.PageNumber)
-                        };
-                        enhancedFields.Add(pureClaudeField);
-                    }
+                    _logger.LogWarning($"[CLAUDE_POSITION_REMOVED] Not adding {unmatchedClaudeFields} unmatched Claude fields - Claude only provides names/types, not positions");
                 }
             }
 
             // Keep non-Syncfusion fields as-is
             enhancedFields.AddRange(existingFields.Where(f => f.Source != "Syncfusion"));
 
+            // Add comprehensive summary logging for verification
+            _logger.LogWarning($"🎉🎉🎉 [ENHANCEMENT_COMPLETE] Field enhancement summary:");
+            _logger.LogWarning($"🎉🎉🎉   - Input Syncfusion fields: {existingFields.Count(f => f.Source == "Syncfusion")}");
+            _logger.LogWarning($"🎉🎉🎉   - Claude Vision pages analyzed: {visionResults?.Count ?? 0}");
+            _logger.LogWarning($"🎉🎉🎉   - Total Claude fields detected: {claudeFields.Count}");
+            _logger.LogWarning($"🎉🎉🎉   - Output enhanced fields: {enhancedFields.Count}");
+            _logger.LogWarning($"🎉🎉🎉   - Markdown context provided: {(!string.IsNullOrEmpty(extractedText) ? $"Yes ({extractedText.Length} chars)" : "No")}");
+
+            // Log field type breakdown
+            var fieldsByType = enhancedFields.GroupBy(f => f.FieldType).OrderBy(g => g.Key);
+            _logger.LogWarning($"🎉🎉🎉 [FIELD_TYPES] Field type breakdown:");
+            foreach (var typeGroup in fieldsByType)
+            {
+                _logger.LogWarning($"🎉🎉🎉   - {typeGroup.Key}: {typeGroup.Count()} fields");
+            }
+
+            // Log source breakdown
+            var fieldsBySource = enhancedFields.GroupBy(f => f.Source).OrderBy(g => g.Key);
+            _logger.LogWarning($"🎉🎉🎉 [FIELD_SOURCES] Field source breakdown:");
+            foreach (var sourceGroup in fieldsBySource)
+            {
+                _logger.LogWarning($"🎉🎉🎉   - {sourceGroup.Key}: {sourceGroup.Count()} fields");
+            }
+
             _logger.LogInformation($"Field enhancement complete: {existingFields.Count} → {enhancedFields.Count} fields");
+
+            // COMPREHENSIVE FINAL LOGGING - especially for Claude-only mode
+            _logger.LogWarning($"✅✅✅ [FINAL_ENHANCED_FIELDS] Returning {enhancedFields.Count} fields from EnhanceFieldsWithClaudeLabels:");
+
+            // Only log first 5 fields for brevity
+            var fieldsToLog = enhancedFields.Take(5).ToList();
+            foreach (var field in fieldsToLog)
+            {
+                _logger.LogWarning($"✅✅✅   [{field.ShortId}] '{field.FieldName}' | Type={field.FieldType} | Page={field.PageNumber} | Source={field.Source} | Pos=({field.X:F1},{field.Y:F1})");
+
+                // Special check for negative Y values that were the original problem
+                if (field.Y < 0)
+                {
+                    _logger.LogError($"❌❌❌ CRITICAL: Field '{field.FieldName}' still has NEGATIVE Y={field.Y:F1} - COORDINATE FIX FAILED!");
+                }
+            }
+
+            // Claude Validation Pipeline will handle field name alignment issues
 
             return enhancedFields;
         }
@@ -2050,50 +2205,100 @@ Document:
         }
         private bool IsLikelyPhantomField(FieldDetectionResult field)
         {
-            // Detect fields that are likely phantoms (false positives that throw off matching)
+            // IMPORTANT: Syncfusion fields with hex names are NOT phantom fields!
+            // They are real fields that just have auto-generated names.
+            // These are exactly the fields we want to match with Claude's intelligent labels!
 
-            // Check for Syncfusion's 12-character hex-like auto-generated names (e.g., "a1bb168e5744")
-            bool hasGibberishName = false;
-            if (!string.IsNullOrEmpty(field.FieldName) && field.FieldName.Length == 12)
-            {
-                // Check if all characters are hex digits (0-9, a-f)
-                hasGibberishName = field.FieldName.All(c => "0123456789abcdef".Contains(char.ToLower(c)));
-                if (hasGibberishName)
-                {
-                    _logger.LogDebug($"Detected gibberish Syncfusion name: {field.FieldName}");
-                }
-            }
+            // For now, we're disabling phantom field detection because it was incorrectly
+            // filtering out legitimate Syncfusion fields with auto-generated names.
+            // All Syncfusion fields are real and should be matched with Claude labels.
 
-            // Check if field has no name or other suspicious auto-generated names
-            bool hasNoMeaningfulName = string.IsNullOrEmpty(field.FieldName) ||
-                                       hasGibberishName ||
-                                       field.FieldName.StartsWith("field_", StringComparison.OrdinalIgnoreCase) ||
-                                       field.FieldName == "Field";  // Generic default name
+            return false;  // No fields are phantom - process them all!
 
-            // Check if field is at suspicious location (e.g., very bottom of page)
-            const float BOTTOM_THRESHOLD = 100f; // Fields with Y < 100 are near bottom in PDF coordinates
-            bool isNearBottom = field.Y < BOTTOM_THRESHOLD;
-
-            // Check if field has suspicious dimensions
-            bool hasSuspiciousDimensions = field.Width <= 0 || field.Height <= 0 ||
-                                          field.Width > 500 || field.Height > 100;
-
-            // A field is likely phantom if:
-            // 1. It has a gibberish 12-char hex name (high confidence phantom)
-            // 2. It has no meaningful name AND is at the bottom of the page
-            // 3. It has suspicious dimensions
-            // 4. It's a Syncfusion-detected field with no proper name at an edge location
-            bool isPhantom = hasGibberishName ||  // This alone is enough to mark as phantom
-                            (hasNoMeaningfulName && isNearBottom) ||
-                            hasSuspiciousDimensions ||
-                            (field.Source == "Syncfusion" && hasNoMeaningfulName && (isNearBottom || field.Y > 750));
-
-            if (isPhantom)
-            {
-                _logger.LogWarning($"Field {field.ShortId} marked as likely phantom: Name='{field.FieldName}', Y={field.Y}, Source={field.Source}");
-            }
-
-            return isPhantom;
+            /* Previous implementation kept for reference:
+            // The old logic was wrongly treating Syncfusion's auto-generated hex names
+            // (like "a1bb168e5744") as phantom fields. But these are REAL fields that
+            // Syncfusion detected correctly - they just need better names from Claude!
+            */
         }
+
+        /// <summary>
+        /// Semantic validation to detect and fix field name misalignments
+        /// </summary>
+        private async Task<List<FieldDetectionResult>> ValidateFieldSemantics(
+            List<FieldDetectionResult> fields, List<FieldDetectionResult> originalClaudeFields)
+        {
+            _logger.LogInformation($"[SEMANTIC_VALIDATION] Starting semantic validation for {fields.Count} fields");
+
+            // Look for obvious misalignments like "VR representative" appearing in hospital fields
+            var correctedFields = new List<FieldDetectionResult>();
+            var availableClaudeNames = originalClaudeFields.Select(f => f.FieldName).ToList();
+
+            foreach (var field in fields)
+            {
+                var fieldName = field.FieldName?.ToLower() ?? "";
+                var correctedField = field;
+
+                // Detect semantic misalignments
+                bool needsCorrection = false;
+                string suggestedName = null;
+
+                // Rule 1: VR fields appearing in Hospital sections
+                if (fieldName.Contains("vr") && field.Y < 300) // Top half of form is typically Hospital
+                {
+                    _logger.LogWarning($"[SEMANTIC_VALIDATION] Detected VR field '{field.FieldName}' in Hospital section at Y={field.Y}");
+                    needsCorrection = true;
+
+                    // Find similar Hospital field names
+                    var hospitalNames = availableClaudeNames.Where(n =>
+                        n.ToLower().Contains("hospital") ||
+                        n.ToLower().Contains("representative")).ToList();
+                    suggestedName = hospitalNames.FirstOrDefault();
+                }
+
+                // Rule 2: Hospital fields appearing in VR sections
+                else if (fieldName.Contains("hospital") && field.Y > 400) // Bottom half is typically VR
+                {
+                    _logger.LogWarning($"[SEMANTIC_VALIDATION] Detected Hospital field '{field.FieldName}' in VR section at Y={field.Y}");
+                    needsCorrection = true;
+
+                    // Find similar VR field names
+                    var vrNames = availableClaudeNames.Where(n =>
+                        n.ToLower().Contains("vr") ||
+                        n.ToLower().Contains("vocational")).ToList();
+                    suggestedName = vrNames.FirstOrDefault();
+                }
+
+                // Apply correction if needed
+                if (needsCorrection && !string.IsNullOrEmpty(suggestedName))
+                {
+                    _logger.LogInformation($"[SEMANTIC_VALIDATION] Correcting '{field.FieldName}' → '{suggestedName}' at position ({field.X}, {field.Y})");
+                    correctedField = new FieldDetectionResult
+                    {
+                        ShortId = field.ShortId,
+                        FieldName = suggestedName,
+                        FieldType = field.FieldType,
+                        X = field.X,
+                        Y = field.Y,
+                        Width = field.Width,
+                        Height = field.Height,
+                        PageNumber = field.PageNumber,
+                        Source = field.Source + "+SemanticCorrected",
+                        Confidence = field.Confidence * 0.9f, // Slightly reduce confidence for corrected fields
+                        IsValid = field.IsValid,
+                        Tooltip = FieldTooltipGenerator.GenerateTooltip(field.FieldType, suggestedName, field.PageNumber)
+                    };
+
+                    // Remove the used name from available options
+                    availableClaudeNames.Remove(suggestedName);
+                }
+
+                correctedFields.Add(correctedField);
+            }
+
+            _logger.LogInformation($"[SEMANTIC_VALIDATION] Completed semantic validation, corrected {correctedFields.Count(f => f.Source.Contains("SemanticCorrected"))} fields");
+            return correctedFields;
+        }
+
     }
 }

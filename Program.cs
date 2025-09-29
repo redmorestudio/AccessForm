@@ -8,6 +8,7 @@ using Syncfusion.Pdf.Graphics;
 using Syncfusion.Drawing;
 using WordToPdfConverter.Services;
 using WordToPdfConverter.Models;
+using WordToPdfConverter.Models.Coordinates;
 using AccessFormServer.Services;
 using System.Text.RegularExpressions;
 using System.Text.Json;
@@ -64,6 +65,7 @@ builder.Services.AddScoped<AccessFormServer.Services.EnhancedPdfService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.WordToPdfWithFieldsService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.ConfigurableFieldDetectionService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.ClaudeVisionFieldDetector>();
+builder.Services.AddScoped<WordToPdfConverter.Services.UnifiedCoordinateService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.GoogleDocumentAiService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.ClaudeBoundingBoxValidator>();
 builder.Services.AddScoped<WordToPdfConverter.Services.MultiSourceFieldCombiner>();
@@ -1488,17 +1490,23 @@ app.MapPost("/api/convert-with-updated-fields", async (HttpRequest request, ISer
 
                 var page = pdfDoc.Pages[field.PageNumber - 1];
                 float pageHeight = page.Size.Height;
-                Console.WriteLine($"[PDF FIELD CREATION] Creating field '{field.FieldName}' on page {field.PageNumber} (Page height: {pageHeight})");
-                
-                // Use appropriate coordinate system
-                float pdfY = field.Y;
-                if (field.Source != "Syncfusion" && !field.Source.StartsWith("Syncfusion"))
-                {
-                    pdfY = pageHeight - field.Y - field.Height;
-                }
-                pdfY += 5; // Adjust Y position
-                
-                var bounds = new RectangleF(field.X, pdfY, field.Width, field.Height);
+                float pageWidth = page.Size.Width;
+                Console.WriteLine($"[PDF FIELD CREATION] Creating field '{field.FieldName}' on page {field.PageNumber} (Page size: {pageWidth}x{pageHeight})");
+
+                // Use unified coordinate service for consistent conversions
+                var coordinateService = serviceProvider.GetRequiredService<UnifiedCoordinateService>();
+                var source = field.Source?.StartsWith("Syncfusion") == true ?
+                    CoordinateSource.Syncfusion : CoordinateSource.ClaudeVision;
+
+                // Fields are already in PDF coordinates from detection, just ensure they're normalized
+                var pdfCoord = coordinateService.ConvertToCanonicalPdf(
+                    field.X, field.Y, field.Width, field.Height,
+                    source, pageWidth, pageHeight);
+
+                // Add small Y adjustment for visual alignment
+                float pdfY = pdfCoord.Y + 5;
+
+                var bounds = new RectangleF(pdfCoord.X, pdfY, pdfCoord.Width, pdfCoord.Height);
                 
                 // Add field based on type
                 switch (field.FieldType.ToLower())
@@ -2619,7 +2627,18 @@ app.MapPost("/api/extract-pdf-fields", async (HttpRequest request, ILogger<Progr
             
             logger.LogInformation($"Extracted {fields.Count} fields from PDF");
         }
-        
+
+        // 🔴 [COORDINATE-TRACKING] Log final coordinates being sent to UI
+        logger.LogWarning($"🔴 [FINAL-API-RESPONSE] Sending {fields.Count} fields to UI:");
+        foreach (dynamic field in fields.Take(5)) // Log first 5 fields
+        {
+            logger.LogWarning($"🔴   Field '{field.name}': X={field.x:F1}, Y={field.y:F1}, W={field.width:F1}, H={field.height:F1}, Page={field.page}");
+        }
+        if (fields.Count > 5)
+        {
+            logger.LogWarning($"🔴   ... and {fields.Count - 5} more fields");
+        }
+
         return Results.Ok(new { fields = fields });
     }
     catch (Exception ex)
@@ -2698,7 +2717,7 @@ app.MapPost("/api/pdf-ua-compliance", async (HttpRequest request, PdfUAComplianc
 .DisableAntiforgery();
 
 // PDF page preview with field boxes drawn on image
-app.MapPost("/api/pdf-page-with-field-boxes", async (HttpRequest request, ILogger<Program> logger) =>
+app.MapPost("/api/pdf-page-with-field-boxes", async (HttpRequest request, ILogger<Program> logger, UnifiedCoordinateService coordinateService) =>
 {
     try
     {
@@ -2758,6 +2777,7 @@ app.MapPost("/api/pdf-page-with-field-boxes", async (HttpRequest request, ILogge
                     float height = field.GetProperty("height").GetSingle();
                     string fieldType = field.GetProperty("type").GetString();
                     string fieldName = field.GetProperty("name").GetString();
+                    string fieldSource = field.TryGetProperty("source", out var sourceElement) ? sourceElement.GetString() : "Unknown";
                     bool isSelected = field.TryGetProperty("isSelected", out var selectedElement) && selectedElement.GetBoolean();
 
                     // DEFENSIVE CHECK: Validate coordinates are reasonable
@@ -2772,21 +2792,15 @@ app.MapPost("/api/pdf-page-with-field-boxes", async (HttpRequest request, ILogge
                     }
 
                     // Log received field data
-                    logger.LogInformation($"Received field '{fieldName}': x={x}, y={y}, w={width}, h={height}, type={fieldType}, page={pageNumber}");
+                    logger.LogInformation($"Received field '{fieldName}' from {fieldSource}: x={x}, y={y}, w={width}, h={height}, type={fieldType}, page={pageNumber}");
 
-                    // FIXED: Remove double-scaling bug - coordinates are already in PDF points from ConvertPercentageToPdfBounds
-                    // No need to apply PdfCoordinateConverter scaling again since Claude Vision fields are pre-converted
-                    // Just convert from bottom-left origin (PDF) to top-left origin (display) without scaling
-                    var displayX = x;
-                    var displayY = pageHeight - y - height;  // Convert bottom-left to top-left origin
-                    var displayWidth = width;
-                    var displayHeight = height;
-
-                    // Update variables with converted values (no scaling, just coordinate system conversion)
-                    x = displayX;
-                    y = displayY;
-                    width = displayWidth;
-                    height = displayHeight;
+                    // COORDINATE FIX: All fields from ConfigurableFieldDetectionService use top-left origin
+                    // and need only DPI scaling, no Y-flip (the UnifiedCoordinateService Y-flip was incorrect)
+                    float scaleFactor = 150f / 72f;  // Display DPI / PDF DPI
+                    x = x * scaleFactor;
+                    y = y * scaleFactor;
+                    width = width * scaleFactor;
+                    height = height * scaleFactor;
 
                     logger.LogInformation($"Converted to display coords: x={x}, y={y}, w={width}, h={height}");
                     
@@ -3028,8 +3042,9 @@ app.MapPost("/api/pdf-page-preview", async (HttpRequest request, ILogger<Program
                         {
                             isOnCurrentPage = true;
                             x = textField.Bounds.X;
-                            // Transform Y coordinate from PDF (bottom-up) to screen (top-down)
-                            y = pageHeight - textField.Bounds.Y - textField.Bounds.Height;
+                            // FIX: Don't transform Y coordinate - fields are already in correct PDF coordinates
+                            // The UI will handle any necessary transformations for display
+                            y = textField.Bounds.Y;
                             width = textField.Bounds.Width;
                             height = textField.Bounds.Height;
                             
@@ -3045,7 +3060,8 @@ app.MapPost("/api/pdf-page-preview", async (HttpRequest request, ILogger<Program
                         {
                             isOnCurrentPage = true;
                             x = checkField.Bounds.X;
-                            y = pageHeight - checkField.Bounds.Y - checkField.Bounds.Height;
+                            // FIX: Don't transform Y coordinate - fields are already in correct PDF coordinates
+                            y = checkField.Bounds.Y;
                             width = checkField.Bounds.Width;
                             height = checkField.Bounds.Height;
                             
@@ -3064,7 +3080,8 @@ app.MapPost("/api/pdf-page-preview", async (HttpRequest request, ILogger<Program
                         {
                             isOnCurrentPage = true;
                             x = sigField.Bounds.X;
-                            y = pageHeight - sigField.Bounds.Y - sigField.Bounds.Height;
+                            // FIX: Don't transform Y coordinate - fields are already in correct PDF coordinates
+                            y = sigField.Bounds.Y;
                             width = sigField.Bounds.Width;
                             height = sigField.Bounds.Height;
                             fieldType = "signature";
@@ -3085,7 +3102,8 @@ app.MapPost("/api/pdf-page-preview", async (HttpRequest request, ILogger<Program
                                 if (firstItem != null)
                                 {
                                     x = firstItem.Bounds.X;
-                                    y = pageHeight - firstItem.Bounds.Y - firstItem.Bounds.Height;
+                                    // FIX: Don't transform Y coordinate - fields are already in correct PDF coordinates
+                                    y = firstItem.Bounds.Y;
                                     width = firstItem.Bounds.Width;
                                     height = firstItem.Bounds.Height;
                                 }
@@ -3303,8 +3321,9 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                             }
 
                             x = txtField.Bounds.X;
-                            // PDF coordinates are bottom-up, we need top-down for HTML
-                            y = pageHeight - txtField.Bounds.Y - txtField.Bounds.Height;
+                            // COORDINATE FIX: Fields are already stored in PDF bottom-left format
+                            // No conversion needed - use coordinates as-is
+                            y = txtField.Bounds.Y;
                             width = txtField.Bounds.Width;
                             height = txtField.Bounds.Height;
                             logger.LogInformation($"[COORD DEBUG] Text field '{f.Name}' raw Y={txtField.Bounds.Y}, page={page}, converted Y={y}");
@@ -3334,8 +3353,9 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                                 pageHeight = pdfDoc.Pages[page - 1].Size.Height;
                             }
                             x = chkField.Bounds.X;
-                            // PDF coordinates are bottom-up, we need top-down for HTML
-                            y = pageHeight - chkField.Bounds.Y - chkField.Bounds.Height;
+                            // COORDINATE FIX: Fields are already stored in PDF bottom-left format
+                            // No conversion needed - use coordinates as-is
+                            y = chkField.Bounds.Y;
                             width = chkField.Bounds.Width;
                             height = chkField.Bounds.Height;
                             logger.LogInformation($"[COORD DEBUG] Checkbox '{f.Name}' raw Y={chkField.Bounds.Y}, page={page}, converted Y={y}");
@@ -3364,8 +3384,9 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                                 pageHeight = pdfDoc.Pages[page - 1].Size.Height;
                             }
                             x = sigField.Bounds.X;
-                            // PDF coordinates are bottom-up, we need top-down for HTML
-                            y = pageHeight - sigField.Bounds.Y - sigField.Bounds.Height;
+                            // COORDINATE FIX: Fields are already stored in PDF bottom-left format
+                            // No conversion needed - use coordinates as-is
+                            y = sigField.Bounds.Y;
                             width = sigField.Bounds.Width;
                             height = sigField.Bounds.Height;
                         }
@@ -3393,8 +3414,9 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                                 pageHeight = pdfDoc.Pages[page - 1].Size.Height;
                             }
                             x = radioField.Bounds.X;
-                            // PDF coordinates are bottom-up, we need top-down for HTML
-                            y = pageHeight - radioField.Bounds.Y - radioField.Bounds.Height;
+                            // COORDINATE FIX: Fields are already stored in PDF bottom-left format
+                            // No conversion needed - use coordinates as-is
+                            y = radioField.Bounds.Y;
                             width = radioField.Bounds.Width;
                             height = radioField.Bounds.Height;
                         }
@@ -3423,8 +3445,9 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                                 }
                             }
                             x = comboField.Bounds.X;
-                            // PDF coordinates are bottom-up, we need top-down for HTML
-                            y = pageHeight - comboField.Bounds.Y - comboField.Bounds.Height;
+                            // COORDINATE FIX: Fields are already stored in PDF bottom-left format
+                            // No conversion needed - use coordinates as-is
+                            y = comboField.Bounds.Y;
                             width = comboField.Bounds.Width;
                             height = comboField.Bounds.Height;
                         }
@@ -3993,6 +4016,7 @@ app.MapPost("/api/fields/load", async (
                     IsRequired = GetFieldRequired(field),
                     Source = "PDF",
                     Confidence = 1.0f,
+                    PageHeight = GetFieldPageNumber(field, loadedDocument) > 0 ? loadedDocument.Pages[GetFieldPageNumber(field, loadedDocument) - 1].Size.Height : 792,
                     TabIndex = fieldId - 1
                 };
                 fields.Add(fieldInfo);

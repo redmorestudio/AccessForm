@@ -1028,16 +1028,17 @@
         processingCancellationTokenSource?.Cancel();
         processingCancellationTokenSource?.Dispose();
         processingCancellationTokenSource = null;
-        
+
         // Stop the timer
         StopProcessingTimer();
-        
+
         // Reset state
         isProcessing = false;
         processingMessage = "Processing cancelled by user";
         selectedFile = null;
         droppedFileData = null;
         processingResults = null;
+        currentFields.Clear(); // Clear cached fields when cancelling processing
         StateHasChanged();
         
         // Log cancellation
@@ -1047,14 +1048,18 @@
     private async Task ProcessFile()
     {
         if (selectedFile == null) return;
-        
+
         await JSRuntime.InvokeVoidAsync("console.log", "ProcessFile: Starting processing");
-        
+
+        // CRITICAL: Clear cached fields to prevent them from being sent to server
+        currentFields.Clear();
+        await JSRuntime.InvokeVoidAsync("console.log", "ProcessFile: Cleared cached fields for clean reset");
+
         // Create new cancellation token for this processing session
         processingCancellationTokenSource?.Cancel();
         processingCancellationTokenSource?.Dispose();
         processingCancellationTokenSource = new CancellationTokenSource();
-        
+
         // Force UI update
         isProcessing = true;
         processingMessage = "Starting document processing...";
@@ -1401,6 +1406,7 @@
         selectedFile = null;
         processingResults = null;
         droppedFileData = null;
+        currentFields.Clear(); // Clear cached fields when processing another document
     }
     
     private void ClearSelection()
@@ -1408,6 +1414,7 @@
         selectedFile = null;
         processingResults = null;
         droppedFileData = null;
+        currentFields.Clear(); // Clear cached fields when clearing selection
     }
     
     private async Task TriggerFileSelect()
@@ -1801,57 +1808,57 @@
                     currentTagTreeJson = await response.Content.ReadAsStringAsync();
                     var tagStructure = JsonDocument.Parse(currentTagTreeJson);
                     
-                    // Parse fields from tag structure
+                    // CRITICAL FIX: Always use the correctly detected fields from session storage
+                    // The tag structure extraction applies incorrect Y-coordinate transformations
                     currentFields.Clear();
-                    if (tagStructure.RootElement.TryGetProperty("formFields", out var fields))
+
+                    // Get the correctly detected fields from session storage
+                    var sessionFieldsJson = await JSRuntime.InvokeAsync<string>("sessionStorage.getItem", "tempDetectedFields");
+                    if (!string.IsNullOrEmpty(sessionFieldsJson))
                     {
-                        foreach (var field in fields.EnumerateArray())
+                        await JSRuntime.InvokeVoidAsync("console.log", $"Using correctly detected fields from session storage...");
+                        var sessionFields = JsonSerializer.Deserialize<List<TagModificationModal.EditableField>>(sessionFieldsJson);
+                        foreach (var sessionField in sessionFields)
                         {
                             currentFields.Add(new TagModificationModal.EditableField
                             {
-                                Name = field.GetProperty("name").GetString(),
-                                Type = field.GetProperty("type").GetString(),
-                                Tooltip = field.TryGetProperty("tooltip", out var tooltip) ? tooltip.GetString() : "",
-                                Page = field.TryGetProperty("page", out var page) ? page.GetInt32() : 1,
-                                X = field.TryGetProperty("x", out var x) ? (float)x.GetDouble() : 100,
-                                Y = field.TryGetProperty("y", out var y) ? (float)y.GetDouble() : 100,
-                                Width = field.TryGetProperty("width", out var width) ? (float)width.GetDouble() : 150,
-                                Height = field.TryGetProperty("height", out var height) ? (float)height.GetDouble() : 20
+                                Name = sessionField.Name,
+                                OriginalName = sessionField.OriginalName,
+                                Type = sessionField.Type,
+                                Tooltip = sessionField.Tooltip,
+                                IsRequired = sessionField.IsRequired,
+                                Page = sessionField.Page,
+                                X = sessionField.X,
+                                Y = sessionField.Y,
+                                Width = sessionField.Width,
+                                Height = sessionField.Height,
+                                OriginalIndex = sessionField.OriginalIndex
                             });
                         }
+                        await JSRuntime.InvokeVoidAsync("console.log", $"Loaded {currentFields.Count} fields with correct coordinates from detection service");
                     }
-
-                    // CRITICAL: If no fields found in tag structure, check session storage for detected fields
-                    if (currentFields.Count == 0)
+                    else
                     {
-                        await JSRuntime.InvokeVoidAsync("console.log", "No fields in tag structure, checking session storage for detected fields...");
-                        var sessionFieldsJson = await JSRuntime.InvokeAsync<string>("sessionStorage.getItem", "tempDetectedFields");
-                        if (!string.IsNullOrEmpty(sessionFieldsJson))
+                        await JSRuntime.InvokeVoidAsync("console.log", "WARNING: No detected fields found in session storage - field positions may be incorrect!");
+
+                        // Fallback to tag structure fields (with broken Y-coordinates) if no detected fields available
+                        if (tagStructure.RootElement.TryGetProperty("formFields", out var fields))
                         {
-                            await JSRuntime.InvokeVoidAsync("console.log", $"Found session storage fields: {sessionFieldsJson.Substring(0, Math.Min(200, sessionFieldsJson.Length))}...");
-                            var sessionFields = JsonSerializer.Deserialize<List<TagModificationModal.EditableField>>(sessionFieldsJson);
-                            foreach (var sessionField in sessionFields)
+                            foreach (var field in fields.EnumerateArray())
                             {
                                 currentFields.Add(new TagModificationModal.EditableField
                                 {
-                                    Name = sessionField.Name,
-                                    OriginalName = sessionField.OriginalName,
-                                    Type = sessionField.Type,
-                                    Tooltip = sessionField.Tooltip,
-                                    IsRequired = sessionField.IsRequired,
-                                    Page = sessionField.Page,
-                                    X = sessionField.X,
-                                    Y = sessionField.Y,
-                                    Width = sessionField.Width,
-                                    Height = sessionField.Height,
-                                    OriginalIndex = sessionField.OriginalIndex
+                                    Name = field.GetProperty("name").GetString(),
+                                    Type = field.GetProperty("type").GetString(),
+                                    Tooltip = field.TryGetProperty("tooltip", out var tooltip) ? tooltip.GetString() : "",
+                                    Page = field.TryGetProperty("page", out var page) ? page.GetInt32() : 1,
+                                    X = field.TryGetProperty("x", out var x) ? (float)x.GetDouble() : 100,
+                                    Y = field.TryGetProperty("y", out var y) ? (float)y.GetDouble() : 100,
+                                    Width = field.TryGetProperty("width", out var width) ? (float)width.GetDouble() : 150,
+                                    Height = field.TryGetProperty("height", out var height) ? (float)height.GetDouble() : 20
                                 });
                             }
-                            await JSRuntime.InvokeVoidAsync("console.log", $"Loaded {currentFields.Count} fields from session storage");
-                        }
-                        else
-                        {
-                            await JSRuntime.InvokeVoidAsync("console.log", "No fields found in session storage either");
+                            await JSRuntime.InvokeVoidAsync("console.log", "WARNING: Using tag structure fields with potentially incorrect Y-coordinates");
                         }
                     }
 

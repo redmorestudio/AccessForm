@@ -96,14 +96,13 @@ namespace WordToPdfConverter.Services
                 using var pdfDocument = new PdfLoadedDocument(pdfStream);
 
                 int pagesToProcess = Math.Min(pdfDocument.Pages.Count, maxPages);
-                _logger.LogWarning($"🔍 [CLAUDE-VISION-PAGES] PDF has {pdfDocument.Pages.Count} total pages, processing {pagesToProcess} pages");
-                _logger.LogWarning($"🔍 [CLAUDE-VISION-PAGES] maxPages parameter = {maxPages}");
-                
+                _logger.LogInformation($"PDF has {pdfDocument.Pages.Count} total pages, processing {pagesToProcess} pages");
+
                 for (int pageIndex = 0; pageIndex < pagesToProcess; pageIndex++)
                 {
                     try
                     {
-                        _logger.LogWarning($"🔍 [CLAUDE-VISION-PAGE-{pageIndex + 1}] Starting analysis of page {pageIndex + 1} of {pagesToProcess}");
+                        _logger.LogInformation($"Starting Claude Vision analysis of page {pageIndex + 1} of {pagesToProcess}");
                         _logger.LogInformation($"Converting page {pageIndex + 1} to image for vision analysis");
                         
                         // Convert PDF page to image
@@ -115,13 +114,7 @@ namespace WordToPdfConverter.Services
                             var pageResult = await AnalyzePageImage(imageBytes, pageIndex + 1, documentMarkdown);
                             results.Add(pageResult);
 
-                            _logger.LogWarning($"🔍 [CLAUDE-VISION-PAGE-{pageIndex + 1}] RESULT: Detected {pageResult.Fields.Count} fields on page {pageIndex + 1}");
-
-                            // Log each field detected on this page
-                            foreach (var field in pageResult.Fields)
-                            {
-                                _logger.LogWarning($"🔍 [CLAUDE-VISION-FIELD] '{field.FieldName}' (type: {field.FieldType}) assigned to PAGE {field.PageNumber}");
-                            }
+                            _logger.LogInformation($"Detected {pageResult.Fields.Count} fields on page {pageIndex + 1}");
                         }
                         else
                         {
@@ -142,9 +135,7 @@ namespace WordToPdfConverter.Services
                 // Log summary of all pages processed
                 var totalFields = results.SelectMany(r => r.Fields).Count();
                 var fieldsByPage = results.Select(r => $"Page {r.PageNumber}: {r.Fields.Count} fields").ToList();
-                _logger.LogWarning($"🔍 [CLAUDE-VISION-SUMMARY] Total pages processed: {results.Count}");
-                _logger.LogWarning($"🔍 [CLAUDE-VISION-SUMMARY] Total fields detected: {totalFields}");
-                _logger.LogWarning($"🔍 [CLAUDE-VISION-SUMMARY] Breakdown: {string.Join(", ", fieldsByPage)}");
+                _logger.LogInformation($"Claude Vision summary - Total fields detected: {totalFields}, Breakdown: {string.Join(", ", fieldsByPage)}");
             }
             catch (Exception ex)
             {
@@ -399,16 +390,13 @@ namespace WordToPdfConverter.Services
         /// </summary>
         private async Task<VisualFieldDetectionResult> AnalyzePageImage(byte[] imageBytes, int pageNumber, string documentMarkdown = null)
         {
-            _logger.LogWarning($"🔍 [CLAUDE-VISION-ANALYZE] AnalyzePageImage called with pageNumber = {pageNumber}");
-            _logger.LogWarning($"🔍 [CLAUDE-VISION-ANALYZE] Image size: {imageBytes.Length} bytes");
+            _logger.LogDebug($"Analyzing page {pageNumber} image ({imageBytes.Length} bytes)");
 
             var result = new VisualFieldDetectionResult
             {
                 PageNumber = pageNumber,
                 Success = false
             };
-
-            _logger.LogWarning($"🔍 [CLAUDE-VISION-ANALYZE] VisualFieldDetectionResult.PageNumber set to {result.PageNumber}");
             
             try
             {
@@ -587,8 +575,7 @@ IMPORTANT: Use the document context above to accurately name fields. For example
                 {
                     try
                     {
-                        _logger.LogWarning($"🔍 [CLAUDE-VISION-API-REQUEST] Page {pageNumber}: Sending request to Claude Vision API");
-                        _logger.LogWarning($"🔍 [CLAUDE-VISION-API-REQUEST] Request body size: {JsonSerializer.Serialize(requestBody).Length} chars");
+                        _logger.LogDebug($"Sending page {pageNumber} to Claude Vision API");
 
                         var request = new HttpRequestMessage(HttpMethod.Post, "https://api.anthropic.com/v1/messages");
                         request.Headers.Add("x-api-key", _apiKey);
@@ -599,11 +586,10 @@ IMPORTANT: Use the document context above to accurately name fields. For example
                             "application/json"
                         );
 
-                        _logger.LogWarning($"🔍 [CLAUDE-VISION-API-SEND] Page {pageNumber}: Sending HTTP request...");
                         response = await _httpClient.SendAsync(request);
                         responseContent = await response.Content.ReadAsStringAsync();
 
-                        _logger.LogWarning($"🔍 [CLAUDE-VISION-API-RESPONSE] Page {pageNumber}: Status={response.StatusCode}, Content length={responseContent.Length}");
+                        _logger.LogDebug($"Claude Vision API response: {response.StatusCode}");
                         break; // Success, exit retry loop
                     }
                     catch (HttpRequestException httpEx) when (retryCount < maxRetries - 1)
@@ -620,25 +606,16 @@ IMPORTANT: Use the document context above to accurately name fields. For example
                     var apiResponse = JsonSerializer.Deserialize<JsonElement>(responseContent);
                     var content = apiResponse.GetProperty("content")[0].GetProperty("text").GetString();
 
-                    // [CLAUDE_VISION_DEBUG] - Log ENTIRE raw response - EASY TO REMOVE
-                    _logger.LogInformation($"[CLAUDE_VISION_DEBUG] === RAW API RESPONSE FOR PAGE {pageNumber} ===");
-                    _logger.LogInformation($"[CLAUDE_VISION_DEBUG] Full Response:\n{responseContent}");
-                    _logger.LogInformation($"[CLAUDE_VISION_DEBUG] Content Text:\n{content}");
-                    _logger.LogInformation($"[CLAUDE_VISION_DEBUG] === END RAW RESPONSE ===");
+                    // Log raw response only in debug mode
+                    _logger.LogDebug($"Claude Vision raw response for page {pageNumber}: {content?.Substring(0, Math.Min(500, content?.Length ?? 0))}");
 
                     result.RawAnalysis = content;
                     result.Fields = ParseVisionResponse(content, pageNumber);
                     result.Success = true;
 
-                    _logger.LogWarning($"🔍 [CLAUDE-VISION-FINAL-RESULT] Page {pageNumber}: Detected {result.Fields.Count} fields");
                     if (result.Fields.Count == 0)
                     {
-                        _logger.LogWarning($"🔍 [CLAUDE-VISION-ZERO-FIELDS] Page {pageNumber}: NO FIELDS DETECTED - Investigation needed!");
-                        _logger.LogWarning($"🔍 [CLAUDE-VISION-ZERO-FIELDS] Content length: {content?.Length ?? 0} chars");
-                        if (!string.IsNullOrEmpty(content))
-                        {
-                            _logger.LogWarning($"🔍 [CLAUDE-VISION-ZERO-FIELDS] First 500 chars: {content.Substring(0, Math.Min(500, content.Length))}");
-                        }
+                        _logger.LogWarning($"No fields detected on page {pageNumber} - check if this is expected");
                     }
                     _logger.LogInformation($"Claude Vision detected {result.Fields.Count} fields on page {pageNumber}");
                 }
@@ -673,6 +650,9 @@ IMPORTANT: Use the document context above to accurately name fields. For example
                 if (jsonStart >= 0 && jsonEnd > jsonStart)
                 {
                     string jsonContent = response.Substring(jsonStart, jsonEnd - jsonStart);
+
+                    _logger.LogDebug($"Parsing Claude Vision JSON response for page {pageNumber}");
+
                     var jsonDoc = JsonDocument.Parse(jsonContent);
                     
                     if (jsonDoc.RootElement.TryGetProperty("fields", out var fieldsArray))
@@ -698,6 +678,8 @@ IMPORTANT: Use the document context above to accurately name fields. For example
                                         WidthPercent = bounds.GetProperty("width").GetSingle(),
                                         HeightPercent = bounds.GetProperty("height").GetSingle()
                                     };
+
+                                    _logger.LogDebug($"Parsed field '{field.FieldName}' on page {pageNumber}: bounds=({field.Bounds.XPercent:F1}%, {field.Bounds.YPercent:F1}%, {field.Bounds.WidthPercent:F1}%, {field.Bounds.HeightPercent:F1}%), type={field.FieldType}");
                                 }
                                 
                                 // Parse optional properties
@@ -712,9 +694,6 @@ IMPORTANT: Use the document context above to accurately name fields. For example
                                 }
                                 
                                 fields.Add(field);
-                                // [CLAUDE_VISION_DEBUG] - Log EACH parsed field - EASY TO REMOVE
-                                _logger.LogInformation($"[CLAUDE_VISION_DEBUG] Parsed field: '{field.FieldName}' ({field.FieldType}) on PAGE {pageNumber}");
-                                _logger.LogDebug($"Parsed field: {field.FieldName} ({field.FieldType}) at page {pageNumber}");
                             }
                             catch (Exception ex)
                             {
@@ -745,49 +724,52 @@ IMPORTANT: Use the document context above to accurately name fields. For example
             BoundingBox percentBounds,
             float pageWidth,
             float pageHeight,
+            string fieldName = "Unknown",
             ILogger logger = null)
         {
-            // Apply scaling factor to correct for typical misalignment
-            // Vision models often over-estimate field sizes
-            const float SCALE_FACTOR = 0.9f;  // Reduce size by only 10% - was 0.6f (too aggressive)
-            const float MIN_WIDTH = 50f;
-            const float MIN_HEIGHT = 15f;
-            const float MAX_WIDTH = 400f;
-            const float MAX_HEIGHT = 60f;
+            // Log coordinate conversion details - ENHANCED LOGGING
+            logger?.LogInformation($"[COORD-CONVERT] Converting field '{fieldName}' from percentages to PDF coordinates");
+            logger?.LogInformation($"[COORD-CONVERT] Input percentages: X={percentBounds.XPercent:F2}%, Y={percentBounds.YPercent:F2}%, W={percentBounds.WidthPercent:F2}%, H={percentBounds.HeightPercent:F2}%");
+            logger?.LogInformation($"[COORD-CONVERT] Page dimensions: {pageWidth:F0}x{pageHeight:F0} points");
 
-            // Log original percentages for debugging
-            logger?.LogDebug($"[COORDINATE-CONVERSION] Original percentages: X={percentBounds.XPercent:F1}%, Y={percentBounds.YPercent:F1}%, W={percentBounds.WidthPercent:F1}%, H={percentBounds.HeightPercent:F1}%");
-
-            // Convert percentages to points
+            // Convert percentages to points - NO SCALING
             float x = (percentBounds.XPercent / 100f) * pageWidth;
-            float widthBeforeScale = (percentBounds.WidthPercent / 100f) * pageWidth;
-            float heightBeforeScale = (percentBounds.HeightPercent / 100f) * pageHeight;
-            float width = widthBeforeScale * SCALE_FACTOR;
-            float height = heightBeforeScale * SCALE_FACTOR;
+            float width = (percentBounds.WidthPercent / 100f) * pageWidth;
+            float height = (percentBounds.HeightPercent / 100f) * pageHeight;
 
-            // CRITICAL: Convert Y from top-left origin to bottom-left origin
+            logger?.LogInformation($"[COORD-CONVERT] After % to points: X={x:F1}, W={width:F1}, H={height:F1}");
+
+            // NO CONVERSION NEEDED! Both Claude Vision AND Syncfusion use top-left origin
             // Claude provides Y as distance from top (top-left origin)
-            // PDF needs Y as distance from bottom (bottom-left origin)
-            float yFromTop = (percentBounds.YPercent / 100f) * pageHeight;
-            float y = pageHeight - yFromTop - height;  // Convert to bottom-left origin
+            // Syncfusion ALSO uses top-left origin for form fields
+            // Just convert percentage to points directly
+            float y = (percentBounds.YPercent / 100f) * pageHeight;  // Simple percentage to points
 
-            // Log before size limits for debugging
-            logger?.LogDebug($"[COORDINATE-CONVERSION] Before limits: X={x:F1}, Y={y:F1}, W={width:F1} (was {widthBeforeScale:F1}), H={height:F1} (was {heightBeforeScale:F1})");
+            logger?.LogInformation($"[COORD-CONVERT] Y={percentBounds.YPercent:F1}% -> {y:F1} points (top-left origin, NO flip needed)");
 
-            // Apply reasonable limits
-            width = Math.Max(MIN_WIDTH, Math.Min(MAX_WIDTH, width));
-            height = Math.Max(MIN_HEIGHT, Math.Min(MAX_HEIGHT, height));
+            // DO NOT apply arbitrary size limits - trust Claude's detection
+            // Only apply constraints for specific cases
+            string fieldType = fieldName.ToLower();
+            if (fieldType.Contains("signature") || fieldType.Contains("sign"))
+            {
+                // Signatures need minimum size to be usable
+                if (width < 100f) width = 100f;
+                if (height < 30f) height = 30f;
+                logger?.LogInformation($"[COORD-CONVERT] Signature field adjusted to minimum size: W={width:F1}, H={height:F1}");
+            }
+            // For all other fields, use the detected size as-is
 
-            // Log final result
-            logger?.LogInformation($"[COORDINATE-CONVERSION] Final PDF bounds: X={x:F1}, Y={y:F1}, W={width:F1}, H={height:F1} (Page: {pageWidth:F0}x{pageHeight:F0})");
+            logger?.LogInformation($"[COORD-CONVERT] FINAL OUTPUT: X={x:F1}, Y={y:F1}, W={width:F1}, H={height:F1} (top-left origin, matches Syncfusion)");
 
             // Validate bounds are within page
             if (x < 0 || y < 0 || x + width > pageWidth || y + height > pageHeight)
             {
-                logger?.LogWarning($"[COORDINATE-CONVERSION] ⚠️  Field bounds outside page! X={x:F1}, Y={y:F1}, W={width:F1}, H={height:F1} vs Page={pageWidth:F0}x{pageHeight:F0}");
+                logger?.LogWarning($"Field '{fieldName}' bounds outside page: X={x:F0}, Y={y:F0}, W={width:F0}, H={height:F0} (Page: {pageWidth:F0}x{pageHeight:F0})");
             }
 
-            return new Syncfusion.Drawing.RectangleF(x, y, width, height);
+            var finalRect = new Syncfusion.Drawing.RectangleF(x, y, width, height);
+
+            return finalRect;
         }
     }
 }
