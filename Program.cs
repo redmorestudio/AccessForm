@@ -2975,6 +2975,7 @@ app.MapPost("/api/pdf-page-with-field-boxes", async (HttpRequest request, ILogge
 // PDF page preview endpoint for visual field editor
 app.MapPost("/api/pdf-page-preview", async (HttpRequest request, ILogger<Program> logger) =>
 {
+    logger.LogInformation("===== PDF PAGE PREVIEW REQUEST RECEIVED =====");
     try
     {
         byte[] pdfBytes = null;
@@ -3018,14 +3019,17 @@ app.MapPost("/api/pdf-page-preview", async (HttpRequest request, ILogger<Program
         }
         
         // Convert PDF page to image
+        logger.LogInformation($"Converting PDF page {pageNumber}, PDF size: {pdfBytes.Length} bytes");
         using var pdfStream = new MemoryStream(pdfBytes);
         using var pdfDoc = new PdfLoadedDocument(pdfStream);
-        
+
         if (pageNumber < 1 || pageNumber > pdfDoc.Pages.Count)
         {
+            logger.LogWarning($"Invalid page number: {pageNumber}, total pages: {pdfDoc.Pages.Count}");
             return Results.BadRequest(new { error = "Invalid page number" });
         }
-        
+
+        logger.LogInformation($"Using PDFtoImage to convert page {pageNumber}...");
         // Use PDFtoImage to convert page to image
         var options = new PDFtoImage.RenderOptions
         {
@@ -3033,8 +3037,10 @@ app.MapPost("/api/pdf-page-preview", async (HttpRequest request, ILogger<Program
             WithAnnotations = true,
             WithFormFill = true
         };
-        
+
+        logger.LogInformation("Calling PDFtoImage.Conversion.ToImage...");
         using var bitmap = PDFtoImage.Conversion.ToImage(pdfBytes, pageNumber - 1, options: options);
+        logger.LogInformation($"PDFtoImage conversion complete, bitmap: {bitmap != null}");
         
         if (bitmap != null)
         {

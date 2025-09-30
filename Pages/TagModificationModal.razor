@@ -778,13 +778,10 @@
         new() { Value = "address", Display = "Address" }
     };
     
-    protected override async Task OnParametersSetAsync()
+    protected override Task OnParametersSetAsync()
     {
-        await JSRuntime.InvokeVoidAsync("console.log", $"TagModificationModal.OnParametersSetAsync - Fields count: {Fields?.Count ?? 0}, EditableFields count before: {EditableFields?.Count ?? 0}");
-
         if (Fields != null && Fields.Any())
         {
-            await JSRuntime.InvokeVoidAsync("console.log", $"Populating EditableFields from {Fields.Count} Fields");
             EditableFields = new List<EditableField>();
             // Create new EditableField instances with proper OriginalName tracking
             for (int i = 0; i < Fields.Count; i++)
@@ -808,17 +805,29 @@
             }
             originalOrder = new List<EditableField>(EditableFields);
         }
-        
-        if (IsVisible)
+
+        return Task.CompletedTask;
+    }
+
+    private bool previewLoaded = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JSRuntime.InvokeVoidAsync("console.log", $"OnAfterRenderAsync: firstRender={firstRender}, IsVisible={IsVisible}, previewLoaded={previewLoaded}, PdfBytes={(PdfBytes == null ? "null" : PdfBytes.Length + " bytes")}");
+
+        if (!previewLoaded && IsVisible && PdfBytes != null && PdfBytes.Length > 0)
         {
-            // Load PDF preview when modal is shown
-            if (PdfBytes != null && PdfBytes.Length > 0)
-            {
-                await LoadPdfPreview();
-            }
+            await JSRuntime.InvokeVoidAsync("console.log", "Loading PDF preview...");
+            await LoadPdfPreview();
+            previewLoaded = true;
+            StateHasChanged();
+        }
+        else if (!previewLoaded && IsVisible)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", $"Cannot load preview: PdfBytes is {(PdfBytes == null ? "null" : PdfBytes.Length == 0 ? "empty" : "invalid")}");
         }
     }
-    
+
     private async Task LoadPdfPreview()
     {
         try
