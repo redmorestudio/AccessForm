@@ -18,11 +18,13 @@ namespace AccessFormServer.Services
     public class AsposePdfService
     {
         private readonly ILogger<AsposePdfService> _logger;
+        private readonly TwcFontComplianceService _fontComplianceService;
         private bool _isConfigured = false;
 
-        public AsposePdfService(ILogger<AsposePdfService> logger)
+        public AsposePdfService(ILogger<AsposePdfService> logger, TwcFontComplianceService fontComplianceService)
         {
             _logger = logger;
+            _fontComplianceService = fontComplianceService;
             
             try
             {
@@ -316,123 +318,38 @@ namespace AccessFormServer.Services
         private void EmbedFonts(Document document)
         {
             _logger.LogInformation("===== EMBEDDING FONTS AND REPLACING ZAPFDINGBATS =====");
-            
-            int fontsProcessed = 0;
-            int fontsEmbedded = 0;
-            int fontsFailed = 0;
+
             int checkboxesCleaned = 0;
-            
+
             // First, replace ZapfDingbats with embeddable font
             ReplaceZapfDingbatsFont(document);
-            
+
             // Then clean up checkbox fields
             CleanCheckboxFonts(document, ref checkboxesCleaned);
-            
-            // Get all pages
-            foreach (Page page in document.Pages)
-            {
-                // Get resources
-                if (page.Resources?.Fonts != null)
-                {
-                    // Create a list of fonts to potentially remove
-                    var fontsToRemove = new List<Aspose.Pdf.Text.Font>();
-                    
-                    foreach (var font in page.Resources.Fonts)
-                    {
-                        fontsProcessed++;
-                        
-                        // Skip ZapfDingbats if still present
-                        if (font.FontName.Contains("ZapfDingbats"))
-                        {
-                            _logger.LogWarning($"ZapfDingbats still present after replacement attempt");
-                            continue;
-                        }
-                        
-                        // Special handling for Times-Roman which causes issues with whitespace
-                        if (font.FontName == "Times-Roman" || font.FontName == "TimesNewRomanPSMT" || 
-                            font.FontName == "TimesNewRoman" || font.FontName.Contains("Times"))
-                        {
-                            _logger.LogWarning($"Found Times font that may cause issues: {font.FontName}");
-                            
-                            try
-                            {
-                                // Force embed Times fonts
-                                font.IsEmbedded = true;
-                                fontsEmbedded++;
-                                _logger.LogInformation($"Force embedded Times font: {font.FontName}");
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.LogWarning($"Could not embed Times font {font.FontName}: {ex.Message}");
-                                
-                                // Try to replace Times with Helvetica for better compatibility
-                                try
-                                {
-                                    // This is a workaround - we can't directly replace the font
-                                    // but we can flag it for replacement in text fragments
-                                    _logger.LogWarning($"Times font {font.FontName} should be replaced with Helvetica in text");
-                                    fontsFailed++;
-                                }
-                                catch
-                                {
-                                    // Ignore replacement errors
-                                }
-                            }
-                        }
-                        // Check if font is already embedded
-                        else if (!font.IsEmbedded)
-                        {
-                            _logger.LogInformation($"Attempting to embed: {font.FontName}");
-                            
-                            // Try to embed the font
-                            try
-                            {
-                                font.IsEmbedded = true;
-                                fontsEmbedded++;
-                                _logger.LogInformation($"Successfully embedded: {font.FontName}");
-                            }
-                            catch (Exception ex)
-                            {
-                                fontsFailed++;
-                                _logger.LogWarning($"FAILED to embed {font.FontName}: {ex.Message}");
-                                
-                                // Try to replace with a standard font
-                                if (font.FontName.Contains("Arial"))
-                                {
-                                    _logger.LogInformation("Note: Arial should be replaced with Helvetica");
-                                }
-                            }
-                        }
-                        else
-                        {
-                            _logger.LogInformation($"Already embedded: {font.FontName}");
-                        }
-                    }
-                    
-                    // Log ZapfDingbats presence but don't try to remove (API doesn't support)
-                    if (fontsToRemove.Count > 0)
-                    {
-                        _logger.LogWarning($"Found {fontsToRemove.Count} ZapfDingbats references - these should not be in checkbox fields");
-                    }
-                }
-            }
-            
-            _logger.LogInformation($"Font embedding complete: {fontsProcessed} processed, {fontsEmbedded} newly embedded, {fontsFailed} failed");
             _logger.LogInformation($"Checkboxes cleaned: {checkboxesCleaned}");
-            
+
             // Replace Times-Roman text with Helvetica for whitespace
             ReplaceTimesRomanWhitespace(document);
-            
-            // Use FontUtilities to subset fonts
+
+            // REMOVED: TwcFontComplianceService - it was making things worse by replacing fonts
+            // with more base 14 fonts. The PDF/A-2A conversion below handles font embedding automatically.
+            // var complianceReport = _fontComplianceService.EnsureFontCompliance(document);
+
+            // Use FontUtilities to embed and subset ALL fonts (including base 14 fonts)
+            // This is the key: SubsetAllFonts will force embedding of all fonts, even base 14
             try
             {
-                document.FontUtilities.SubsetFonts(FontSubsetStrategy.SubsetEmbeddedFontsOnly);
-                _logger.LogInformation("Applied font subsetting strategy");
+                _logger.LogInformation("Embedding and subsetting ALL fonts...");
+                document.FontUtilities.SubsetFonts(FontSubsetStrategy.SubsetAllFonts);
+                _logger.LogInformation("Successfully embedded and subsetted all fonts");
             }
             catch (Exception ex)
             {
                 _logger.LogWarning($"Could not apply font subsetting: {ex.Message}");
             }
+
+            // Subsetting complete - PDF/A conversion will handle final font embedding validation
+            _logger.LogInformation("===== FONT EMBEDDING COMPLETE =====");
         }
         
         /// <summary>

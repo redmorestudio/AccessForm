@@ -5,6 +5,7 @@
 @using Syncfusion.Pdf.Parsing
 @using Syncfusion.Pdf.Interactive
 @inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
 @implements IDisposable
 
 <div class="tag-modification-window @(IsVisible ? "show" : "hide")" id="tagModificationWindow" style="position: fixed; left: 20px; top: 50px; width: 1200px; height: calc(100vh - 100px); z-index: 1040;">
@@ -967,7 +968,7 @@
             
             // Add cache-buster to ensure fresh rendering with coordinate fixes
             var cacheBuster = DateTime.Now.Ticks;
-            var response = await client.PostAsync($"http://localhost:5002/api/pdf-page-with-field-boxes?cb={cacheBuster}", content);
+            var response = await client.PostAsync($"/api/pdf-page-with-field-boxes?cb={cacheBuster}", content);
             
             if (response.IsSuccessStatusCode)
             {
@@ -1031,7 +1032,7 @@
             content.Add(new ByteArrayContent(PdfBytes), "file", "document.pdf");
             content.Add(new StringContent(pageNumber.ToString()), "pageNumber");
             
-            var response = await client.PostAsync("http://localhost:5002/api/pdf-page-preview", content);
+            var response = await client.PostAsync("/api/pdf-page-preview", content);
             
             if (response.IsSuccessStatusCode)
             {
@@ -1538,10 +1539,11 @@
             
             // Extract actual form fields from the PDF
             using var client = new HttpClient();
+            client.BaseAddress = new Uri(Navigation.BaseUri);
             var content = new MultipartFormDataContent();
             content.Add(new ByteArrayContent(PdfBytes), "file", "document.pdf");
-            
-            var response = await client.PostAsync("http://localhost:5002/api/extract-pdf-fields", content);
+
+            var response = await client.PostAsync("/api/extract-pdf-fields", content);
             
             if (response.IsSuccessStatusCode)
             {

@@ -129,11 +129,15 @@ builder.Services.AddScoped<ITextFieldRebuildService>();
 //     return new AccessFormServer.Services.AdobeAutotagService(logger, credentialsPath);
 // });
 
+// Add TWC Font Compliance Service
+builder.Services.AddScoped<AccessFormServer.Services.TwcFontComplianceService>();
+
 // Add Aspose PDF Service for font embedding and optimization
 builder.Services.AddScoped<AccessFormServer.Services.AsposePdfService>(provider =>
 {
     var logger = provider.GetRequiredService<ILogger<AccessFormServer.Services.AsposePdfService>>();
-    return new AccessFormServer.Services.AsposePdfService(logger);
+    var fontComplianceService = provider.GetRequiredService<AccessFormServer.Services.TwcFontComplianceService>();
+    return new AccessFormServer.Services.AsposePdfService(logger, fontComplianceService);
 });
 
 // Add PDF Form Structure service
@@ -3757,6 +3761,7 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
 app.MapPost("/api/convert-with-config", async (
     HttpRequest request,
     ConfigurableFieldDetectionService fieldService,
+    PdfCompleteRebuildService completeRebuildService,
     ILogger<Program> logger) =>
 {
     try
@@ -3809,6 +3814,45 @@ app.MapPost("/api/convert-with-config", async (
         var (pdfBytes, fields) = await fieldService.ConvertWithConfig(fileBytes, file.FileName, config);
 
         logger.LogInformation($"Field detection completed. Found {fields?.Count ?? 0} fields");
+
+        // Check if font embedding is requested
+        var useAsposeFontEmbed = request.Form.ContainsKey("useAsposeFontEmbed") &&
+                                  request.Form["useAsposeFontEmbed"] == "true";
+
+        logger.LogInformation($"Font embedding requested: {useAsposeFontEmbed}");
+
+        // Apply font embedding if requested
+        if (useAsposeFontEmbed && completeRebuildService != null)
+        {
+            logger.LogInformation("Applying Aspose font embedding to PDF");
+
+            // Create empty field updates list since fields are already in the PDF
+            var fieldUpdates = new List<PdfCompleteRebuildService.FieldUpdate>();
+
+            // Create service options
+            var serviceOptions = new PdfCompleteRebuildService.ServiceOptions
+            {
+                UseAdobeAutotag = false,
+                UseAsposeAutotag = false,
+                UseAsposeFontEmbed = true,
+                UsePassportPdf = false
+            };
+
+            logger.LogInformation("Rebuild options: Adobe=False, Aspose=False, FontEmbed=True, PassportPdf=False");
+
+            // Run the font embedding
+            var rebuildResult = await completeRebuildService.CompletelyRebuildPdfAsync(pdfBytes, fieldUpdates, serviceOptions);
+
+            if (rebuildResult.Success && rebuildResult.PdfBytes != null)
+            {
+                logger.LogInformation("Font embedding successful");
+                pdfBytes = rebuildResult.PdfBytes;
+            }
+            else
+            {
+                logger.LogWarning($"Font embedding failed: {rebuildResult.ErrorMessage}");
+            }
+        }
 
         // Return response in expected format WITH detected fields for the frontend
         return Results.Ok(new

@@ -1,0 +1,1989 @@
+﻿Page 1 from "aavr3422-twc_accessible-font-test.pdf"
+	Problems
+		Used profile: "Verify compliance with PDF/UA-1 (syntax checks only)"
+		Document
+			PDF/UA identifier missing
+				PDF/UA entry 'pdfuaid' present in metadata
+			Neither Scope nor Headers/IDs for TH cell
+				Neither Scope nor Headers/IDs for TH cell
+			Detailed information
+				File name: "aavr3422-twc_accessible-font-test.pdf"
+				Path: "/Users/sethredmore/Library/CloudStorage/GoogleDrive-sredmore@gmail.com/My Drive/AF Uploads"
+				PDF version number: "1.6"
+				File size (byte): 49114
+				Title: "VR3422 Reduced Payment Agreement"
+				Created: "8/27/19 7:43 PM"
+				Modified: "9/30/25 9:30 AM"
+				Trapping: "Unknown"
+				Plates
+					Number of plates: 4
+					Names of plates: "(Cyan) (Magenta) (Yellow) (Black) "
+				Metadata
+					Description
+						Document Title: "VR3422 Reduced Payment Agreement"
+					IPTC Status
+						Title: "VR3422 Reduced Payment Agreement"
+					Advanced
+						http://ns.adobe.com/xap/1.0/
+							xmp:CreateDate: 2019-08-27T19:43:00Z
+							xmp:MetadataDate: 2025-09-30T09:30:14-07:00
+							xmp:ModifyDate: 2025-09-30T09:30:14-07:00
+						http://ns.adobe.com/xap/1.0/mm/
+							xmpMM:DocumentID: uuid:31f34c7a-46a1-564f-8b8f-cf90bb9c5827
+							xmpMM:InstanceID: uuid:ad008434-fe8f-1b49-b017-d51179368ca7
+						http://purl.org/dc/elements/1.1/
+							dc:format: application/pdf
+							dc:title: 
+							dc:title[1]: VR3422 Reduced Payment Agreement
+							dc:title[1]/?xml:lang: x-default
+			Output Intents: none
+			Layers: none
+			Embedded files: none
+		Page: 1
+			Font not embedded
+				Text rendering mode
+				Is embedded
+				Detailed information
+					Graphic state properties
+						Graphic properties
+							Current transformation matrix (CTM)
+								1.000000
+								0.000000
+								0.000000
+								1.000000
+								0.000000
+								0.000000
+								X translation: 0.000000
+								Y translation: 0.000000
+								X scaling: 1.000000
+								Y scaling: 1.000000
+								Rotation counterclockwise: 0.000000
+								Skew: 0.000000
+							Effective line width: 1.000000
+							Miter limit: 10.000000
+							Stroke adjustment: False
+							Flatness: 1.000000
+							Smoothness: 0.000000
+							Overprint mode: 0
+							Overprint for stroke: False
+							Overprint for fill: False
+							Rendering intent: RelativeColorimetric
+							Line dash pattern
+								Dash phase: 0.000000
+							Line cap style: Butt end caps
+							Line join style: Miter joins
+							Fill color space
+								DeviceRGB color space
+							Fill colorant values
+								0.000000
+								0.000000
+								0.000000
+							Stroke color space
+								DeviceGray color space
+						Text properties
+							TrueType font
+								Text position and size
+									Text horizontal position (pt): 299.676605
+									Text vertical position (pt): 722.503906
+									Text width (pt): 227.376007
+									Text height (pt): 27.599976
+								PostScript name: Arial-BoldMT
+								Unicode CMap is present
+								Encoding: WinAnsiEncoding
+								Font is a "base 14" font
+								Embedded: False
+								Font descriptors
+									Maximum height above the baseline: 728
+									y-coordinate of the top of flat capital letters: 1466
+									Maximum depth below the baseline: -210
+									Italic angle in degrees counterclockwise: 0
+									Width of the dominant vertical stems of glyphs: 160
+									Average width of characters: 277
+									Desired spacing between lines: 1088
+									Maximum width of characters: 277
+									Width to use for un-encoded characters.: 277
+									Vertical width of the dominant horizontal stems of glyphs: 0
+									y-coordinate of the top of flat non-ascending lowercase letters: 0
+									PostScript name: Arial-BoldMT
+									Various properties
+										Fixed-width font: False
+										Serif font: False
+										Symbolic font: False
+										Script font: False
+										Uses the Adobe Standard Roman Character Set: True
+										Italic: False
+										All-caps font: False
+										Small-caps font: False
+										Force bold at small text sizes: True
+							Current font size: 12.000000
+							Transparency
+								Fill constant alpha: 1.000000
+								Stroke constant alpha: 1.000000
+								Alpha is shape: False
+								Text knockout: True
+			Font not embedded
+				Text rendering mode
+				Is embedded
+				Detailed information
+					Graphic state properties
+						Graphic properties
+							Current transformation matrix (CTM)
+								1.000000
+								0.000000
+								0.000000
+								1.000000
+								0.000000
+								0.000000
+								X translation: 0.000000
+								Y translation: 0.000000
+								X scaling: 1.000000
+								Y scaling: 1.000000
+								Rotation counterclockwise: 0.000000
+								Skew: 0.000000
+							Effective line width: 1.000000
+							Miter limit: 10.000000
+							Stroke adjustment: False
+							Flatness: 1.000000
+							Smoothness: 0.000000
+							Overprint mode: 0
+							Overprint for stroke: False
+							Overprint for fill: False
+							Rendering intent: RelativeColorimetric
+							Line dash pattern
+								Dash phase: 0.000000
+							Line cap style: Butt end caps
+							Line join style: Miter joins
+							Fill color space
+								DeviceRGB color space
+							Fill colorant values
+								0.000000
+								0.000000
+								0.000000
+							Stroke color space
+								DeviceGray color space
+						Text properties
+							TrueType font
+								Text position and size
+									Text horizontal position (pt): 279.102997
+									Text vertical position (pt): 704.238953
+									Text width (pt): 268.608002
+									Text height (pt): 18.399963
+								PostScript name: Arial-BoldMT
+								Unicode CMap is present
+								Encoding: WinAnsiEncoding
+								Font is a "base 14" font
+								Embedded: False
+								Font descriptors
+									Maximum height above the baseline: 728
+									y-coordinate of the top of flat capital letters: 1466
+									Maximum depth below the baseline: -210
+									Italic angle in degrees counterclockwise: 0
+									Width of the dominant vertical stems of glyphs: 160
+									Average width of characters: 277
+									Desired spacing between lines: 1088
+									Maximum width of characters: 277
+									Width to use for un-encoded characters.: 277
+									Vertical width of the dominant horizontal stems of glyphs: 0
+									y-coordinate of the top of flat non-ascending lowercase letters: 0
+									PostScript name: Arial-BoldMT
+									Various properties
+										Fixed-width font: False
+										Serif font: False
+										Symbolic font: False
+										Script font: False
+										Uses the Adobe Standard Roman Character Set: True
+										Italic: False
+										All-caps font: False
+										Small-caps font: False
+										Force bold at small text sizes: True
+							Current font size: 16.000000
+							Transparency
+								Fill constant alpha: 1.000000
+								Stroke constant alpha: 1.000000
+								Alpha is shape: False
+								Text knockout: True
+			Font not embedded
+				Text rendering mode
+				Is embedded
+				Detailed information
+					Graphic state properties
+						Graphic properties
+							Current transformation matrix (CTM)
+								1.000000
+								0.000000
+								0.000000
+								1.000000
+								0.000000
+								0.000000
+								X translation: 0.000000
+								Y translation: 0.000000
+								X scaling: 1.000000
+								Y scaling: 1.000000
+								Rotation counterclockwise: 0.000000
+								Skew: 0.000000
+							Effective line width: 1.000000
+							Miter limit: 10.000000
+							Stroke adjustment: False
+							Flatness: 1.000000
+							Smoothness: 0.000000
+							Overprint mode: 0
+							Overprint for stroke: False
+							Overprint for fill: False
+							Rendering intent: RelativeColorimetric
+							Line dash pattern
+								Dash phase: 0.000000
+							Line cap style: Butt end caps
+							Line join style: Miter joins
+							Fill color space
+								DeviceRGB color space
+							Fill colorant values
+								0.000000
+								0.000000
+								0.000000
+							Stroke color space
+								DeviceGray color space
+						Text properties
+							TrueType font
+								Text position and size
+									Text horizontal position (pt): 32.582001
+									Text vertical position (pt): 682.004700
+									Text width (pt): 79.967995
+									Text height (pt): 13.799988
+								PostScript name: ArialMT
+								Unicode CMap is present
+								Encoding: WinAnsiEncoding
+								Font is a "base 14" font
+								Embedded: False
+								Font descriptors
+									Maximum height above the baseline: 728
+									y-coordinate of the top of flat capital letters: 1467
+									Maximum depth below the baseline: -210
+									Italic angle in degrees counterclockwise: 0
+									Width of the dominant vertical stems of glyphs: 80
+									Average width of characters: 277
+									Desired spacing between lines: 1088
+									Maximum width of characters: 277
+									Width to use for un-encoded characters.: 277
+									Vertical width of the dominant horizontal stems of glyphs: 0
+									y-coordinate of the top of flat non-ascending lowercase letters: 0
+									PostScript name: ArialMT
+									Various properties
+										Fixed-width font: False
+										Serif font: False
+										Symbolic font: False
+										Script font: False
+										Uses the Adobe Standard Roman Character Set: True
+										Italic: False
+										All-caps font: False
+										Small-caps font: False
+										Force bold at small text sizes: False
+							Current font size: 12.000000
+							Transparency
+								Fill constant alpha: 1.000000
+								Stroke constant alpha: 1.000000
+								Alpha is shape: False
+								Text knockout: True
+			Font not embedded
+				Text rendering mode
+				Is embedded
+				Detailed information
+					Graphic state properties
+						Graphic properties
+							Current transformation matrix (CTM)
+								1.000000
+								0.000000
+								0.000000
+								1.000000
+								0.000000
+								0.000000
+								X translation: 0.000000
+								Y translation: 0.000000
+								X scaling: 1.000000
+								Y scaling: 1.000000
+								Rotation counterclockwise: 0.000000
+								Skew: 0.000000
+							Effective line width: 1.000000
+							Miter limit: 10.000000
+							Stroke adjustment: False
+							Flatness: 1.000000
+							Smoothness: 0.000000
+							Overprint mode: 0
+							Overprint for stroke: False
+							Overprint for fill: False
+							Rendering intent: RelativeColorimetric
+							Line dash pattern
+								Dash phase: 0.000000
+							Line cap style: Butt end caps
+							Line join style: Miter joins
+							Fill color space
+								DeviceRGB color space
+							Fill colorant values
+								0.000000
+								0.000000
+								0.000000
+							Stroke color space
+								DeviceGray color space
+						Text properties
+							Type 1 font
+								Text position and size
+									Text horizontal position (pt): 135.865997
+									Text vertical position (pt): 681.920654
+									Text width (pt): 14.016006
+									Text height (pt): 13.392029
+								PostScript name: Times-Roman
+								Unicode CMap is present
+								Encoding: WinAnsiEncoding
+								Font is a "base 14" font
+								Embedded: False
+								Font descriptors
+									Maximum height above the baseline: 699
+									y-coordinate of the top of flat capital letters: 662
+									Maximum depth below the baseline: -217
+									Italic angle in degrees counterclockwise: 0
+									Width of the dominant vertical stems of glyphs: 84
+									Average width of characters: 0
+									Desired spacing between lines: 0
+									Maximum width of characters: 0
+									Width to use for un-encoded characters.: 250
+									Vertical width of the dominant horizontal stems of glyphs: 84
+									y-coordinate of the top of flat non-ascending lowercase letters: 450
+									PostScript name: Times-Roman
+									Various properties
+										Fixed-width font: False
+										Serif font: True
+										Symbolic font: False
+										Script font: False
+										Uses the Adobe Standard Roman Character Set: True
+										Italic: False
+										All-caps font: False
+										Small-caps font: False
+										Force bold at small text sizes: False
+							Current font size: 12.000000
+							Transparency
+								Fill constant alpha: 1.000000
+								Stroke constant alpha: 1.000000
+								Alpha is shape: False
+								Text knockout: True
+			Font not embedded
+				Text rendering mode
+				Is embedded
+				Detailed information
+					Graphic state properties
+						Graphic properties
+							Current transformation matrix (CTM)
+								1.000000
+								0.000000
+								0.000000
+								1.000000
+								0.000000
+								0.000000
+								X translation: 0.000000
+								Y translation: 0.000000
+								X scaling: 1.000000
+								Y scaling: 1.000000
+								Rotation counterclockwise: 0.000000
+								Skew: 0.000000
+							Effective line width: 1.000000
+							Miter limit: 10.000000
+							Stroke adjustment: False
+							Flatness: 1.000000
+							Smoothness: 0.000000
+							Overprint mode: 0
+							Overprint for stroke: False
+							Overprint for fill: False
+							Rendering intent: RelativeColorimetric
+							Line dash pattern
+								Dash phase: 0.000000
+							Line cap style: Butt end caps
+							Line join style: Miter joins
+							Fill color space
+								DeviceRGB color space
+							Fill colorant values
+								0.000000
+								0.000000
+								0.000000
+							Stroke color space
+								DeviceGray color space
+						Text properties
+							TrueType font
+								Text position and size
+									Text horizontal position (pt): 365.534027
+									Text vertical position (pt): 682.004700
+									Text width (pt): 122.645996
+									Text height (pt): 13.799988
+								PostScript name: ArialMT
+								Unicode CMap is present
+								Encoding: WinAnsiEncoding
+								Font is a "base 14" font
+								Embedded: False
+								Font descriptors
+									Maximum height above the baseline: 728
+									y-coordinate of the top of flat capital letters: 1467
+									Maximum depth below the baseline: -210
+									Italic angle in degrees counterclockwise: 0
+									Width of the dominant vertical stems of glyphs: 80
+									Average width of characters: 277
+									Desired spacing between lines: 1088
+									Maximum width of characters: 277
+									Width to use for un-encoded characters.: 277
+									Vertical width of the dominant horizontal stems of glyphs: 0
+									y-coordinate of the top of flat non-ascending lowercase letters: 0
+									PostScript name: ArialMT
+									Various properties
+										Fixed-width font: False
+										Serif font: False
+										Symbolic font: False
+										Script font: False
+										Uses the Adobe Standard Roman Character Set: True
+										Italic: False
+										All-caps font: False
+										Small-caps font: False
+										Force bold at small text sizes: False
+							Current font size: 12.000000
+							Transparency
+								Fill constant alpha: 1.000000
+								Stroke constant alpha: 1.000000
+								Alpha is shape: False
+								Text knockout: True
+			Font not embedded
+				Text rendering mode
+				Is embedded
+				Detailed information
+					Graphic state properties
+						Graphic properties
+							Current transformation matrix (CTM)
+								1.000000
+								0.000000
+								0.000000
+								1.000000
+								0.000000
+								0.000000
+								X translation: 0.000000
+								Y translation: 0.000000
+								X scaling: 1.000000
+								Y scaling: 1.000000
+								Rotation counterclockwise: 0.000000
+								Skew: 0.000000
+							Effective line width: 1.000000
+							Miter limit: 10.000000
+							Stroke adjustment: False
+							Flatness: 1.000000
+							Smoothness: 0.000000
+							Overprint mode: 0
+							Overprint for stroke: False
+							Overprint for fill: False
+							Rendering intent: RelativeColorimetric
+							Line dash pattern
+								Dash phase: 0.000000
+							Line cap style: Butt end caps
+							Line join style: Miter joins
+							Fill color space
+								DeviceRGB color space
+							Fill colorant values
+								0.000000
+								0.000000
+								0.000000
+							Stroke color space
+								DeviceGray color space
+						Text properties
+							TrueType font
+								Text position and size
+									Text horizontal position (pt): 32.582005
+									Text vertical position (pt): 645.908691
+									Text width (pt): 163.283997
+									Text height (pt): 13.799988
+								PostScript name: ArialMT
+								Unicode CMap is present
+								Encoding: WinAnsiEncoding
+								Font is a "base 14" font
+								Embedded: False
+								Font descriptors
+									Maximum height above the baseline: 728
+									y-coordinate of the top of flat capital letters: 1467
+									Maximum depth below the baseline: -210
+									Italic angle in degrees counterclockwise: 0
+									Width of the dominant vertical stems of glyphs: 80
+									Average width of characters: 277
+									Desired spacing between lines: 1088
+									Maximum width of characters: 277
+									Width to use for un-encoded characters.: 277
+									Vertical width of the dominant horizontal stems of glyphs: 0
+									y-coordinate of the top of flat non-ascending lowercase letters: 0
+									PostScript name: ArialMT
+									Various properties
+										Fixed-width font: False
+										Serif font: False
+										Symbolic font: False
+										Script font: False
+										Uses the Adobe Standard Roman Character Set: True
+										Italic: False
+										All-caps font: False
+										Small-caps font: False
+										Force bold at small text sizes: False
+							Current font size: 12.000000
+							Transparency
+								Fill constant alpha: 1.000000
+								Stroke constant alpha: 1.000000
+								Alpha is shape: False
+								Text knockout: True
+			Font not embedded
+				Text rendering mode
+				Is embedded
+				Detailed information
+					Graphic state properties
+						Graphic properties
+							Current transformation matrix (CTM)
+								1.000000
+								0.000000
+								0.000000
+								1.000000
+								0.000000
+								0.000000
+								X translation: 0.000000
+								Y translation: 0.000000
+								X scaling: 1.000000
+								Y scaling: 1.000000
+								Rotation counterclockwise: 0.000000
+								Skew: 0.000000
+							Effective line width: 1.000000
+							Miter limit: 10.000000
+							Stroke adjustment: False
+							Flatness: 1.000000
+							Smoothness: 0.000000
+							Overprint mode: 0
+							Overprint for stroke: False
+							Overprint for fill: False
+							Rendering intent: RelativeColorimetric
+							Line dash pattern
+								Dash phase: 0.000000
+							Line cap style: Butt end caps
+							Line join style: Miter joins
+							Fill color space
+								DeviceRGB color space
+							Fill colorant values
+								0.000000
+								0.000000
+								0.000000
+							Stroke color space
+								DeviceGray color space
+						Text properties
+							TrueType font
+								Text position and size
+									Text horizontal position (pt): 32.582001
+									Text vertical position (pt): 241.203506
+									Text width (pt): 553.352417
+									Text height (pt): 49.805191
+								PostScript name: ArialMT
+								Unicode CMap is present
+								Encoding: WinAnsiEncoding
+								Font is a "base 14" font
+								Embedded: False
+								Font descriptors
+									Maximum height above the baseline: 728
+									y-coordinate of the top of flat capital letters: 1467
+									Maximum depth below the baseline: -210
+									Italic angle in degrees counterclockwise: 0
+									Width of the dominant vertical stems of glyphs: 80
+									Average width of characters: 277
+									Desired spacing between lines: 1088
+									Maximum width of characters: 277
+									Width to use for un-encoded characters.: 277
+									Vertical width of the dominant horizontal stems of glyphs: 0
+									y-coordinate of the top of flat non-ascending lowercase letters: 0
+									PostScript name: ArialMT
+									Various properties
+										Fixed-width font: False
+										Serif font: False
+										Symbolic font: False
+										Script font: False
+										Uses the Adobe Standard Roman Character Set: True
+										Italic: False
+										All-caps font: False
+										Small-caps font: False
+										Force bold at small text sizes: False
+							Current font size: 12.000000
+							Transparency
+								Fill constant alpha: 1.000000
+								Stroke constant alpha: 1.000000
+								Alpha is shape: False
+								Text knockout: True
+			Font not embedded
+				Text rendering mode
+				Is embedded
+				Detailed information
+					Graphic state properties
+						Graphic properties
+							Current transformation matrix (CTM)
+								1.000000
+								0.000000
+								0.000000
+								1.000000
+								0.000000
+								0.000000
+								X translation: 0.000000
+								Y translation: 0.000000
+								X scaling: 1.000000
+								Y scaling: 1.000000
+								Rotation counterclockwise: 0.000000
+								Skew: 0.000000
+							Effective line width: 1.000000
+							Miter limit: 10.000000
+							Stroke adjustment: False
+							Flatness: 1.000000
+							Smoothness: 0.000000
+							Overprint mode: 0
+							Overprint for stroke: False
+							Overprint for fill: False
+							Rendering intent: RelativeColorimetric
+							Line dash pattern
+								Dash phase: 0.000000
+							Line cap style: Butt end caps
+							Line join style: Miter joins
+							Fill color space
+								DeviceRGB color space
+							Fill colorant values
+								0.000000
+								0.000000
+								0.000000
+							Stroke color space
+								DeviceGray color space
+						Text properties
+							TrueType font
+								Text position and size
+									Text horizontal position (pt): 32.582001
+									Text vertical position (pt): 219.903503
+									Text width (pt): 236.604004
+									Text height (pt): 13.800003
+								PostScript name: ArialMT
+								Unicode CMap is present
+								Encoding: WinAnsiEncoding
+								Font is a "base 14" font
+								Embedded: False
+								Font descriptors
+									Maximum height above the baseline: 728
+									y-coordinate of the top of flat capital letters: 1467
+									Maximum depth below the baseline: -210
+									Italic angle in degrees counterclockwise: 0
+									Width of the dominant vertical stems of glyphs: 80
+									Average width of characters: 277
+									Desired spacing between lines: 1088
+									Maximum width of characters: 277
+									Width to use for un-encoded characters.: 277
+									Vertical width of the dominant horizontal stems of glyphs: 0
+									y-coordinate of the top of flat non-ascending lowercase letters: 0
+									PostScript name: ArialMT
+									Various properties
+										Fixed-width font: False
+										Serif font: False
+										Symbolic font: False
+										Script font: False
+										Uses the Adobe Standard Roman Character Set: True
+										Italic: False
+										All-caps font: False
+										Small-caps font: False
+										Force bold at small text sizes: False
+							Current font size: 12.000000
+							Transparency
+								Fill constant alpha: 1.000000
+								Stroke constant alpha: 1.000000
+								Alpha is shape: False
+								Text knockout: True
+			Font not embedded
+				Text rendering mode
+				Is embedded
+				Detailed information
+					Graphic state properties
+						Graphic properties
+							Current transformation matrix (CTM)
+								1.000000
+								0.000000
+								0.000000
+								1.000000
+								0.000000
+								0.000000
+								X translation: 0.000000
+								Y translation: 0.000000
+								X scaling: 1.000000
+								Y scaling: 1.000000
+								Rotation counterclockwise: 0.000000
+								Skew: 0.000000
+							Effective line width: 1.000000
+							Miter limit: 10.000000
+							Stroke adjustment: False
+							Flatness: 1.000000
+							Smoothness: 0.000000
+							Overprint mode: 0
+							Overprint for stroke: False
+							Overprint for fill: False
+							Rendering intent: RelativeColorimetric
+							Line dash pattern
+								Dash phase: 0.000000
+							Line cap style: Butt end caps
+							Line join style: Miter joins
+							Fill color space
+								DeviceRGB color space
+							Fill colorant values
+								0.000000
+								0.000000
+								0.000000
+							Stroke color space
+								DeviceGray color space
+						Text properties
+							TrueType font
+								Text position and size
+									Text horizontal position (pt): 365.534027
+									Text vertical position (pt): 219.903503
+									Text width (pt): 60.623993
+									Text height (pt): 13.800003
+								PostScript name: ArialMT
+								Unicode CMap is present
+								Encoding: WinAnsiEncoding
+								Font is a "base 14" font
+								Embedded: False
+								Font descriptors
+									Maximum height above the baseline: 728
+									y-coordinate of the top of flat capital letters: 1467
+									Maximum depth below the baseline: -210
+									Italic angle in degrees counterclockwise: 0
+									Width of the dominant vertical stems of glyphs: 80
+									Average width of characters: 277
+									Desired spacing between lines: 1088
+									Maximum width of characters: 277
+									Width to use for un-encoded characters.: 277
+									Vertical width of the dominant horizontal stems of glyphs: 0
+									y-coordinate of the top of flat non-ascending lowercase letters: 0
+									PostScript name: ArialMT
+									Various properties
+										Fixed-width font: False
+										Serif font: False
+										Symbolic font: False
+										Script font: False
+										Uses the Adobe Standard Roman Character Set: True
+										Italic: False
+										All-caps font: False
+										Small-caps font: False
+										Force bold at small text sizes: False
+							Current font size: 12.000000
+							Transparency
+								Fill constant alpha: 1.000000
+								Stroke constant alpha: 1.000000
+								Alpha is shape: False
+								Text knockout: True
+			Font not embedded
+				Text rendering mode
+				Is embedded
+				Detailed information
+					Graphic state properties
+						Graphic properties
+							Current transformation matrix (CTM)
+								1.000000
+								0.000000
+								0.000000
+								1.000000
+								0.000000
+								0.000000
+								X translation: 0.000000
+								Y translation: 0.000000
+								X scaling: 1.000000
+								Y scaling: 1.000000
+								Rotation counterclockwise: 0.000000
+								Skew: 0.000000
+							Effective line width: 1.000000
+							Miter limit: 10.000000
+							Stroke adjustment: False
+							Flatness: 1.000000
+							Smoothness: 0.000000
+							Overprint mode: 0
+							Overprint for stroke: False
+							Overprint for fill: False
+							Rendering intent: RelativeColorimetric
+							Line dash pattern
+								Dash phase: 0.000000
+							Line cap style: Butt end caps
+							Line join style: Miter joins
+							Fill color space
+								DeviceRGB color space
+							Fill colorant values
+								0.000000
+								0.000000
+								0.000000
+							Stroke color space
+								DeviceGray color space
+						Text properties
+							Type 1 font
+								Text position and size
+									Text horizontal position (pt): 225.919998
+									Text vertical position (pt): 183.315506
+									Text width (pt): 14.016006
+									Text height (pt): 13.391998
+								PostScript name: Times-Roman
+								Unicode CMap is present
+								Encoding: WinAnsiEncoding
+								Font is a "base 14" font
+								Embedded: False
+								Font descriptors
+									Maximum height above the baseline: 699
+									y-coordinate of the top of flat capital letters: 662
+									Maximum depth below the baseline: -217
+									Italic angle in degrees counterclockwise: 0
+									Width of the dominant vertical stems of glyphs: 84
+									Average width of characters: 0
+									Desired spacing between lines: 0
+									Maximum width of characters: 0
+									Width to use for un-encoded characters.: 250
+									Vertical width of the dominant horizontal stems of glyphs: 84
+									y-coordinate of the top of flat non-ascending lowercase letters: 450
+									PostScript name: Times-Roman
+									Various properties
+										Fixed-width font: False
+										Serif font: True
+										Symbolic font: False
+										Script font: False
+										Uses the Adobe Standard Roman Character Set: True
+										Italic: False
+										All-caps font: False
+										Small-caps font: False
+										Force bold at small text sizes: False
+							Current font size: 12.000000
+							Transparency
+								Fill constant alpha: 1.000000
+								Stroke constant alpha: 1.000000
+								Alpha is shape: False
+								Text knockout: True
+			Font not embedded
+				Text rendering mode
+				Is embedded
+				Detailed information
+					Graphic state properties
+						Graphic properties
+							Current transformation matrix (CTM)
+								1.000000
+								0.000000
+								0.000000
+								1.000000
+								0.000000
+								0.000000
+								X translation: 0.000000
+								Y translation: 0.000000
+								X scaling: 1.000000
+								Y scaling: 1.000000
+								Rotation counterclockwise: 0.000000
+								Skew: 0.000000
+							Effective line width: 1.000000
+							Miter limit: 10.000000
+							Stroke adjustment: False
+							Flatness: 1.000000
+							Smoothness: 0.000000
+							Overprint mode: 0
+							Overprint for stroke: False
+							Overprint for fill: False
+							Rendering intent: RelativeColorimetric
+							Line dash pattern
+								Dash phase: 0.000000
+							Line cap style: Butt end caps
+							Line join style: Miter joins
+							Fill color space
+								DeviceRGB color space
+							Fill colorant values
+								0.000000
+								0.000000
+								0.000000
+							Stroke color space
+								DeviceGray color space
+						Text properties
+							TrueType font
+								Text position and size
+									Text horizontal position (pt): 28.009998
+									Text vertical position (pt): 158.674500
+									Text width (pt): 65.860001
+									Text height (pt): 23.000000
+								PostScript name: Arial-BoldMT
+								Unicode CMap is present
+								Encoding: WinAnsiEncoding
+								Font is a "base 14" font
+								Embedded: False
+								Font descriptors
+									Maximum height above the baseline: 728
+									y-coordinate of the top of flat capital letters: 1466
+									Maximum depth below the baseline: -210
+									Italic angle in degrees counterclockwise: 0
+									Width of the dominant vertical stems of glyphs: 160
+									Average width of characters: 277
+									Desired spacing between lines: 1088
+									Maximum width of characters: 277
+									Width to use for un-encoded characters.: 277
+									Vertical width of the dominant horizontal stems of glyphs: 0
+									y-coordinate of the top of flat non-ascending lowercase letters: 0
+									PostScript name: Arial-BoldMT
+									Various properties
+										Fixed-width font: False
+										Serif font: False
+										Symbolic font: False
+										Script font: False
+										Uses the Adobe Standard Roman Character Set: True
+										Italic: False
+										All-caps font: False
+										Small-caps font: False
+										Force bold at small text sizes: True
+							Current font size: 20.000000
+							Transparency
+								Fill constant alpha: 1.000000
+								Stroke constant alpha: 1.000000
+								Alpha is shape: False
+								Text knockout: True
+			Font not embedded
+				Text rendering mode
+				Is embedded
+				Detailed information
+					Graphic state properties
+						Graphic properties
+							Current transformation matrix (CTM)
+								1.000000
+								0.000000
+								0.000000
+								1.000000
+								0.000000
+								0.000000
+								X translation: 0.000000
+								Y translation: 0.000000
+								X scaling: 1.000000
+								Y scaling: 1.000000
+								Rotation counterclockwise: 0.000000
+								Skew: 0.000000
+							Effective line width: 1.000000
+							Miter limit: 10.000000
+							Stroke adjustment: False
+							Flatness: 1.000000
+							Smoothness: 0.000000
+							Overprint mode: 0
+							Overprint for stroke: False
+							Overprint for fill: False
+							Rendering intent: RelativeColorimetric
+							Line dash pattern
+								Dash phase: 0.000000
+							Line cap style: Butt end caps
+							Line join style: Miter joins
+							Fill color space
+								DeviceRGB color space
+							Fill colorant values
+								0.000000
+								0.000000
+								0.000000
+							Stroke color space
+								DeviceGray color space
+						Text properties
+							TrueType font
+								Text position and size
+									Text horizontal position (pt): 32.582001
+									Text vertical position (pt): 142.104706
+									Text width (pt): 209.942398
+									Text height (pt): 13.800003
+								PostScript name: ArialMT
+								Unicode CMap is present
+								Encoding: WinAnsiEncoding
+								Font is a "base 14" font
+								Embedded: False
+								Font descriptors
+									Maximum height above the baseline: 728
+									y-coordinate of the top of flat capital letters: 1467
+									Maximum depth below the baseline: -210
+									Italic angle in degrees counterclockwise: 0
+									Width of the dominant vertical stems of glyphs: 80
+									Average width of characters: 277
+									Desired spacing between lines: 1088
+									Maximum width of characters: 277
+									Width to use for un-encoded characters.: 277
+									Vertical width of the dominant horizontal stems of glyphs: 0
+									y-coordinate of the top of flat non-ascending lowercase letters: 0
+									PostScript name: ArialMT
+									Various properties
+										Fixed-width font: False
+										Serif font: False
+										Symbolic font: False
+										Script font: False
+										Uses the Adobe Standard Roman Character Set: True
+										Italic: False
+										All-caps font: False
+										Small-caps font: False
+										Force bold at small text sizes: False
+							Current font size: 12.000000
+							Transparency
+								Fill constant alpha: 1.000000
+								Stroke constant alpha: 1.000000
+								Alpha is shape: False
+								Text knockout: True
+			Font not embedded
+				Text rendering mode
+				Is embedded
+				Detailed information
+					Graphic state properties
+						Graphic properties
+							Current transformation matrix (CTM)
+								1.000000
+								0.000000
+								0.000000
+								1.000000
+								0.000000
+								0.000000
+								X translation: 0.000000
+								Y translation: 0.000000
+								X scaling: 1.000000
+								Y scaling: 1.000000
+								Rotation counterclockwise: 0.000000
+								Skew: 0.000000
+							Effective line width: 1.000000
+							Miter limit: 10.000000
+							Stroke adjustment: False
+							Flatness: 1.000000
+							Smoothness: 0.000000
+							Overprint mode: 0
+							Overprint for stroke: False
+							Overprint for fill: False
+							Rendering intent: RelativeColorimetric
+							Line dash pattern
+								Dash phase: 0.000000
+							Line cap style: Butt end caps
+							Line join style: Miter joins
+							Fill color space
+								DeviceRGB color space
+							Fill colorant values
+								0.000000
+								0.000000
+								0.000000
+							Stroke color space
+								DeviceGray color space
+						Text properties
+							TrueType font
+								Text position and size
+									Text horizontal position (pt): 365.534027
+									Text vertical position (pt): 142.104706
+									Text width (pt): 60.623993
+									Text height (pt): 13.800003
+								PostScript name: ArialMT
+								Unicode CMap is present
+								Encoding: WinAnsiEncoding
+								Font is a "base 14" font
+								Embedded: False
+								Font descriptors
+									Maximum height above the baseline: 728
+									y-coordinate of the top of flat capital letters: 1467
+									Maximum depth below the baseline: -210
+									Italic angle in degrees counterclockwise: 0
+									Width of the dominant vertical stems of glyphs: 80
+									Average width of characters: 277
+									Desired spacing between lines: 1088
+									Maximum width of characters: 277
+									Width to use for un-encoded characters.: 277
+									Vertical width of the dominant horizontal stems of glyphs: 0
+									y-coordinate of the top of flat non-ascending lowercase letters: 0
+									PostScript name: ArialMT
+									Various properties
+										Fixed-width font: False
+										Serif font: False
+										Symbolic font: False
+										Script font: False
+										Uses the Adobe Standard Roman Character Set: True
+										Italic: False
+										All-caps font: False
+										Small-caps font: False
+										Force bold at small text sizes: False
+							Current font size: 12.000000
+							Transparency
+								Fill constant alpha: 1.000000
+								Stroke constant alpha: 1.000000
+								Alpha is shape: False
+								Text knockout: True
+			Font not embedded
+				Text rendering mode
+				Is embedded
+				Detailed information
+					Graphic state properties
+						Graphic properties
+							Current transformation matrix (CTM)
+								1.000000
+								0.000000
+								0.000000
+								1.000000
+								0.000000
+								0.000000
+								X translation: 0.000000
+								Y translation: 0.000000
+								X scaling: 1.000000
+								Y scaling: 1.000000
+								Rotation counterclockwise: 0.000000
+								Skew: 0.000000
+							Effective line width: 1.000000
+							Miter limit: 10.000000
+							Stroke adjustment: False
+							Flatness: 1.000000
+							Smoothness: 0.000000
+							Overprint mode: 0
+							Overprint for stroke: False
+							Overprint for fill: False
+							Rendering intent: RelativeColorimetric
+							Line dash pattern
+								Dash phase: 0.000000
+							Line cap style: Butt end caps
+							Line join style: Miter joins
+							Fill color space
+								DeviceRGB color space
+							Fill colorant values
+								0.000000
+								0.000000
+								0.000000
+							Stroke color space
+								DeviceGray color space
+						Text properties
+							TrueType font
+								Text position and size
+									Text horizontal position (pt): 32.582001
+									Text vertical position (pt): 105.600708
+									Text width (pt): 39.959999
+									Text height (pt): 13.799995
+								PostScript name: ArialMT
+								Unicode CMap is present
+								Encoding: WinAnsiEncoding
+								Font is a "base 14" font
+								Embedded: False
+								Font descriptors
+									Maximum height above the baseline: 728
+									y-coordinate of the top of flat capital letters: 1467
+									Maximum depth below the baseline: -210
+									Italic angle in degrees counterclockwise: 0
+									Width of the dominant vertical stems of glyphs: 80
+									Average width of characters: 277
+									Desired spacing between lines: 1088
+									Maximum width of characters: 277
+									Width to use for un-encoded characters.: 277
+									Vertical width of the dominant horizontal stems of glyphs: 0
+									y-coordinate of the top of flat non-ascending lowercase letters: 0
+									PostScript name: ArialMT
+									Various properties
+										Fixed-width font: False
+										Serif font: False
+										Symbolic font: False
+										Script font: False
+										Uses the Adobe Standard Roman Character Set: True
+										Italic: False
+										All-caps font: False
+										Small-caps font: False
+										Force bold at small text sizes: False
+							Current font size: 12.000000
+							Transparency
+								Fill constant alpha: 1.000000
+								Stroke constant alpha: 1.000000
+								Alpha is shape: False
+								Text knockout: True
+			Font not embedded
+				Text rendering mode
+				Is embedded
+				Detailed information
+					Graphic state properties
+						Graphic properties
+							Current transformation matrix (CTM)
+								1.000000
+								0.000000
+								0.000000
+								1.000000
+								0.000000
+								0.000000
+								X translation: 0.000000
+								Y translation: 0.000000
+								X scaling: 1.000000
+								Y scaling: 1.000000
+								Rotation counterclockwise: 0.000000
+								Skew: 0.000000
+							Effective line width: 1.000000
+							Miter limit: 10.000000
+							Stroke adjustment: False
+							Flatness: 1.000000
+							Smoothness: 0.000000
+							Overprint mode: 0
+							Overprint for stroke: False
+							Overprint for fill: False
+							Rendering intent: RelativeColorimetric
+							Line dash pattern
+								Dash phase: 0.000000
+							Line cap style: Butt end caps
+							Line join style: Miter joins
+							Fill color space
+								DeviceRGB color space
+							Fill colorant values
+								0.000000
+								0.000000
+								0.000000
+							Stroke color space
+								DeviceGray color space
+						Text properties
+							Type 1 font
+								Text position and size
+									Text horizontal position (pt): 199.237991
+									Text vertical position (pt): 105.520706
+									Text width (pt): 14.016006
+									Text height (pt): 13.391998
+								PostScript name: Times-Roman
+								Unicode CMap is present
+								Encoding: WinAnsiEncoding
+								Font is a "base 14" font
+								Embedded: False
+								Font descriptors
+									Maximum height above the baseline: 699
+									y-coordinate of the top of flat capital letters: 662
+									Maximum depth below the baseline: -217
+									Italic angle in degrees counterclockwise: 0
+									Width of the dominant vertical stems of glyphs: 84
+									Average width of characters: 0
+									Desired spacing between lines: 0
+									Maximum width of characters: 0
+									Width to use for un-encoded characters.: 250
+									Vertical width of the dominant horizontal stems of glyphs: 84
+									y-coordinate of the top of flat non-ascending lowercase letters: 450
+									PostScript name: Times-Roman
+									Various properties
+										Fixed-width font: False
+										Serif font: True
+										Symbolic font: False
+										Script font: False
+										Uses the Adobe Standard Roman Character Set: True
+										Italic: False
+										All-caps font: False
+										Small-caps font: False
+										Force bold at small text sizes: False
+							Current font size: 12.000000
+							Transparency
+								Fill constant alpha: 1.000000
+								Stroke constant alpha: 1.000000
+								Alpha is shape: False
+								Text knockout: True
+			Font not embedded
+				Text rendering mode
+				Is embedded
+				Detailed information
+					Graphic state properties
+						Graphic properties
+							Current transformation matrix (CTM)
+								1.000000
+								0.000000
+								0.000000
+								1.000000
+								0.000000
+								0.000000
+								X translation: 0.000000
+								Y translation: 0.000000
+								X scaling: 1.000000
+								Y scaling: 1.000000
+								Rotation counterclockwise: 0.000000
+								Skew: 0.000000
+							Effective line width: 1.000000
+							Miter limit: 10.000000
+							Stroke adjustment: False
+							Flatness: 1.000000
+							Smoothness: 0.000000
+							Overprint mode: 0
+							Overprint for stroke: False
+							Overprint for fill: False
+							Rendering intent: RelativeColorimetric
+							Line dash pattern
+								Dash phase: 0.000000
+							Line cap style: Butt end caps
+							Line join style: Miter joins
+							Fill color space
+								DeviceRGB color space
+							Fill colorant values
+								0.000000
+								0.000000
+								0.000000
+							Stroke color space
+								DeviceGray color space
+						Text properties
+							TrueType font
+								Text position and size
+									Text horizontal position (pt): 28.009998
+									Text vertical position (pt): 80.874496
+									Text width (pt): 65.860001
+									Text height (pt): 23.000000
+								PostScript name: Arial-BoldMT
+								Unicode CMap is present
+								Encoding: WinAnsiEncoding
+								Font is a "base 14" font
+								Embedded: False
+								Font descriptors
+									Maximum height above the baseline: 728
+									y-coordinate of the top of flat capital letters: 1466
+									Maximum depth below the baseline: -210
+									Italic angle in degrees counterclockwise: 0
+									Width of the dominant vertical stems of glyphs: 160
+									Average width of characters: 277
+									Desired spacing between lines: 1088
+									Maximum width of characters: 277
+									Width to use for un-encoded characters.: 277
+									Vertical width of the dominant horizontal stems of glyphs: 0
+									y-coordinate of the top of flat non-ascending lowercase letters: 0
+									PostScript name: Arial-BoldMT
+									Various properties
+										Fixed-width font: False
+										Serif font: False
+										Symbolic font: False
+										Script font: False
+										Uses the Adobe Standard Roman Character Set: True
+										Italic: False
+										All-caps font: False
+										Small-caps font: False
+										Force bold at small text sizes: True
+							Current font size: 20.000000
+							Transparency
+								Fill constant alpha: 1.000000
+								Stroke constant alpha: 1.000000
+								Alpha is shape: False
+								Text knockout: True
+			Font not embedded
+				Text rendering mode
+				Is embedded
+				Detailed information
+					Graphic state properties
+						Graphic properties
+							Current transformation matrix (CTM)
+								1.000000
+								0.000000
+								0.000000
+								1.000000
+								0.000000
+								0.000000
+								X translation: 0.000000
+								Y translation: 0.000000
+								X scaling: 1.000000
+								Y scaling: 1.000000
+								Rotation counterclockwise: 0.000000
+								Skew: 0.000000
+							Effective line width: 1.000000
+							Miter limit: 10.000000
+							Stroke adjustment: False
+							Flatness: 1.000000
+							Smoothness: 0.000000
+							Overprint mode: 0
+							Overprint for stroke: False
+							Overprint for fill: False
+							Rendering intent: RelativeColorimetric
+							Line dash pattern
+								Dash phase: 0.000000
+							Line cap style: Butt end caps
+							Line join style: Miter joins
+							Fill color space
+								DeviceRGB color space
+							Fill colorant values
+								0.000000
+								0.000000
+								0.000000
+							Stroke color space
+								DeviceGray color space
+						Text properties
+							TrueType font
+								Text position and size
+									Text horizontal position (pt): 29.360001
+									Text vertical position (pt): 21.936300
+									Text width (pt): 566.640015
+									Text height (pt): 11.500002
+								PostScript name: ArialMT
+								Unicode CMap is present
+								Encoding: WinAnsiEncoding
+								Font is a "base 14" font
+								Embedded: False
+								Font descriptors
+									Maximum height above the baseline: 728
+									y-coordinate of the top of flat capital letters: 1467
+									Maximum depth below the baseline: -210
+									Italic angle in degrees counterclockwise: 0
+									Width of the dominant vertical stems of glyphs: 80
+									Average width of characters: 277
+									Desired spacing between lines: 1088
+									Maximum width of characters: 277
+									Width to use for un-encoded characters.: 277
+									Vertical width of the dominant horizontal stems of glyphs: 0
+									y-coordinate of the top of flat non-ascending lowercase letters: 0
+									PostScript name: ArialMT
+									Various properties
+										Fixed-width font: False
+										Serif font: False
+										Symbolic font: False
+										Script font: False
+										Uses the Adobe Standard Roman Character Set: True
+										Italic: False
+										All-caps font: False
+										Small-caps font: False
+										Force bold at small text sizes: False
+							Current font size: 10.000000
+							Transparency
+								Fill constant alpha: 1.000000
+								Stroke constant alpha: 1.000000
+								Alpha is shape: False
+								Text knockout: True
+			Content neither Artifact nor tagged content
+				Page content neither in structure nor an artifact
+				Detailed information
+					Graphic state properties
+						Graphic properties
+							Current transformation matrix (CTM)
+								1.000000
+								0.000000
+								0.000000
+								1.000000
+								0.000000
+								0.000000
+								X translation: 0.000000
+								Y translation: 0.000000
+								X scaling: 1.000000
+								Y scaling: 1.000000
+								Rotation counterclockwise: 0.000000
+								Skew: 0.000000
+							Effective line width: 1.000000
+							Miter limit: 10.000000
+							Stroke adjustment: False
+							Flatness: 1.000000
+							Smoothness: 0.000000
+							Overprint mode: 0
+							Overprint for stroke: False
+							Overprint for fill: False
+							Rendering intent: RelativeColorimetric
+							Line dash pattern
+								Dash phase: 0.000000
+							Line cap style: Butt end caps
+							Line join style: Miter joins
+							Fill color space
+								DeviceRGB color space
+							Fill colorant values
+								0.000000
+								0.000000
+								0.000000
+							Stroke color space
+								DeviceGray color space
+						Text properties
+							TrueType font
+								Text position and size
+									Text horizontal position (pt): 29.360001
+									Text vertical position (pt): 21.936300
+									Text width (pt): 566.640015
+									Text height (pt): 11.500002
+								PostScript name: ArialMT
+								Unicode CMap is present
+								Encoding: WinAnsiEncoding
+								Font is a "base 14" font
+								Embedded: False
+								Font descriptors
+									Maximum height above the baseline: 728
+									y-coordinate of the top of flat capital letters: 1467
+									Maximum depth below the baseline: -210
+									Italic angle in degrees counterclockwise: 0
+									Width of the dominant vertical stems of glyphs: 80
+									Average width of characters: 277
+									Desired spacing between lines: 1088
+									Maximum width of characters: 277
+									Width to use for un-encoded characters.: 277
+									Vertical width of the dominant horizontal stems of glyphs: 0
+									y-coordinate of the top of flat non-ascending lowercase letters: 0
+									PostScript name: ArialMT
+									Various properties
+										Fixed-width font: False
+										Serif font: False
+										Symbolic font: False
+										Script font: False
+										Uses the Adobe Standard Roman Character Set: True
+										Italic: False
+										All-caps font: False
+										Small-caps font: False
+										Force bold at small text sizes: False
+							Current font size: 10.000000
+							Transparency
+								Fill constant alpha: 1.000000
+								Stroke constant alpha: 1.000000
+								Alpha is shape: False
+								Text knockout: True
+	Overview
+		Document information
+			File name: "aavr3422-twc_accessible-font-test.pdf"
+			Path: "/Users/sethredmore/Library/CloudStorage/GoogleDrive-sredmore@gmail.com/My Drive/AF Uploads"
+			PDF version number: "1.6"
+			File size (byte): 49114
+			Title: "VR3422 Reduced Payment Agreement"
+			Created: "8/27/19 7:43 PM"
+			Modified: "9/30/25 9:30 AM"
+			Trapping: "Unknown"
+			Plates
+				Number of plates: 4
+				Names of plates: "(Cyan) (Magenta) (Yellow) (Black) "
+			Metadata
+				Description
+					Document Title: "VR3422 Reduced Payment Agreement"
+				IPTC Status
+					Title: "VR3422 Reduced Payment Agreement"
+				Advanced
+					http://ns.adobe.com/xap/1.0/
+						xmp:CreateDate: 2019-08-27T19:43:00Z
+						xmp:MetadataDate: 2025-09-30T09:30:14-07:00
+						xmp:ModifyDate: 2025-09-30T09:30:14-07:00
+					http://ns.adobe.com/xap/1.0/mm/
+						xmpMM:DocumentID: uuid:31f34c7a-46a1-564f-8b8f-cf90bb9c5827
+						xmpMM:InstanceID: uuid:ad008434-fe8f-1b49-b017-d51179368ca7
+					http://purl.org/dc/elements/1.1/
+						dc:format: application/pdf
+						dc:title: 
+						dc:title[1]: VR3422 Reduced Payment Agreement
+						dc:title[1]/?xml:lang: x-default
+		Output Intents: none
+		Layers: none
+		Embedded files: none
+		Color spaces
+			Indexed color space
+				Maximum valid index: 255
+				Base color space
+					CalRGB color space
+						Diffuse white point
+							0.950430
+							1.000000
+							1.088922
+						Diffuse black point
+							0.000000
+							0.000000
+							0.000000
+						Gamma value
+							2.200000
+							2.200000
+							2.200000
+						Gamma matrix
+							0.412391
+							0.212639
+							0.019331
+							0.357584
+							0.715169
+							0.119195
+							0.180455
+							0.072182
+							0.950396
+			CalRGB color space
+				Diffuse white point
+					0.950430
+					1.000000
+					1.088922
+				Diffuse black point
+					0.000000
+					0.000000
+					0.000000
+				Gamma value
+					2.200000
+					2.200000
+					2.200000
+				Gamma matrix
+					0.412391
+					0.212639
+					0.019331
+					0.357584
+					0.715169
+					0.119195
+					0.180455
+					0.072182
+					0.950396
+			DeviceGray color space
+			DeviceRGB color space
+		Fonts
+			TrueType font
+				PostScript name: ArialMT
+				Unicode CMap is present
+				Encoding: WinAnsiEncoding
+				Font is a "base 14" font
+				Embedded: False
+				Font descriptors
+					Maximum height above the baseline: 728
+					y-coordinate of the top of flat capital letters: 1467
+					Maximum depth below the baseline: -210
+					Italic angle in degrees counterclockwise: 0
+					Width of the dominant vertical stems of glyphs: 80
+					Average width of characters: 277
+					Desired spacing between lines: 1088
+					Maximum width of characters: 277
+					Width to use for un-encoded characters.: 277
+					Vertical width of the dominant horizontal stems of glyphs: 0
+					y-coordinate of the top of flat non-ascending lowercase letters: 0
+					PostScript name: ArialMT
+					Various properties
+						Fixed-width font: False
+						Serif font: False
+						Symbolic font: False
+						Script font: False
+						Uses the Adobe Standard Roman Character Set: True
+						Italic: False
+						All-caps font: False
+						Small-caps font: False
+						Force bold at small text sizes: False
+			TrueType font
+				PostScript name: Arial-BoldMT
+				Unicode CMap is present
+				Encoding: WinAnsiEncoding
+				Font is a "base 14" font
+				Embedded: False
+				Font descriptors
+					Maximum height above the baseline: 728
+					y-coordinate of the top of flat capital letters: 1466
+					Maximum depth below the baseline: -210
+					Italic angle in degrees counterclockwise: 0
+					Width of the dominant vertical stems of glyphs: 160
+					Average width of characters: 277
+					Desired spacing between lines: 1088
+					Maximum width of characters: 277
+					Width to use for un-encoded characters.: 277
+					Vertical width of the dominant horizontal stems of glyphs: 0
+					y-coordinate of the top of flat non-ascending lowercase letters: 0
+					PostScript name: Arial-BoldMT
+					Various properties
+						Fixed-width font: False
+						Serif font: False
+						Symbolic font: False
+						Script font: False
+						Uses the Adobe Standard Roman Character Set: True
+						Italic: False
+						All-caps font: False
+						Small-caps font: False
+						Force bold at small text sizes: True
+			Type 0 font
+				PostScript name: ArialMT
+				Unicode CMap is present
+				Encoding: Identity-H
+				Font is a subset
+				Descendant fonts
+					CID Type 2 font
+						CID font system info
+							Issuer (Registry): "Adobe"
+							Unique name (Ordering): "Identity"
+							Supplement number (Supplement): 0
+						Embedded: True
+						Font descriptors
+							Maximum height above the baseline: 728
+							y-coordinate of the top of flat capital letters: 1467
+							Maximum depth below the baseline: -210
+							Italic angle in degrees counterclockwise: 0
+							Width of the dominant vertical stems of glyphs: 80
+							Average width of characters: 277
+							Desired spacing between lines: 1088
+							Maximum width of characters: 277
+							Width to use for un-encoded characters.: 277
+							Vertical width of the dominant horizontal stems of glyphs: 0
+							y-coordinate of the top of flat non-ascending lowercase letters: 0
+							PostScript name: ABVGZU+ArialMT
+							Various properties
+								Fixed-width font: False
+								Serif font: False
+								Symbolic font: False
+								Script font: False
+								Uses the Adobe Standard Roman Character Set: True
+								Italic: False
+								All-caps font: False
+								Small-caps font: False
+								Force bold at small text sizes: False
+			Type 1 font
+				PostScript name: Times-Roman
+				Unicode CMap is present
+				Encoding: WinAnsiEncoding
+				Font is a "base 14" font
+				Embedded: False
+				Font descriptors
+					Maximum height above the baseline: 699
+					y-coordinate of the top of flat capital letters: 662
+					Maximum depth below the baseline: -217
+					Italic angle in degrees counterclockwise: 0
+					Width of the dominant vertical stems of glyphs: 84
+					Average width of characters: 0
+					Desired spacing between lines: 0
+					Maximum width of characters: 0
+					Width to use for un-encoded characters.: 250
+					Vertical width of the dominant horizontal stems of glyphs: 84
+					y-coordinate of the top of flat non-ascending lowercase letters: 450
+					PostScript name: Times-Roman
+					Various properties
+						Fixed-width font: False
+						Serif font: True
+						Symbolic font: False
+						Script font: False
+						Uses the Adobe Standard Roman Character Set: True
+						Italic: False
+						All-caps font: False
+						Small-caps font: False
+						Force bold at small text sizes: False
+		Images
+			Images
+				Width: 505
+				Height: 147
+				Bits per color component: 8
+				Treated as a mask: False
+				Perform interpolation: False
+				Compression/encoding
+					ZIP/Flate compression: FlateDecode
+				Indexed color space
+					Maximum valid index: 255
+					Base color space
+						CalRGB color space
+							Diffuse white point
+								0.950430
+								1.000000
+								1.088922
+							Diffuse black point
+								0.000000
+								0.000000
+								0.000000
+							Gamma value
+								2.200000
+								2.200000
+								2.200000
+							Gamma matrix
+								0.412391
+								0.212639
+								0.019331
+								0.357584
+								0.715169
+								0.119195
+								0.180455
+								0.072182
+								0.950396
+			Images
+				Width: 505
+				Height: 147
+				Bits per color component: 8
+				Treated as a mask: False
+				Perform interpolation: False
+				Compression/encoding
+					ZIP/Flate compression: FlateDecode
+				DeviceGray color space
+		Form XObjects
+			Form XObjects
+				Form transformation matrix
+					1.000000
+					0.000000
+					0.000000
+					1.000000
+					0.000000
+					0.000000
+					X translation: 0.000000
+					Y translation: 0.000000
+					X scaling: 1.000000
+					Y scaling: 1.000000
+					Rotation counterclockwise: 0.000000
+					Skew: 0.000000
+				Form bounding box
+					0.000000
+					0.000000
+					150.000000
+					3.000000
+			Form XObjects
+				Form transformation matrix
+					1.000000
+					0.000000
+					0.000000
+					1.000000
+					0.000000
+					0.000000
+					X translation: 0.000000
+					Y translation: 0.000000
+					X scaling: 1.000000
+					Y scaling: 1.000000
+					Rotation counterclockwise: 0.000000
+					Skew: 0.000000
+				Form bounding box
+					0.000000
+					0.000000
+					150.000000
+					14.000000
+			Form XObjects
+				Form transformation matrix
+					1.000000
+					0.000000
+					0.000000
+					1.000000
+					0.000000
+					0.000000
+					X translation: 0.000000
+					Y translation: 0.000000
+					X scaling: 1.000000
+					Y scaling: 1.000000
+					Rotation counterclockwise: 0.000000
+					Skew: 0.000000
+				Form bounding box
+					0.000000
+					0.000000
+					150.000000
+					14.000000
+			Form XObjects
+				Form transformation matrix
+					1.000000
+					0.000000
+					0.000000
+					1.000000
+					0.000000
+					0.000000
+					X translation: 0.000000
+					Y translation: 0.000000
+					X scaling: 1.000000
+					Y scaling: 1.000000
+					Rotation counterclockwise: 0.000000
+					Skew: 0.000000
+				Form bounding box
+					0.000000
+					0.000000
+					150.000000
+					14.000000
+			Form XObjects
+				Form transformation matrix
+					1.000000
+					0.000000
+					0.000000
+					1.000000
+					0.000000
+					0.000000
+					X translation: 0.000000
+					Y translation: 0.000000
+					X scaling: 1.000000
+					Y scaling: 1.000000
+					Rotation counterclockwise: 0.000000
+					Skew: 0.000000
+				Form bounding box
+					0.000000
+					0.000000
+					150.000000
+					14.000000
+			Form XObjects
+				Form transformation matrix
+					1.000000
+					0.000000
+					0.000000
+					1.000000
+					0.000000
+					0.000000
+					X translation: 0.000000
+					Y translation: 0.000000
+					X scaling: 1.000000
+					Y scaling: 1.000000
+					Rotation counterclockwise: 0.000000
+					Skew: 0.000000
+				Form bounding box
+					0.000000
+					0.000000
+					150.000000
+					14.000000
+			Form XObjects
+				Form transformation matrix
+					1.000000
+					0.000000
+					0.000000
+					1.000000
+					0.000000
+					0.000000
+					X translation: 0.000000
+					Y translation: 0.000000
+					X scaling: 1.000000
+					Y scaling: 1.000000
+					Rotation counterclockwise: 0.000000
+					Skew: 0.000000
+				Form bounding box
+					0.000000
+					0.000000
+					150.000000
+					14.000000
+			Form XObjects
+				Form transformation matrix
+					1.000000
+					0.000000
+					0.000000
+					1.000000
+					0.000000
+					0.000000
+					X translation: 0.000000
+					Y translation: 0.000000
+					X scaling: 1.000000
+					Y scaling: 1.000000
+					Rotation counterclockwise: 0.000000
+					Skew: 0.000000
+				Form bounding box
+					0.000000
+					0.000000
+					150.000000
+					14.000000
+			Form XObjects
+				Form transformation matrix
+					1.000000
+					0.000000
+					0.000000
+					1.000000
+					0.000000
+					0.000000
+					X translation: 0.000000
+					Y translation: 0.000000
+					X scaling: 1.000000
+					Y scaling: 1.000000
+					Rotation counterclockwise: 0.000000
+					Skew: 0.000000
+				Form bounding box
+					0.000000
+					0.000000
+					150.000000
+					14.000000
+			Form XObjects
+				Form transformation matrix
+					1.000000
+					0.000000
+					0.000000
+					1.000000
+					0.000000
+					0.000000
+					X translation: 0.000000
+					Y translation: 0.000000
+					X scaling: 1.000000
+					Y scaling: 1.000000
+					Rotation counterclockwise: 0.000000
+					Skew: 0.000000
+				Form bounding box
+					0.000000
+					0.000000
+					150.000000
+					14.000000
+			Form XObjects
+				Form transformation matrix
+					1.000000
+					0.000000
+					0.000000
+					1.000000
+					0.000000
+					0.000000
+					X translation: 0.000000
+					Y translation: 0.000000
+					X scaling: 1.000000
+					Y scaling: 1.000000
+					Rotation counterclockwise: 0.000000
+					Skew: 0.000000
+				Form bounding box
+					0.000000
+					0.000000
+					150.000000
+					14.000000
+			Form XObjects
+				Form transformation matrix
+					1.000000
+					0.000000
+					0.000000
+					1.000000
+					0.000000
+					0.000000
+					X translation: 0.000000
+					Y translation: 0.000000
+					X scaling: 1.000000
+					Y scaling: 1.000000
+					Rotation counterclockwise: 0.000000
+					Skew: 0.000000
+				Form bounding box
+					0.000000
+					0.000000
+					150.000000
+					14.000000
+	Preflight information
+		Preflight, 18.6.0 (272)
+		Acrobat version: 25.001
+		Date: 9/30/25 9:34 AM
+		User name: Seth Redmore
+		Computer name: Seth’s MacBook Pro
+		Operating system: macOS 26.0.0
+		Duration: "00:00:01"

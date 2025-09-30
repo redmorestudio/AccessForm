@@ -205,7 +205,12 @@ window.accessForm = {
                                 useClaudeValidation: document.querySelector('#useClaudeValidation')?.checked ?? false,
                                 mode: document.querySelector('input[name="processingMode"]:checked')?.value ?? 'Sequential',
                                 debugMode: document.querySelector('#debugMode')?.checked ?? true,
-                                showFieldIds: document.querySelector('#showFieldIds')?.checked ?? true
+                                showFieldIds: document.querySelector('#showFieldIds')?.checked ?? true,
+                                // Accessibility services
+                                useAdobeAutotag: document.querySelector('#useAdobeAutotag')?.checked ?? false,
+                                useAsposeAutotag: document.querySelector('#useAsposeAutotag')?.checked ?? false,
+                                useAsposeFontEmbed: document.querySelector('#useAsposeFontEmbed')?.checked ?? true,
+                                usePassportPdf: document.querySelector('#usePassportPdf')?.checked ?? false
                             };
                         }
                     } else {
@@ -358,6 +363,11 @@ window.accessForm = {
                 if (config.mode !== undefined) formData.append("mode", config.mode);
                 if (config.debugMode !== undefined) formData.append("debugMode", String(config.debugMode));
                 if (config.showFieldIds !== undefined) formData.append("showFieldIds", String(config.showFieldIds));
+                // Accessibility services
+                if (config.useAdobeAutotag !== undefined) formData.append("useAdobeAutotag", String(config.useAdobeAutotag));
+                if (config.useAsposeAutotag !== undefined) formData.append("useAsposeAutotag", String(config.useAsposeAutotag));
+                if (config.useAsposeFontEmbed !== undefined) formData.append("useAsposeFontEmbed", String(config.useAsposeFontEmbed));
+                if (config.usePassportPdf !== undefined) formData.append("usePassportPdf", String(config.usePassportPdf));
                 console.log(`uploadFileDirectly: Added config parameters`, config);
             }
             
@@ -724,6 +734,10 @@ window.accessForm = {
                             endpoint = isWord ? '/api/convert-with-config' : '/api/convert-with-ai';
                             // Get configuration from UI if using configurable endpoint
                             if (endpoint === '/api/convert-with-config') {
+                                const fontEmbedCheckbox = document.querySelector('#useAsposeFontEmbed');
+                                console.log('DEBUG: useAsposeFontEmbed checkbox element:', fontEmbedCheckbox);
+                                console.log('DEBUG: useAsposeFontEmbed checked value:', fontEmbedCheckbox?.checked);
+
                                 config = {
                                     useSyncfusion: document.querySelector('#useSyncfusion')?.checked ?? true,
                                     useGoogle: document.querySelector('#useGoogle')?.checked ?? false,
@@ -731,8 +745,16 @@ window.accessForm = {
                                     useClaudeValidation: document.querySelector('#useClaudeValidation')?.checked ?? false,
                                     mode: document.querySelector('input[name="processingMode"]:checked')?.value ?? 'Sequential',
                                     debugMode: document.querySelector('#debugMode')?.checked ?? true,
-                                    showFieldIds: document.querySelector('#showFieldIds')?.checked ?? true
+                                    showFieldIds: document.querySelector('#showFieldIds')?.checked ?? true,
+                                    // Accessibility services
+                                    useAdobeAutotag: document.querySelector('#useAdobeAutotag')?.checked ?? false,
+                                    useAsposeAutotag: document.querySelector('#useAsposeAutotag')?.checked ?? false,
+                                    useAsposeFontEmbed: true,  // HARDCODED TO TRUE FOR TESTING
+                                    usePassportPdf: document.querySelector('#usePassportPdf')?.checked ?? false
                                 };
+
+                                console.log('DEBUG: Final config object:', config);
+                                console.log('DEBUG: useAsposeFontEmbed HARDCODED TO TRUE');
                             }
                         } else {
                             // Use standard endpoints
