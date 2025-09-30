@@ -5,18 +5,19 @@
 @using Syncfusion.Pdf.Parsing
 @using Syncfusion.Pdf.Interactive
 @inject IJSRuntime JSRuntime
+@implements IDisposable
 
-<div class="modal @(IsVisible ? "show d-block" : "")" tabindex="-1" role="dialog" style="background-color: rgba(0,0,0,0.5);">
-    <div class="modal-dialog modal-fullscreen-lg-down" role="document" style="max-width: 95%; height: 98vh;">
-        <div class="modal-content h-100" style="display: flex; flex-direction: column;">
-            <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="fas fa-tags me-2"></i>
-                    Tag Structure & Field Editor
-                </h5>
-                <button type="button" class="btn-close" @onclick="Cancel"></button>
-            </div>
-            <div class="modal-body" style="overflow: hidden; height: calc(95vh - 100px);">
+<div class="tag-modification-window @(IsVisible ? "show" : "hide")" id="tagModificationWindow" style="position: fixed; left: 50px; top: 50px; width: 1400px; height: calc(100vh - 100px); z-index: 1040;">
+    <div class="window-container" style="display: flex; flex-direction: column; height: 100%; background: white; border: 2px solid #dee2e6; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+        <div class="window-header" id="tagModWindowHeader" style="background: linear-gradient(to right, #0d6efd, #0a58ca); color: white; padding: 12px 15px; cursor: move; border-radius: 6px 6px 0 0; display: flex; justify-content: space-between; align-items: center;">
+            <h5 class="mb-0" style="font-weight: 600;">
+                <i class="fas fa-tags me-2"></i>
+                Tag Structure & Field Editor
+            </h5>
+            <button type="button" class="btn-close btn-close-white" @onclick="Cancel"></button>
+        </div>
+        <div class="window-body" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+            <div class="content-area" style="flex: 1; overflow: hidden; padding: 15px;">
                 <div class="row h-100" style="overflow: hidden;">
                     <div class="col-md-6 d-flex flex-column" style="overflow: hidden; height: 100%;">
                         <h5>PDF Preview - Page @CurrentPage</h5>
@@ -354,7 +355,7 @@
                     </div>
                 </div>
             </div>
-            <div class="modal-footer">
+            <div class="window-footer" style="padding: 15px; background: #f8f9fa; border-top: 1px solid #dee2e6; border-radius: 0 0 6px 6px;">
                 <div class="d-flex justify-content-between w-100">
                     <span class="text-muted">@EditableFields.Count fields total</span>
                     <div>
@@ -364,6 +365,10 @@
                 </div>
             </div>
         </div>
+        <!-- Resize handles -->
+        <div class="resize-handle resize-e" style="position: absolute; right: 0; top: 0; width: 5px; height: 100%; cursor: ew-resize;"></div>
+        <div class="resize-handle resize-s" style="position: absolute; left: 0; bottom: 0; width: 100%; height: 5px; cursor: ns-resize;"></div>
+        <div class="resize-handle resize-se" style="position: absolute; right: 0; bottom: 0; width: 15px; height: 15px; cursor: nwse-resize;"></div>
     </div>
 </div>
 
@@ -685,14 +690,101 @@
         previewPanel.scrollTo({ top: scrollPosition, behavior: 'smooth' });
         console.log(`scrollPreviewToField: PDF Y=${fieldY} (${fieldY < 100 ? 'BOTTOM' : fieldY > 700 ? 'TOP' : 'MIDDLE'} of page) -> Display Y=${displayY}, scroll=${scrollPosition}`);
     };
+
+    // Make window draggable and resizable
+    window.initializeResizableWindow = function(windowId, headerId) {
+        const windowEl = document.getElementById(windowId);
+        const header = document.getElementById(headerId);
+        if (!windowEl || !header) return;
+
+        let isDragging = false;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+
+        // Dragging
+        header.addEventListener('mousedown', function(e) {
+            if (e.target.classList.contains('btn-close')) return;
+            isDragging = true;
+            dragOffsetX = e.clientX - windowEl.offsetLeft;
+            dragOffsetY = e.clientY - windowEl.offsetTop;
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!isDragging) return;
+            const newX = Math.max(0, Math.min(e.clientX - dragOffsetX, window.innerWidth - 100));
+            const newY = Math.max(0, Math.min(e.clientY - dragOffsetY, window.innerHeight - 50));
+            windowEl.style.left = newX + 'px';
+            windowEl.style.top = newY + 'px';
+        });
+
+        document.addEventListener('mouseup', function() {
+            isDragging = false;
+        });
+
+        // Resizing
+        const resizeHandles = windowEl.querySelectorAll('.resize-handle');
+        resizeHandles.forEach(handle => {
+            let isResizing = false;
+            let startX, startY, startWidth, startHeight, startLeft, startTop;
+
+            handle.addEventListener('mousedown', function(e) {
+                isResizing = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                const rect = windowEl.getBoundingClientRect();
+                startWidth = rect.width;
+                startHeight = rect.height;
+                startLeft = rect.left;
+                startTop = rect.top;
+                e.preventDefault();
+                e.stopPropagation();
+            });
+
+            document.addEventListener('mousemove', function(e) {
+                if (!isResizing) return;
+
+                if (handle.classList.contains('resize-e')) {
+                    const newWidth = Math.max(400, startWidth + (e.clientX - startX));
+                    windowEl.style.width = newWidth + 'px';
+                } else if (handle.classList.contains('resize-w')) {
+                    const newWidth = Math.max(400, startWidth - (e.clientX - startX));
+                    const newLeft = startLeft + (e.clientX - startX);
+                    windowEl.style.width = newWidth + 'px';
+                    windowEl.style.left = newLeft + 'px';
+                } else if (handle.classList.contains('resize-s')) {
+                    const newHeight = Math.max(300, startHeight + (e.clientY - startY));
+                    windowEl.style.height = newHeight + 'px';
+                } else if (handle.classList.contains('resize-se')) {
+                    const newWidth = Math.max(400, startWidth + (e.clientX - startX));
+                    const newHeight = Math.max(300, startHeight + (e.clientY - startY));
+                    windowEl.style.width = newWidth + 'px';
+                    windowEl.style.height = newHeight + 'px';
+                } else if (handle.classList.contains('resize-sw')) {
+                    const newWidth = Math.max(400, startWidth - (e.clientX - startX));
+                    const newHeight = Math.max(300, startHeight + (e.clientY - startY));
+                    const newLeft = startLeft + (e.clientX - startX);
+                    windowEl.style.width = newWidth + 'px';
+                    windowEl.style.height = newHeight + 'px';
+                    windowEl.style.left = newLeft + 'px';
+                }
+            });
+
+            document.addEventListener('mouseup', function() {
+                isResizing = false;
+            });
+        });
+
+        console.log('Initialized resizable window:', windowId);
+    };
 </script>
 
 <!-- Cascade Correction Panel -->
 @if (showCascadeCorrection)
 {
     <CascadeCorrectionPanel @ref="cascadeCorrectionPanel"
-                            IsVisible="true"
-                            Fields="@ConvertFieldsForCorrection()"
+                            IsVisible="@showCascadeCorrection"
+                            Fields="@cascadeCorrectionFields"
                             OnFieldsCorrected="HandleCascadeCorrection"
                             OnClose="CloseCascadeCorrection" />
 }
@@ -700,6 +792,7 @@
 @code {
     private CascadeCorrectionPanel cascadeCorrectionPanel;
     private bool showCascadeCorrection = false;
+    private List<dynamic> cascadeCorrectionFields = new List<dynamic>();
 
     [Parameter] public bool IsVisible { get; set; }
     [Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
@@ -814,6 +907,12 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await JSRuntime.InvokeVoidAsync("console.log", $"OnAfterRenderAsync: firstRender={firstRender}, IsVisible={IsVisible}, previewLoaded={previewLoaded}, PdfBytes={(PdfBytes == null ? "null" : PdfBytes.Length + " bytes")}");
+
+        if (firstRender && IsVisible)
+        {
+            // Initialize draggable/resizable window
+            await JSRuntime.InvokeVoidAsync("initializeResizableWindow", "tagModificationWindow", "tagModWindowHeader");
+        }
 
         if (!previewLoaded && IsVisible && PdfBytes != null && PdfBytes.Length > 0)
         {
@@ -1167,6 +1266,18 @@
     }
 
     private List<object> currentFieldMap = new List<object>();
+    private DotNetObjectReference<TagModificationModal>? dotNetRef;
+
+    protected override void OnInitialized()
+    {
+        dotNetRef = DotNetObjectReference.Create(this);
+        base.OnInitialized();
+    }
+
+    public void Dispose()
+    {
+        dotNetRef?.Dispose();
+    }
 
     private async Task HandleImageClick(MouseEventArgs e)
     {
@@ -1175,7 +1286,7 @@
         try
         {
             // Use JavaScript to handle the actual field detection and selection
-            await JSRuntime.InvokeVoidAsync("handleFieldClick", e.OffsetX, e.OffsetY, DotNetObjectReference.Create(this));
+            await JSRuntime.InvokeVoidAsync("handleFieldClick", e.OffsetX, e.OffsetY, dotNetRef);
         }
         catch (Exception ex)
         {
@@ -1224,10 +1335,22 @@
     [JSInvokable]
     public async Task SelectFieldByName(string fieldName)
     {
+        await JSRuntime.InvokeVoidAsync("console.log", $"BLAZOR: SelectFieldByName called with '{fieldName}'");
+        await JSRuntime.InvokeVoidAsync("console.log", $"BLAZOR: EditableFields has {EditableFields.Count} fields");
+
         var field = EditableFields.FirstOrDefault(f => f.Name == fieldName);
         if (field != null)
         {
+            await JSRuntime.InvokeVoidAsync("console.log", $"BLAZOR: Found field '{fieldName}', selecting it");
             await SelectField(field);
+        }
+        else
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", $"BLAZOR: Could not find field '{fieldName}' in EditableFields");
+            foreach (var f in EditableFields.Take(5))
+            {
+                await JSRuntime.InvokeVoidAsync("console.log", $"  Available field: '{f.Name}'");
+            }
         }
     }
 
@@ -1236,7 +1359,7 @@
         await JSRuntime.InvokeVoidAsync("console.log", $"Right-click on image at: x={e.OffsetX}, y={e.OffsetY}");
 
         // Use JavaScript to handle right-click detection and show context menu
-        await JSRuntime.InvokeVoidAsync("handleFieldRightClick", e.OffsetX, e.OffsetY, DotNetObjectReference.Create(this));
+        await JSRuntime.InvokeVoidAsync("handleFieldRightClick", e.OffsetX, e.OffsetY, dotNetRef);
     }
 
     [JSInvokable]
@@ -1649,6 +1772,11 @@
         {
             await JSRuntime.InvokeVoidAsync("console.log", $"First field: Name='{EditableFields.First().Name}', X={EditableFields.First().X}, Y={EditableFields.First().Y}");
         }
+
+        // Convert current EditableFields to format expected by cascade panel
+        cascadeCorrectionFields = ConvertFieldsForCorrection();
+        await JSRuntime.InvokeVoidAsync("console.log", $"Converted {cascadeCorrectionFields.Count} fields for cascade correction");
+
         showCascadeCorrection = true;
         StateHasChanged();
     }
