@@ -842,9 +842,16 @@
         if (!previewLoaded && IsVisible && PdfBytes != null && PdfBytes.Length > 0)
         {
             await JSRuntime.InvokeVoidAsync("console.log", "Loading PDF preview...");
-            await LoadPdfPreview();
-            previewLoaded = true;
-            StateHasChanged();
+            var success = await LoadPdfPreview();
+            if (success)
+            {
+                previewLoaded = true;
+                StateHasChanged();
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("console.error", "Failed to load PDF preview");
+            }
         }
         else if (!previewLoaded && IsVisible)
         {
@@ -852,7 +859,7 @@
         }
     }
 
-    private async Task LoadPdfPreview()
+    private async Task<bool> LoadPdfPreview()
     {
         try
         {
@@ -862,13 +869,15 @@
             {
                 TotalPages = pdfDoc.Pages.Count;
             }
-            
+
             // Load first page
-            await LoadPage(1);
+            var success = await LoadPage(1);
+            return success;
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error loading PDF preview: {ex.Message}");
+            return false;
         }
     }
     
@@ -930,8 +939,9 @@
         try
         {
             CurrentPage = pageNumber;
-            
+
             using var client = new HttpClient();
+            client.BaseAddress = new Uri(Navigation.BaseUri);
             var content = new MultipartFormDataContent();
             content.Add(new ByteArrayContent(PdfBytes), "file", "document.pdf");
             content.Add(new StringContent(pageNumber.ToString()), "pageNumber");
@@ -1020,25 +1030,26 @@
         StateHasChanged();
     }
     
-    private async Task LoadPage(int pageNumber)
+    private async Task<bool> LoadPage(int pageNumber)
     {
         try
         {
             CurrentPage = pageNumber;
-            
+
             // Call API to get page image
             using var client = new HttpClient();
+            client.BaseAddress = new Uri(Navigation.BaseUri);
             var content = new MultipartFormDataContent();
             content.Add(new ByteArrayContent(PdfBytes), "file", "document.pdf");
             content.Add(new StringContent(pageNumber.ToString()), "pageNumber");
-            
+
             var response = await client.PostAsync("/api/pdf-page-preview", content);
-            
+
             if (response.IsSuccessStatusCode)
             {
                 var result = await response.Content.ReadAsStringAsync();
                 var json = System.Text.Json.JsonDocument.Parse(result);
-                
+
                 CurrentPageImage = json.RootElement.GetProperty("imageData").GetString();
                 
                 // Get page dimensions and calculate scale
@@ -1109,14 +1120,25 @@
                 }
                 CurrentPageFields = EditableFields.Where(f => f.Page == pageNumber).ToList();
                 await JSRuntime.InvokeVoidAsync("console.log", $"[PAGINATION DEBUG 2] Found {CurrentPageFields.Count} fields for page {pageNumber}");
+
+                return true; // Success
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("console.error", $"Failed to load page {pageNumber}: HTTP {response.StatusCode}");
+                return false;
             }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error loading page {pageNumber}: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("console.error", $"Exception loading page {pageNumber}: {ex.Message}");
+            return false;
         }
-        
-        StateHasChanged();
+        finally
+        {
+            StateHasChanged();
+        }
     }
     
     private async Task PreviousPage()
