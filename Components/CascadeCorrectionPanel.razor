@@ -3,7 +3,7 @@
 @inject HttpClient Http
 @inject IJSRuntime JSRuntime
 
-<div class="cascade-correction-panel @(IsVisible ? "show" : "hide")" id="cascadeCorrectionPanel" style="position: fixed; right: 50px; top: 50px; width: 500px; height: calc(100vh - 100px); z-index: 1050;">
+<div class="cascade-correction-panel @(IsVisible ? "show" : "hide")" id="cascadeCorrectionPanel" style="position: fixed; right: 20px; top: 50px; width: 550px; height: calc(100vh - 100px); z-index: 1040;">
     @if (IsVisible)
     {
         <div class="card" style="height: 100%; display: flex; flex-direction: column; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
@@ -102,27 +102,43 @@
     private string CommandOutput = "";
     private string ErrorMessage = "";
 
+    private bool lastVisibleState = false;
+
     protected override async Task OnParametersSetAsync()
     {
+        Console.WriteLine($"[CascadePanel] OnParametersSetAsync: IsVisible={IsVisible}, Fields={(Fields == null ? "null" : Fields.Count + " items")}");
+
+        // Check if visibility changed from false to true
+        bool justBecameVisible = IsVisible && !lastVisibleState;
+        lastVisibleState = IsVisible;
+
+        if (justBecameVisible)
+        {
+            Console.WriteLine($"[CascadePanel] Component just became visible!");
+        }
+
         if (IsVisible && Fields != null && Fields.Any())
         {
             if (string.IsNullOrEmpty(SessionId))
             {
-                await CreateSession();
-            }
-            else
-            {
-                // Refresh session with current fields to pick up any new fields added
+                Console.WriteLine($"[CascadePanel] Creating session with {Fields.Count} fields");
                 await CreateSession();
             }
         }
+        else if (IsVisible)
+        {
+            Console.WriteLine($"[CascadePanel] WARNING: Visible but no fields! Fields={(Fields == null ? "null" : "empty")}");
+        }
     }
+
+    private bool windowInitialized = false;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && IsVisible)
+        if (!windowInitialized && IsVisible)
         {
             await JSRuntime.InvokeVoidAsync("initializeResizableWindow", "cascadeCorrectionPanel", "cascadeWindowHeader");
+            windowInitialized = true;
         }
     }
 
@@ -189,20 +205,41 @@
             {
                 var result = await response.Content.ReadFromJsonAsync<JsonElement>();
 
-                if (result.TryGetProperty("displayTable", out var table))
+                // Build display table from rows
+                if (result.TryGetProperty("rows", out var rows))
                 {
-                    FieldTableDisplay = table.GetString() ?? "No field table available";
+                    var displayLines = new List<string>();
+                    displayLines.Add("ID | Field Name                     | Position         | Type    | Status");
+                    displayLines.Add("---|--------------------------------|------------------|---------|----------------");
+
+                    foreach (var row in rows.EnumerateArray())
+                    {
+                        var id = row.GetProperty("index").GetInt32();
+                        var name = row.GetProperty("currentName").GetString() ?? "";
+                        var x = row.GetProperty("x").GetDouble();
+                        var y = row.GetProperty("y").GetDouble();
+                        var type = row.GetProperty("fieldType").GetString() ?? "";
+                        var isPhantom = row.GetProperty("isPhantom").GetBoolean();
+                        var isCascade = row.GetProperty("isCascadeAffected").GetBoolean();
+
+                        var status = isPhantom ? "PHANTOM" : (isCascade ? "CASCADE" : "");
+                        var position = $"({x:F1},{y:F1})";
+
+                        displayLines.Add($"{id,2} | {name,-30} | {position,-16} | {type,-7} | {status}");
+                    }
+
+                    FieldTableDisplay = string.Join("\n", displayLines);
                 }
 
-                if (result.TryGetProperty("detectedIssues", out var issues))
+                if (result.TryGetProperty("detectedPatterns", out var patterns))
                 {
-                    var issuesList = issues.EnumerateArray()
-                        .Select(i => i.GetString())
-                        .Where(i => !string.IsNullOrEmpty(i));
+                    var patternList = patterns.EnumerateArray()
+                        .Select(p => p.GetString())
+                        .Where(p => !string.IsNullOrEmpty(p));
 
-                    if (issuesList.Any())
+                    if (patternList.Any())
                     {
-                        CommandOutput = "Detected Issues:\n" + string.Join("\n", issuesList);
+                        CommandOutput = "Detected Patterns:\n" + string.Join("\n", patternList);
                     }
                 }
             }
