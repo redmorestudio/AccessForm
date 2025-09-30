@@ -3815,14 +3815,12 @@ app.MapPost("/api/convert-with-config", async (
 
         logger.LogInformation($"Field detection completed. Found {fields?.Count ?? 0} fields");
 
-        // Check if font embedding is requested
-        var useAsposeFontEmbed = request.Form.ContainsKey("useAsposeFontEmbed") &&
-                                  request.Form["useAsposeFontEmbed"] == "true";
+        // ALWAYS apply font embedding for WCAG/Section 508 compliance
+        // Font embedding is mandatory for accessibility - no checkbox needed
+        logger.LogInformation("Applying Aspose font embedding for accessibility compliance (always enabled)");
 
-        logger.LogInformation($"Font embedding requested: {useAsposeFontEmbed}");
-
-        // Apply font embedding if requested
-        if (useAsposeFontEmbed && completeRebuildService != null)
+        // Apply font embedding unconditionally
+        if (completeRebuildService != null)
         {
             logger.LogInformation("Applying Aspose font embedding to PDF");
 
