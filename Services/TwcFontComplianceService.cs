@@ -140,15 +140,16 @@ public class TwcFontComplianceService
                     continue;
                 }
 
-                // Check if this is a base 14 font - these CANNOT be embedded per PDF spec
+                // Check if this is a base 14 font or a problematic font (OpenSans has CIDset issues)
                 // Base 14 fonts: Times-Roman, Times-Bold, Times-Italic, Times-BoldItalic,
                 // Helvetica, Helvetica-Bold, Helvetica-Oblique, Helvetica-BoldOblique,
                 // Courier, Courier-Bold, Courier-Oblique, Courier-BoldOblique, Symbol, ZapfDingbats
                 bool isBase14 = IsBase14Font(fontName);
+                bool isProblematicFont = IsProblematicFont(fontName);
 
-                if (isBase14)
+                if (isBase14 || isProblematicFont)
                 {
-                    // Base 14 fonts cannot be embedded - must replace with an embeddable font
+                    // Base 14 fonts cannot be embedded, problematic fonts have subsetting issues - replace with an embeddable font
                     ReplaceWithEmbeddableFont(fragment, fontName, page.Number, report);
                 }
                 else
@@ -183,6 +184,30 @@ public class TwcFontComplianceService
         foreach (var base14Font in base14Fonts)
         {
             if (fontName.Contains(base14Font, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Check if a font has known subsetting/embedding issues (e.g., OpenSans has CIDset problems)
+    /// </summary>
+    private bool IsProblematicFont(string fontName)
+    {
+        var problematicFonts = new[]
+        {
+            "OpenSans", "OpenSansRegular", "OpenSans-Regular",
+            "OpenSansBold", "OpenSans-Bold",
+            "OpenSansItalic", "OpenSans-Italic",
+            "OpenSansBoldItalic", "OpenSans-BoldItalic"
+        };
+
+        foreach (var problematicFont in problematicFonts)
+        {
+            if (fontName.Contains(problematicFont, StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
@@ -254,26 +279,25 @@ public class TwcFontComplianceService
                                     originalFontName.Contains("Oblique", StringComparison.OrdinalIgnoreCase);
 
             // Choose an appropriate embeddable font based on the original style
-            string replacementFontName;
+            // Use Liberation Sans (TrueType, embeddable) instead of Arial (base-14, non-embeddable)
+            string replacementFontName = "LiberationSans";
+            FontStyles fontStyle = FontStyles.Regular;
+
             if (originalIsBold && originalIsItalic)
             {
-                replacementFontName = "Arial-BoldItalic";
+                fontStyle = FontStyles.Bold | FontStyles.Italic;
             }
             else if (originalIsBold)
             {
-                replacementFontName = "Arial-Bold";
+                fontStyle = FontStyles.Bold;
             }
             else if (originalIsItalic)
             {
-                replacementFontName = "Arial-Italic";
-            }
-            else
-            {
-                replacementFontName = "Arial";
+                fontStyle = FontStyles.Italic;
             }
 
             // Find and apply the font
-            var newFont = FontRepository.FindFont(replacementFontName, FontStyles.Regular);
+            var newFont = FontRepository.FindFont(replacementFontName, fontStyle);
 
             // Force embedding for the new font
             if (!newFont.IsEmbedded)

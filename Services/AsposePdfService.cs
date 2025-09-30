@@ -331,10 +331,6 @@ namespace AccessFormServer.Services
             // Replace Times-Roman text with Helvetica for whitespace
             ReplaceTimesRomanWhitespace(document);
 
-            // REMOVED: TwcFontComplianceService - it was making things worse by replacing fonts
-            // with more base 14 fonts. The PDF/A-2A conversion below handles font embedding automatically.
-            // var complianceReport = _fontComplianceService.EnsureFontCompliance(document);
-
             // Use FontUtilities to embed and subset ALL fonts (including base 14 fonts)
             // This is the key: SubsetAllFonts will force embedding of all fonts, even base 14
             try
@@ -346,6 +342,13 @@ namespace AccessFormServer.Services
             catch (Exception ex)
             {
                 _logger.LogWarning($"Could not apply font subsetting: {ex.Message}");
+            }
+
+            // RE-ENABLED: TwcFontComplianceService now uses LiberationSans (embeddable) instead of Arial (base-14)
+            var complianceReport = _fontComplianceService.EnsureFontCompliance(document);
+            if (!complianceReport.IsCompliant)
+            {
+                _logger.LogWarning("Font compliance check failed - some fonts may not be embedded");
             }
 
             // Subsetting complete - PDF/A conversion will handle final font embedding validation
