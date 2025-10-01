@@ -2204,21 +2204,48 @@ Document:
         }
         private bool IsLikelyPhantomField(FieldDetectionResult field)
         {
-            // IMPORTANT: Syncfusion fields with hex names are NOT phantom fields!
-            // They are real fields that just have auto-generated names.
-            // These are exactly the fields we want to match with Claude's intelligent labels!
+            // FILTER FALSE POSITIVES: Detect Syncfusion fields that are likely underlines/decorative elements
+            // rather than actual form fields. This prevents index-based matching from getting misaligned
+            // when Syncfusion detects too many "fields" that Claude correctly ignores.
 
-            // For now, we're disabling phantom field detection because it was incorrectly
-            // filtering out legitimate Syncfusion fields with auto-generated names.
-            // All Syncfusion fields are real and should be matched with Claude labels.
+            // Real form fields typically have:
+            // - Height >= 8-10 pixels (minimum usable height)
+            // - Reasonable width (not excessively wide like full-line underlines)
+            // - Aspect ratio < 50:1 (not thin lines)
 
-            return false;  // No fields are phantom - process them all!
+            const double MIN_FIELD_HEIGHT = 6.0;  // Pixels - anything thinner is likely a line/underline
+            const double MAX_ASPECT_RATIO = 80.0; // Width/Height - prevents matching full-line underlines
+            const double MIN_FIELD_WIDTH = 15.0;  // Pixels - minimum usable field width
 
-            /* Previous implementation kept for reference:
-            // The old logic was wrongly treating Syncfusion's auto-generated hex names
-            // (like "a1bb168e5744") as phantom fields. But these are REAL fields that
-            // Syncfusion detected correctly - they just need better names from Claude!
-            */
+            var height = field.Height;
+            var width = field.Width;
+
+            // Filter 1: Fields that are too thin (likely underlines)
+            if (height < MIN_FIELD_HEIGHT)
+            {
+                _logger.LogWarning($"🚫 [FALSE_POSITIVE] Field '{field.FieldName}' is too thin (height={height:F1}px < {MIN_FIELD_HEIGHT}px) - likely an underline");
+                return true;
+            }
+
+            // Filter 2: Fields with extreme aspect ratios (likely decorative lines)
+            if (height > 0)
+            {
+                var aspectRatio = width / height;
+                if (aspectRatio > MAX_ASPECT_RATIO)
+                {
+                    _logger.LogWarning($"🚫 [FALSE_POSITIVE] Field '{field.FieldName}' has extreme aspect ratio ({aspectRatio:F1}:1) - likely a decorative line");
+                    return true;
+                }
+            }
+
+            // Filter 3: Fields that are too narrow (likely artifacts)
+            if (width < MIN_FIELD_WIDTH)
+            {
+                _logger.LogWarning($"🚫 [FALSE_POSITIVE] Field '{field.FieldName}' is too narrow (width={width:F1}px < {MIN_FIELD_WIDTH}px) - likely an artifact");
+                return true;
+            }
+
+            return false;  // Field passes all checks - likely a real form field
         }
 
         /// <summary>
