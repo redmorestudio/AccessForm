@@ -133,10 +133,11 @@ namespace WordToPdfConverter.Services
                         
                         if (existingField != null)
                         {
-                            // Enhance existing field with Vision data - PRESERVE the better name/description
+                            // Enhance existing field with Vision data - DO NOT TOUCH COORDINATES AT ALL
                             _logger.LogInformation($"[COMBINER] Found existing field for Vision field '{visionField.FieldName}':");
-                            _logger.LogInformation($"[COMBINER]   - Existing name: '{existingField.FieldName}'");
+                            _logger.LogInformation($"[COMBINER]   - Existing name: '{existingField.FieldName}' from {existingField.Source}");
                             _logger.LogInformation($"[COMBINER]   - Vision name: '{visionField.FieldName}'");
+                            _logger.LogInformation($"[COMBINER] ⚠️ COMPLETELY IGNORING Vision coordinates - Syncfusion is PERFECT, Vision causes misalignment");
 
                             // Use Vision's name if it's more descriptive than Syncfusion's generic names
                             if (!string.IsNullOrEmpty(visionField.FieldName) &&
@@ -152,14 +153,26 @@ namespace WordToPdfConverter.Services
                             {
                                 _logger.LogInformation($"[COMBINER] KEEPING existing field name '{existingField.FieldName}' (better than Vision's '{visionField.FieldName}')");
                             }
-                            
+
                             // Always use Vision's description if available - it's usually better
                             if (!string.IsNullOrEmpty(visionField.Description))
                             {
                                 existingField.Description = visionField.Description;
                             }
 
-                            // CRITICAL FIX REVERSED: Trust Syncfusion's page assignment over Vision's
+                            // Use Vision's field type if it's more specific than Syncfusion's
+                            if (!string.IsNullOrEmpty(visionField.FieldType) &&
+                                visionField.FieldType != "text" &&
+                                (string.IsNullOrEmpty(existingField.FieldType) || existingField.FieldType == "text"))
+                            {
+                                _logger.LogInformation($"[COMBINER] UPDATING field type from '{existingField.FieldType}' to '{visionField.FieldType}' (Vision has better type)");
+                                existingField.FieldType = visionField.FieldType;
+                            }
+
+                            // DO NOT TOUCH BOUNDS - Syncfusion coordinates are perfect, Vision causes misalignment
+                            // Vision is ONLY used for metadata (name, type, description), NEVER for coordinates
+
+                            // CRITICAL: Trust Syncfusion's page assignment over Vision's
                             // Syncfusion has direct PDF structure access, Vision is guessing from images
                             // Only use Vision's page if Syncfusion doesn't have a valid page number
                             if (existingField.PageNumber <= 0 && visionField.PageNumber > 0)
@@ -178,8 +191,8 @@ namespace WordToPdfConverter.Services
                             existingField.Source = existingField.Source.Contains("Vision") ?
                                 existingField.Source : $"{existingField.Source}+Vision";
                             existingField.Confidence = Math.Min(1.0f, existingField.Confidence + 0.1f);
-                            
-                            _logger.LogDebug($"Enhanced existing field '{existingField.FieldName}' with Vision data");
+
+                            _logger.LogDebug($"Enhanced existing field '{existingField.FieldName}' with Vision metadata ONLY (all Syncfusion coordinates preserved)");
                             continue;
                         }
                         

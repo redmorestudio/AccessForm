@@ -404,101 +404,36 @@ namespace WordToPdfConverter.Services
                 string base64Image = Convert.ToBase64String(imageBytes);
                 
                 // Build the prompt with optional markdown context
-                var promptText = @"CRITICAL: You MUST identify EVERY SINGLE fillable field on this form page, especially ALL checkboxes! Count them carefully!
+                var promptText = @"***OUTPUT ONLY VALID JSON - NO OTHER TEXT***
 
-Analyze this government form image and identify ALL fillable fields. This form likely has 30-40+ fields including many checkboxes. You must detect ALL 33 field types defined in AccessForm specification:
+Analyze this form image and identify ALL fillable fields with their exact positions.
 
-CRITICAL - DETECT ALL THESE FIELD TYPES:
-
-1. SECURITY FIELDS (High Priority):
-- SSN: Social Security Number fields (XXX-XX-XXXX format)
-- EIN: Employer Identification Number (XX-XXXXXXX format)  
-- Password: Password entry fields
-- PIN: PIN code fields (4-6 digits)
-
-2. PERSONAL INFORMATION:
-- Name: Full name, first/last name fields (may be composite)
-- Email: Email address fields
-- Phone: Phone number fields (XXX) XXX-XXXX
-- Address: Street address fields (may be multi-line composite)
-
-3. CHECKBOXES & SELECTIONS (DETECT EVERY SINGLE ONE):
-- Checkbox: ANY square boxes □ ☐ [ ] that can be checked - LOOK FOR ALL OF THEM!
-  * Small squares next to text labels
-  * Often appear in groups or lists
-  * May have labels like Yes, No, disability types, service options, etc.
-- Radio: Circle buttons ○ ◯ ( ) for single selection
-- Dropdown: Fields with dropdown arrows ▼ or selection lists
-- Listbox: Multi-select list fields
-
-CHECKBOX DETECTION IS CRITICAL - Forms often have 10-20+ checkboxes!
-
-4. DATE & TIME:
-- Date: Date entry fields (MM/DD/YYYY)
-- Time: Time entry fields (HH:MM AM/PM)
-- DateTime: Combined date and time fields
-
-5. NUMERIC FIELDS:
-- Number: Numeric entry fields (age, quantity, etc.)
-- Currency: Dollar amount fields ($)
-- Percentage: Percentage fields (%)
-
-6. TEXT AREAS:
-- Text: Single-line text input (default type)
-- Textarea: Multi-line text boxes for comments/notes
-- Signature: Signature lines (often marked ""Sign Here"")
-
-7. LOCATION FIELDS:
-- Zip: ZIP code fields (XXXXX or XXXXX-XXXX)
-- State: State selection fields
-- Country: Country selection fields
-
-8. MEDIA & UPLOAD:
-- File_Upload: File attachment/upload areas
-- Image: Image/photo upload fields
-- Barcode: Barcode fields
-- QR_Code: QR code fields
-
-9. INTERACTIVE:
-- Rating: Star or numeric rating fields
-- Slider: Range/slider controls
-- Color_Picker: Color selection fields
-- URL: Website/URL fields
-
-10. SPECIAL:
-- Table: Table/grid data entry areas
-
-For each field found, provide:
-1. Field name/label exactly as shown
-2. Field type from the 33 types above (use exact type names: ssn, ein, checkbox, etc.)
-3. Position as percentages (0-100): {x%, y%, width%, height%}
-4. Required indicator (* or ""Required"")
-5. Any tooltips or help text visible
-
-IMPORTANT POSITIONING:
-- x, y: Top-left corner of the INPUT AREA (not the label)
-- width: Width of the actual input field/checkbox
-- height: Height of the input area
-- For checkboxes: typical size is 2-3% width/height
-- For text fields: height typically 3-5%, width varies
-
-IMPORTANT: Be EXHAUSTIVE! If you see 40 fields, return 40 fields. Do not stop early or summarize!
-Count carefully: text fields, checkboxes (especially in groups), dates, signatures, etc.
-
-Return JSON format:
+RESPONSE FORMAT - YOU MUST RETURN ONLY THIS JSON STRUCTURE:
 {
   ""fields"": [
     {
       ""name"": ""Field Label"",
-      ""type"": ""text|email|phone|ssn|date|checkbox|radio|signature|etc"",
-      ""bounds"": {""x"": 10, ""y"": 20, ""width"": 30, ""height"": 5},
-      ""required"": true|false,
-      ""description"": ""Help text or additional context""
+      ""type"": ""text|checkbox|date|phone|email|ssn|signature|etc"",
+      ""bounds"": {""x"": 10, ""y"": 20, ""width"": 30, ""height"": 5}
     }
-  ],
-  ""confidence"": ""high|medium|low"",
-  ""notes"": ""Form observations and detected patterns""
-}";
+  ]
+}
+
+FIELD TYPES: text, checkbox, radio, date, time, phone, email, ssn, ein, password, signature, name, address, number, currency, zip, state, dropdown, textarea, file_upload
+
+POSITIONING (CRITICAL):
+- bounds use PERCENTAGES (0-100) of page width/height
+- x, y: Top-left corner of INPUT AREA (not label)
+- For checkboxes: typically 2-3% width/height
+- For text fields: typically 3-5% height
+
+DETECTION REQUIREMENTS:
+1. Find ALL fields - count carefully, don't miss any
+2. Detect ALL checkboxes (□ ☐ [ ]) - forms often have 10-20+
+3. Provide EXACT bounds for each field
+4. Use precise field labels from the form
+
+***RETURN ONLY THE JSON - NO EXPLANATORY TEXT BEFORE OR AFTER***";
                 
                 // Add markdown context if available to help with field naming
                 if (!string.IsNullOrEmpty(documentMarkdown))
@@ -739,13 +674,13 @@ IMPORTANT: Use the document context above to accurately name fields. For example
 
             logger?.LogInformation($"[COORD-CONVERT] After % to points: X={x:F1}, W={width:F1}, H={height:F1}");
 
-            // NO CONVERSION NEEDED! Both Claude Vision AND Syncfusion use top-left origin
-            // Claude provides Y as distance from top (top-left origin)
-            // Syncfusion ALSO uses top-left origin for form fields
-            // Just convert percentage to points directly
-            float y = (percentBounds.YPercent / 100f) * pageHeight;  // Simple percentage to points
+            // COORDINATE CONVERSION REQUIRED!
+            // Claude Vision provides Y as distance from TOP (top-left origin, Y=0 at top)
+            // Syncfusion PDF uses BOTTOM-LEFT origin (Y=0 at bottom) for form field coordinates
+            // Need to flip: bottom_y = pageHeight - top_y - height
+            float y = pageHeight - ((percentBounds.YPercent / 100f) * pageHeight) - height;
 
-            logger?.LogInformation($"[COORD-CONVERT] Y={percentBounds.YPercent:F1}% -> {y:F1} points (top-left origin, NO flip needed)");
+            logger?.LogInformation($"[COORD-CONVERT] Y={percentBounds.YPercent:F1}% (from top) -> {y:F1} points (bottom-left origin, FLIPPED)");
 
             // DO NOT apply arbitrary size limits - trust Claude's detection
             // Only apply constraints for specific cases

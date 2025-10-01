@@ -1303,16 +1303,16 @@
             }
             else
             {
-                // PDF remediation result
+                // PDF remediation result - backend returns normalPdf/accessiblePdf for both Word and PDF
                 processingResults = new ProcessingResult
                 {
                     IsWordSource = false,
-                    NormalFileName = result.GetProperty("originalPdf").GetProperty("filename").GetString(),
-                    NormalFileData = result.GetProperty("originalPdf").GetProperty("data").GetString(),
-                    NormalFileSize = result.GetProperty("originalPdf").GetProperty("size").GetInt32(),
-                    AccessibleFileName = result.GetProperty("remediatedPdf").GetProperty("filename").GetString(),
-                    AccessibleFileData = result.GetProperty("remediatedPdf").GetProperty("data").GetString(),
-                    AccessibleFileSize = result.GetProperty("remediatedPdf").GetProperty("size").GetInt32(),
+                    NormalFileName = result.GetProperty("normalPdf").GetProperty("filename").GetString(),
+                    NormalFileData = result.GetProperty("normalPdf").GetProperty("data").GetString(),
+                    NormalFileSize = result.GetProperty("normalPdf").GetProperty("size").GetInt32(),
+                    AccessibleFileName = result.GetProperty("accessiblePdf").GetProperty("filename").GetString(),
+                    AccessibleFileData = result.GetProperty("accessiblePdf").GetProperty("data").GetString(),
+                    AccessibleFileSize = result.GetProperty("accessiblePdf").GetProperty("size").GetInt32(),
                     ComplianceLevel = result.GetProperty("report").GetProperty("compliance").GetString(),
                     FieldsProcessed = result.GetProperty("report").GetProperty("fieldsProcessed").GetInt32(),
                     MeasuresApplied = result.GetProperty("report").GetProperty("measuresApplied").GetInt32(),
@@ -1900,13 +1900,18 @@
                         var updatedPdfData = result.ContainsKey("pdf") ? result["pdf"].ToString() : result["pdfData"].ToString();
                         processingResults.AccessibleFileData = updatedPdfData;
                         
+                        // CRITICAL FIX: Replace currentFields with updatedFields to handle deletions
+                        // The updatedFields list from the modal already has deleted fields removed
+                        // We just need to apply any server corrections to the updated list
+                        currentFields = updatedFields;
+
                         // Check if we have corrected field data from the server
                         if (result.ContainsKey("correctedFields"))
                         {
                             // Use the corrected dimensions from the server
                             var correctedFieldsElement = (System.Text.Json.JsonElement)result["correctedFields"];
                             var correctedFields = correctedFieldsElement.EnumerateArray().ToList();
-                            
+
                             foreach (var correctedField in correctedFields)
                             {
                                 var originalName = correctedField.GetProperty("originalName").GetString();
@@ -1916,7 +1921,7 @@
                                     fieldToUpdate.Name = correctedField.GetProperty("name").GetString();
                                     fieldToUpdate.Type = correctedField.GetProperty("type").GetString();
                                     fieldToUpdate.Tooltip = correctedField.TryGetProperty("tooltip", out var tooltip) ? tooltip.GetString() : "";
-                                    
+
                                     // Only update positions if they're not null
                                     if (correctedField.TryGetProperty("x", out var x) && x.ValueKind != System.Text.Json.JsonValueKind.Null)
                                         fieldToUpdate.X = (float)x.GetDouble();
@@ -1933,27 +1938,18 @@
                         }
                         else
                         {
-                            // Fallback to old behavior if server doesn't send corrected fields
-                            foreach (var update in fieldUpdates)
+                            // Fallback: Apply checkbox dimension correction if server doesn't send corrected fields
+                            foreach (var field in currentFields)
                             {
-                                var fieldToUpdate = currentFields.FirstOrDefault(f => f.Name == update.OriginalName);
-                                if (fieldToUpdate != null)
+                                if ((field.Type?.ToLower() == "checkbox" || field.Type?.ToLower() == "radio")
+                                    && field.Width > field.Height * 2)
                                 {
-                                    fieldToUpdate.Name = update.NewName;
-                                    fieldToUpdate.Type = update.FieldType;
-                                    
-                                    // Apply checkbox dimension correction
-                                    if ((update.FieldType?.ToLower() == "checkbox" || update.FieldType?.ToLower() == "radio") 
-                                        && fieldToUpdate.Width > fieldToUpdate.Height * 2)
-                                    {
-                                        // Correct checkbox dimensions to be square
-                                        fieldToUpdate.Width = Math.Min(fieldToUpdate.Height, 20);
-                                        fieldToUpdate.Height = Math.Min(fieldToUpdate.Height, 20);
-                                    }
-                                    fieldToUpdate.Tooltip = update.Tooltip;
-                                    // Update OriginalName for future edits
-                                    fieldToUpdate.OriginalName = update.NewName;
+                                    // Correct checkbox dimensions to be square
+                                    field.Width = Math.Min(field.Height, 20);
+                                    field.Height = Math.Min(field.Height, 20);
                                 }
+                                // Update OriginalName for future edits
+                                field.OriginalName = field.Name;
                             }
                         }
                         

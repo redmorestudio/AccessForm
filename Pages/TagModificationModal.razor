@@ -448,9 +448,14 @@
     .table-hover tbody tr:hover {
         background-color: rgba(0, 123, 255, 0.05);
     }
-    
+
     .table-primary {
-        background-color: rgba(0, 123, 255, 0.15) !important;
+        background-color: rgba(13, 110, 253, 0.25) !important;
+        border-left: 3px solid #0d6efd !important;
+    }
+
+    .table-primary:hover {
+        background-color: rgba(13, 110, 253, 0.35) !important;
     }
     
     .bulk-operations {
@@ -642,28 +647,16 @@
         if (rows && rows[fieldIndex - 1]) {
             const targetRow = rows[fieldIndex - 1];
 
-            // Get the position of the row relative to the fields panel
-            const rowTop = targetRow.offsetTop;
-            const rowHeight = targetRow.offsetHeight;
-            const panelHeight = fieldsPanel.clientHeight;
-            const panelScroll = fieldsPanel.scrollTop;
+            // Use scrollIntoView for more reliable scrolling
+            targetRow.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center',
+                inline: 'nearest'
+            });
 
-            // Calculate if row is visible
-            const rowBottom = rowTop + rowHeight;
-            const visibleTop = panelScroll;
-            const visibleBottom = panelScroll + panelHeight;
-
-            // Only scroll if the row is not fully visible
-            if (rowTop < visibleTop || rowBottom > visibleBottom) {
-                // Center the row in the panel
-                const scrollTarget = rowTop - (panelHeight / 2) + (rowHeight / 2);
-                fieldsPanel.scrollTo({ top: Math.max(0, scrollTarget), behavior: 'smooth' });
-                console.log(`scrollFieldIntoView: Scrolled to field ${fieldIndex} at position ${scrollTarget}`);
-            } else {
-                console.log(`scrollFieldIntoView: Field ${fieldIndex} already visible`);
-            }
+            console.log(`scrollFieldIntoView: Scrolled to field ${fieldIndex}`);
         } else {
-            console.log(`scrollFieldIntoView: Row ${fieldIndex - 1} not found`);
+            console.log(`scrollFieldIntoView: Row ${fieldIndex - 1} not found (total rows: ${rows.length})`);
         }
     };
 
@@ -940,6 +933,23 @@
         {
             CurrentPage = pageNumber;
 
+            // Update TotalPages from PDF if not already set
+            if (TotalPages == 1 && PdfBytes != null)
+            {
+                try
+                {
+                    using (var stream = new System.IO.MemoryStream(PdfBytes))
+                    using (var pdfDoc = new Syncfusion.Pdf.Parsing.PdfLoadedDocument(stream))
+                    {
+                        TotalPages = pdfDoc.Pages.Count;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    await JSRuntime.InvokeVoidAsync("console.error", $"Failed to get PDF page count: {ex.Message}");
+                }
+            }
+
             using var client = new HttpClient();
             client.BaseAddress = new Uri(Navigation.BaseUri);
             var content = new MultipartFormDataContent();
@@ -1035,6 +1045,23 @@
         try
         {
             CurrentPage = pageNumber;
+
+            // Update TotalPages from PDF if not already set
+            if (TotalPages == 1 && PdfBytes != null)
+            {
+                try
+                {
+                    using (var stream = new System.IO.MemoryStream(PdfBytes))
+                    using (var pdfDoc = new Syncfusion.Pdf.Parsing.PdfLoadedDocument(stream))
+                    {
+                        TotalPages = pdfDoc.Pages.Count;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    await JSRuntime.InvokeVoidAsync("console.error", $"Failed to get PDF page count: {ex.Message}");
+                }
+            }
 
             // Call API to get page image
             using var client = new HttpClient();

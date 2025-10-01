@@ -3340,9 +3340,9 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                             }
                             else
                             {
-                                // All fields should have [PAGE:X] now - this is an error if we get here
-                                page = FallbackToPageOne(txtField.Bounds.Y);
-                                logger.LogError($"🚫 [TAG-STRUCTURE-ERROR] Text field '{f.Name}' missing [PAGE:X] tooltip! Using page {page} fallback");
+                                // Skip fields without [PAGE:X] tooltip - they're from old processing runs
+                                logger.LogError($"🚫 [TAG-STRUCTURE-SKIP] Text field '{f.Name}' missing [PAGE:X] tooltip! Skipping this field (likely from previous processing)");
+                                continue; // Skip this field entirely
                             }
 
                             // Get the correct page height for this specific page
@@ -3373,9 +3373,9 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                             }
                             else
                             {
-                                // All fields should have [PAGE:X] now - this is an error if we get here
-                                page = FallbackToPageOne(chkField.Bounds.Y);
-                                logger.LogError($"🚫 [TAG-STRUCTURE-ERROR] Checkbox '{f.Name}' missing [PAGE:X] tooltip! Using page {page} fallback");
+                                // Skip fields without [PAGE:X] tooltip - they're from old processing runs
+                                logger.LogError($"🚫 [TAG-STRUCTURE-SKIP] Checkbox '{f.Name}' missing [PAGE:X] tooltip! Skipping this field (likely from previous processing)");
+                                continue; // Skip this field entirely
                             }
 
                             // Get the correct page height for this specific page
@@ -3404,9 +3404,9 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                             }
                             else
                             {
-                                // All fields should have [PAGE:X] now - this is an error if we get here
-                                page = FallbackToPageOne(sigField.Bounds.Y);
-                                logger.LogError($"🚫 [TAG-STRUCTURE-ERROR] Signature field '{f.Name}' missing [PAGE:X] tooltip! Using page {page} fallback");
+                                // Skip fields without [PAGE:X] tooltip - they're from old processing runs
+                                logger.LogError($"🚫 [TAG-STRUCTURE-SKIP] Signature field '{f.Name}' missing [PAGE:X] tooltip! Skipping this field (likely from previous processing)");
+                                continue; // Skip this field entirely
                             }
 
                             // Get the correct page height for this specific page
@@ -3434,9 +3434,9 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                             }
                             else
                             {
-                                // All fields should have [PAGE:X] now - this is an error if we get here
-                                page = FallbackToPageOne(radioField.Bounds.Y);
-                                logger.LogError($"🚫 [TAG-STRUCTURE-ERROR] Radio button '{f.Name}' missing [PAGE:X] tooltip! Using page {page} fallback");
+                                // Skip fields without [PAGE:X] tooltip - they're from old processing runs
+                                logger.LogError($"🚫 [TAG-STRUCTURE-SKIP] Radio button '{f.Name}' missing [PAGE:X] tooltip! Skipping this field (likely from previous processing)");
+                                continue; // Skip this field entirely
                             }
 
                             // Get the correct page height for this specific page
@@ -3772,10 +3772,12 @@ app.MapPost("/api/convert-with-config", async (
         }
 
         var file = request.Form.Files[0];
+        var isDocx = file.FileName.EndsWith(".docx", StringComparison.OrdinalIgnoreCase);
+        var isPdf = file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
 
-        if (!file.FileName.EndsWith(".docx", StringComparison.OrdinalIgnoreCase))
+        if (!isDocx && !isPdf)
         {
-            return Results.BadRequest("Please upload a .docx file");
+            return Results.BadRequest("Please upload a .docx or .pdf file");
         }
 
         using var stream = file.OpenReadStream();
@@ -3810,8 +3812,23 @@ app.MapPost("/api/convert-with-config", async (
                               $"ClaudeValidation={config.Services.UseClaudeValidation}, " +
                               $"Mode={config.Mode}");
 
-        logger.LogInformation($"Processing {file.FileName} with config");
-        var (pdfBytes, fields) = await fieldService.ConvertWithConfig(fileBytes, file.FileName, config);
+        byte[] pdfBytes;
+        List<WordToPdfConverter.Models.FieldDetectionResult> fields;
+
+        if (isPdf)
+        {
+            // PDF uploaded directly - use as-is, no conversion needed
+            logger.LogInformation($"PDF uploaded directly: {file.FileName}, skipping Word conversion");
+            pdfBytes = fileBytes;
+            // For now, return empty field list - PDF field detection will be added later
+            fields = new List<WordToPdfConverter.Models.FieldDetectionResult>();
+        }
+        else
+        {
+            // Word document - convert to PDF then detect fields
+            logger.LogInformation($"Processing Word document {file.FileName} with config");
+            (pdfBytes, fields) = await fieldService.ConvertWithConfig(fileBytes, file.FileName, config);
+        }
 
         logger.LogInformation($"Field detection completed. Found {fields?.Count ?? 0} fields");
 

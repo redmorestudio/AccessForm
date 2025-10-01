@@ -294,22 +294,46 @@ namespace WordToPdfConverter.Services
             var fields = new List<FieldDetectionResult>();
             byte[] pdfBytes;
             
-            using (var inputStream = new MemoryStream(wordBytes))
-            using (var wordDoc = new WordDocument(inputStream, FormatType.Docx))
+            // Try with AutoTag first
+            try
             {
+                using (var inputStream = new MemoryStream(wordBytes))
+                using (var wordDoc = new WordDocument(inputStream, FormatType.Docx))
                 using (var renderer = new DocIORenderer())
                 {
-                    // PRESERVE fields to get Syncfusion's detection
                     renderer.Settings.PreserveFormFields = true;
                     renderer.Settings.AutoTag = true;
-                    
+
+                    _logger.LogInformation($"[SYNCFUSION] Converting Word to PDF with AutoTag=true for accessibility");
+
                     using (var pdfDocument = renderer.ConvertToPDF(wordDoc))
+                    using (var outputStream = new MemoryStream())
                     {
-                        using (var outputStream = new MemoryStream())
-                        {
-                            pdfDocument.Save(outputStream);
-                            pdfBytes = outputStream.ToArray();
-                        }
+                        pdfDocument.Save(outputStream);
+                        pdfBytes = outputStream.ToArray();
+                        _logger.LogInformation($"[SYNCFUSION] Successfully saved PDF with AutoTag ({pdfBytes.Length} bytes)");
+                    }
+                }
+            }
+            catch (ArgumentException ex) when (ex.Message.Contains("Offset and length were out of bounds"))
+            {
+                _logger.LogError($"[SYNCFUSION-BUG] Structure tree corruption detected: {ex.Message}");
+                _logger.LogWarning($"[SYNCFUSION-FIX] Retrying without AutoTag - accessibility will be added in post-processing");
+
+                // Retry with a fresh WordDocument stream and AutoTag disabled
+                using (var inputStream = new MemoryStream(wordBytes))
+                using (var wordDoc = new WordDocument(inputStream, FormatType.Docx))
+                using (var renderer = new DocIORenderer())
+                {
+                    renderer.Settings.PreserveFormFields = true;
+                    renderer.Settings.AutoTag = false;
+
+                    using (var pdfDocument = renderer.ConvertToPDF(wordDoc))
+                    using (var outputStream = new MemoryStream())
+                    {
+                        pdfDocument.Save(outputStream);
+                        pdfBytes = outputStream.ToArray();
+                        _logger.LogWarning($"[SYNCFUSION-FIX] Saved untagged PDF ({pdfBytes.Length} bytes) - tagging will be added in post-processing");
                     }
                 }
             }
@@ -1545,50 +1569,25 @@ Document:
                 _logger.LogInformation($"🤝🤝🤝 [SYNCFUSION+CLAUDE] Processing page {page.PageNumber} with {page.Fields.Count} Claude-detected fields");
                 foreach (var vField in page.Fields)
                 {
-                    // Convert Claude's percentage coordinates to PDF coordinates if available
-                    float x = 0, y = 0, width = 100, height = 20;
-                    bool hasCoordinates = false;
-
-                    if (vField.Bounds != null && (vField.Bounds.XPercent > 0 || vField.Bounds.YPercent > 0))
-                    {
-                        // 🎯 FIX: Use the PROPER conversion method instead of duplicate broken code
-                        _logger.LogWarning($"✅✅✅ [COORD_FIX] Using PROPER ClaudeVisionFieldDetector.ConvertPercentageToPdfBounds for field '{vField.FieldName}'");
-                        _logger.LogWarning($"✅✅✅   - Page dimensions: {pageWidth:F1} x {pageHeight:F1}");
-                        _logger.LogWarning($"✅✅✅   - Claude %: X={vField.Bounds.XPercent:F3}%, Y={vField.Bounds.YPercent:F3}%, W={vField.Bounds.WidthPercent:F3}%, H={vField.Bounds.HeightPercent:F3}%");
-
-                        // Use the CORRECT conversion method that has all the proper coordinate tracking
-                        var pdfBounds = ClaudeVisionFieldDetector.ConvertPercentageToPdfBounds(
-                            vField.Bounds,
-                            pageWidth,
-                            pageHeight,
-                            vField.FieldName,
-                            _logger
-                        );
-
-                        x = pdfBounds.X;
-                        y = pdfBounds.Y;
-                        width = pdfBounds.Width;
-                        height = pdfBounds.Height;
-                        hasCoordinates = true;
-
-                        _logger.LogWarning($"✅✅✅ [COORD_FIX_RESULT] After proper conversion: X={x:F1}, Y={y:F1}, W={width:F1}, H={height:F1}");
-                        _logger.LogWarning($"✅✅✅ [COORD_FIX_CHECK] Y value check: {y:F1} should be POSITIVE (not negative like before)");
-                    }
+                    // 🚫🚫🚫 SEQUENTIAL MODE: NEVER USE CLAUDE VISION COORDINATES!
+                    // In Sequential mode (Syncfusion + Claude Validation), Claude Vision should ONLY provide field names.
+                    // All coordinates must come from Syncfusion. Claude coordinates should be completely ignored.
+                    _logger.LogWarning($"🚫🚫🚫 [SEQUENTIAL_MODE] Ignoring Claude Vision coordinates for '{vField.FieldName}' - using ONLY for naming");
 
                     claudeFields.Add(new FieldDetectionResult
                     {
                         ShortId = $"CV_temp",
                         FieldName = vField.FieldName,
                         FieldType = vField.FieldType,
-                        X = x,
-                        Y = y,
-                        Width = width,
-                        Height = height,
+                        X = 0,  // Dummy coordinates - will not be used
+                        Y = 0,  // Dummy coordinates - will not be used
+                        Width = 100,  // Dummy dimensions
+                        Height = 20,  // Dummy dimensions
                         PageNumber = page.PageNumber,
                         Source = "ClaudeVision",
-                        Confidence = hasCoordinates ? 0.95f : 0.9f,
+                        Confidence = 0.9f,
                         IsValid = true,
-                        HasValidCoordinates = hasCoordinates  // Track if we have real coordinates
+                        HasValidCoordinates = false  // CRITICAL: Disable proximity matching - Claude coordinates are NOT used!
                     });
                 }
             }

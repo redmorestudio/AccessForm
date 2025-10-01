@@ -55,8 +55,14 @@ namespace WordToPdfConverter.Services
             if (pageNumber.HasValue)
                 fields = fields.Where(f => f.PageNumber == pageNumber.Value).ToList();
 
-            // Sort spatially (Y then X)
-            fields = fields.OrderBy(f => f.Y).ThenBy(f => f.X).ToList();
+            // Sort spatially for natural reading order (top-to-bottom, left-to-right)
+            // In PDF coordinates, Y=0 is at bottom, so higher Y = top of page
+            // Therefore: OrderByDescending for top-to-bottom, ThenBy for left-to-right
+            fields = fields
+                .OrderBy(f => f.PageNumber)            // Multi-page support: page 1 first, then page 2, etc.
+                .ThenByDescending(f => f.Y)             // Top to bottom (higher Y = top in PDF coords)
+                .ThenBy(f => f.X)                      // Left to right
+                .ToList();
 
             var tableRows = new List<CascadeFieldRow>();
             var duplicateNames = fields.GroupBy(f => f.FieldName)
