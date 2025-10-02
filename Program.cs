@@ -3796,7 +3796,9 @@ app.MapPost("/api/convert-with-config", async (
                 UseSyncfusion = request.Form["useSyncfusion"].ToString()?.ToLower() == "true",
                 UseClaudeVision = request.Form["useClaudeVision"].ToString()?.ToLower() == "true",
                 UseGoogle = request.Form["useGoogle"].ToString()?.ToLower() == "true",
-                UseClaudeValidation = request.Form["useClaudeValidation"].ToString()?.ToLower() == "true"
+                UseClaudeValidation = request.Form["useClaudeValidation"].ToString()?.ToLower() == "true",
+                UseGroqValidation = request.Form["useGroqValidation"].ToString()?.ToLower() == "true",
+                UseSignatureDetection = request.Form["useSignatureDetection"].ToString()?.ToLower() == "true"
             },
             Mode = request.Form["mode"].ToString() switch
             {
@@ -3956,7 +3958,9 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
                 UseSyncfusion = request.Form["useSyncfusion"].ToString()?.ToLower() == "true",
                 UseClaudeVision = request.Form["useClaudeVision"].ToString()?.ToLower() == "true",
                 UseGoogle = request.Form["useGoogle"].ToString()?.ToLower() == "true",
-                UseClaudeValidation = request.Form["useClaudeValidation"].ToString()?.ToLower() == "true"
+                UseClaudeValidation = request.Form["useClaudeValidation"].ToString()?.ToLower() == "true",
+                UseGroqValidation = request.Form["useGroqValidation"].ToString()?.ToLower() == "true",
+                UseSignatureDetection = request.Form["useSignatureDetection"].ToString()?.ToLower() == "true"
             },
             Mode = request.Form["mode"].ToString() switch
             {

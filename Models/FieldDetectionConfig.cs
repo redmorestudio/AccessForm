@@ -39,27 +39,37 @@ namespace WordToPdfConverter.Models
         /// Use Syncfusion's built-in field detection
         /// </summary>
         public bool UseSyncfusion { get; set; } = true;
-        
+
         /// <summary>
         /// Use Google Document AI
         /// </summary>
         public bool UseGoogle { get; set; } = false;
-        
+
         /// <summary>
         /// Use Claude Vision for field detection
         /// </summary>
         public bool UseClaudeVision { get; set; } = false;
-        
+
         /// <summary>
         /// Use Claude for text analysis
         /// </summary>
         public bool UseClaudeText { get; set; } = false;
-        
+
         /// <summary>
         /// Use Claude to validate and adjust bounding boxes
         /// </summary>
         public bool UseClaudeValidation { get; set; } = false;
-        
+
+        /// <summary>
+        /// Use Groq to validate field labels for semantic accuracy
+        /// </summary>
+        public bool UseGroqValidation { get; set; } = false;
+
+        /// <summary>
+        /// Auto-detect signature fields marked with X placeholders
+        /// </summary>
+        public bool UseSignatureDetection { get; set; } = false;
+
         /// <summary>
         /// Only use specified services, no combinations
         /// </summary>

@@ -22,28 +22,51 @@
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <h6>Detection Services:</h6>
+
+                                <!-- Master Toggle -->
+                                <div class="form-check mb-3 p-2" style="background-color: rgba(40, 167, 69, 0.1); border-left: 3px solid #28a745;">
+                                    <input class="form-check-input" type="checkbox" id="enableAllAI" @bind="enableAllAI" @bind:after="UpdateAIControls">
+                                    <label class="form-check-label" for="enableAllAI">
+                                        <strong>🚀 Enable All AI Features</strong>
+                                        <small class="d-block text-muted">Quick toggle for production mode</small>
+                                    </label>
+                                </div>
+
+                                <!-- Individual Controls (greyed out when master is enabled) -->
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="useSyncfusion" @bind="useSyncfusion">
-                                    <label class="form-check-label" for="useSyncfusion">
-                                        <strong>Syncfusion</strong> <small class="text-muted">(Fast, accurate placement)</small>
+                                    <input class="form-check-input" type="checkbox" id="useSyncfusion" @bind="useSyncfusion" disabled="@enableAllAI">
+                                    <label class="form-check-label" for="useSyncfusion" style="@(enableAllAI ? "opacity: 0.6;" : "")">
+                                        <strong>Syncfusion</strong> <small class="text-muted">(Coordinate detection)</small>
                                     </label>
                                 </div>
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="useGoogle" @bind="useGoogle">
-                                    <label class="form-check-label" for="useGoogle">
+                                    <input class="form-check-input" type="checkbox" id="useGoogle" @bind="useGoogle" disabled="@enableAllAI">
+                                    <label class="form-check-label" for="useGoogle" style="@(enableAllAI ? "opacity: 0.6;" : "")">
                                         <strong>Google Document AI</strong> <small class="text-muted">(Structured analysis)</small>
                                     </label>
                                 </div>
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="useClaudeVision" @bind="useClaudeVision">
-                                    <label class="form-check-label" for="useClaudeVision">
-                                        <strong>Claude Vision</strong> <small class="text-muted">(Visual detection)</small>
+                                    <input class="form-check-input" type="checkbox" id="useClaudeVision" @bind="useClaudeVision" disabled="@enableAllAI">
+                                    <label class="form-check-label" for="useClaudeVision" style="@(enableAllAI ? "opacity: 0.6;" : "")">
+                                        <strong>Claude Vision</strong> <small class="text-muted">(Visual field labeling)</small>
                                     </label>
                                 </div>
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="useClaudeValidation" @bind="useClaudeValidation">
-                                    <label class="form-check-label" for="useClaudeValidation">
+                                    <input class="form-check-input" type="checkbox" id="useClaudeValidation" @bind="useClaudeValidation" disabled="@enableAllAI">
+                                    <label class="form-check-label" for="useClaudeValidation" style="@(enableAllAI ? "opacity: 0.6;" : "")">
                                         <strong>Claude Validation</strong> <small class="text-muted">(Fix bounding boxes)</small>
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="useGroqValidation" @bind="useGroqValidation" disabled="@enableAllAI">
+                                    <label class="form-check-label" for="useGroqValidation" style="@(enableAllAI ? "opacity: 0.6;" : "")">
+                                        <strong>Groq Label Validation</strong> <small class="text-muted">(AI sanity check)</small>
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="useSignatureDetection" @bind="useSignatureDetection" disabled="@enableAllAI">
+                                    <label class="form-check-label" for="useSignatureDetection" style="@(enableAllAI ? "opacity: 0.6;" : "")">
+                                        <strong>Signature Auto-Detection</strong> <small class="text-muted">(Find X markers)</small>
                                     </label>
                                 </div>
                             </div>
@@ -703,6 +726,9 @@
     private bool useGoogle = false;
     private bool useClaudeVision = false;
     private bool useClaudeValidation = false;
+    private bool useGroqValidation = false;
+    private bool useSignatureDetection = false;
+    private bool enableAllAI = false;
     private string processingMode = "Sequential";  // Always use Sequential mode
     private bool debugMode = true;
     private bool showFieldIds = true;
@@ -865,31 +891,56 @@
     // Quick preset methods
     private void SetPresetFast()
     {
+        enableAllAI = false;
         useSyncfusion = true;
         useGoogle = false;
         useClaudeVision = false;
         useClaudeValidation = false;
+        useGroqValidation = false;
+        useSignatureDetection = false;
         processingMode = "Sequential";
         StateHasChanged();
     }
-    
+
     private void SetPresetAccurate()
     {
+        enableAllAI = false;
         useSyncfusion = true;
         useGoogle = false;
         useClaudeVision = false;
         useClaudeValidation = true;
+        useGroqValidation = true;
+        useSignatureDetection = true;
         processingMode = "SyncfusionWithValidation";
         StateHasChanged();
     }
-    
+
     private void SetPresetComprehensive()
     {
+        enableAllAI = false;
         useSyncfusion = true;
         useGoogle = true;
         useClaudeVision = true;
         useClaudeValidation = true;
+        useGroqValidation = true;
+        useSignatureDetection = true;
         processingMode = "Sequential";
+        StateHasChanged();
+    }
+
+    private void UpdateAIControls()
+    {
+        if (enableAllAI)
+        {
+            // Enable all AI features when master toggle is on
+            useSyncfusion = true;
+            useGoogle = true;
+            useClaudeVision = true;
+            useClaudeValidation = true;
+            useGroqValidation = true;
+            useSignatureDetection = true;
+        }
+        // When master toggle is off, individual checkboxes remain in their current state
         StateHasChanged();
     }
     
@@ -1100,6 +1151,8 @@
                         useGoogle = useGoogle,
                         useClaudeVision = useClaudeVision,
                         useClaudeValidation = useClaudeValidation,
+                        useGroqValidation = useGroqValidation,
+                        useSignatureDetection = useSignatureDetection,
                         mode = processingMode,
                         debugMode = debugMode,
                         showFieldIds = showFieldIds,

@@ -298,15 +298,19 @@ namespace WordToPdfConverter.Services
                 _logger.LogWarning($"[VALIDATION] Failed to convert PDF to Markdown: {ex.Message}");
             }
 
-            var signatureFields = await DetectAndCreateSignatureFields(pdfBytes, pdfMarkdownForValidation, detectedFields);
-            if (signatureFields.Any())
+            // Only run signature detection if enabled in config
+            if (config.Services.UseSignatureDetection)
             {
-                detectedFields.AddRange(signatureFields);
-                _logger.LogInformation($"[SIGNATURE_DETECTOR] Added {signatureFields.Count} auto-detected signature field(s)");
+                var signatureFields = await DetectAndCreateSignatureFields(pdfBytes, pdfMarkdownForValidation, detectedFields);
+                if (signatureFields.Any())
+                {
+                    detectedFields.AddRange(signatureFields);
+                    _logger.LogInformation($"[SIGNATURE_DETECTOR] Added {signatureFields.Count} auto-detected signature field(s)");
+                }
             }
 
-            // PHASE 5: Groq sanity check for field label validation
-            if (_groqService != null && !string.IsNullOrEmpty(pdfMarkdownForValidation))
+            // PHASE 5: Groq sanity check for field label validation (only if enabled in config)
+            if (config.Services.UseGroqValidation && _groqService != null && !string.IsNullOrEmpty(pdfMarkdownForValidation))
             {
                 detectedFields = await ValidateFieldLabelsWithGroq(detectedFields, pdfMarkdownForValidation, pdfBytes);
             }
