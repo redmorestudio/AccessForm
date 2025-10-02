@@ -2583,20 +2583,36 @@ Document:
                 });
             }
 
-            var prompt = $@"You are a PDF form field validator. Analyze each field and determine if the label matches the nearby question text.
+            var prompt = $@"You are a PDF form field validation assistant. Your task is to validate and correct form field labels based on their visual context.
 
-For each field, check if the label makes sense given the nearby context. Look for obvious mismatches like:
-- Field labeled ""Man"" but question asks for ""License Number""
-- Field labeled ""State"" but nearby text asks for ""Gender""
-- Field labeled ""Staff"" but nearby text says ""Date Signed""
-- Field type mismatch (signature field but text says ""date"")
+For each field provided, analyze:
+- Current label vs surrounding text (primary context)
+- Field characteristics (position, type, format hints)
+- Common patterns: ""Date:"", ""Signature:"", ""Check if:"", ""Enter your""
 
-Return ONLY valid JSON (no markdown, no explanations) with corrections for mismatched fields:
+Rules:
+- Be conservative - only correct if clearly wrong (confidence >= 0.85)
+- If current label is correct, do NOT include it in corrections
+- Match field type to likely input format
+- Use surrounding text as the authoritative source
+
+Common mistakes to catch:
+- Field labeled ""Man"" but context says ""License Number"" → correct to ""License Number""
+- Field labeled ""State"" but context says ""Gender"" → correct to ""Gender""
+- Field labeled ""Staff"" but context says ""Date Signed"" → correct to ""Date Signed""
+- Signature field but text says ""Date"" → correct type to ""date""
+
+Return ONLY valid JSON (no markdown, no explanations):
 
 {{
   ""corrections"": [
-    {{""id"": ""F1"", ""new_label"": ""License Number"", ""confidence"": 0.95, ""reason"": ""Field label doesn't match question""}},
-    {{""id"": ""F2"", ""new_label"": ""Date Signed"", ""confidence"": 0.98, ""reason"": ""Context indicates date field""}}
+    {{
+      ""id"": ""F1"",
+      ""corrected_label"": ""License Number"",
+      ""field_type"": ""text"",
+      ""confidence"": 0.95,
+      ""reasoning"": ""Context 'License Number: ___' clearly indicates this field""
+    }}
   ]
 }}
 
@@ -2636,11 +2652,20 @@ Response (JSON only):";
                     if (field != null)
                     {
                         var oldName = field.FieldName;
+                        var oldType = field.FieldType;
+
                         field.FieldName = correction.NewLabel;
+                        if (!string.IsNullOrEmpty(correction.FieldType))
+                        {
+                            field.FieldType = correction.FieldType;
+                        }
                         field.Source += "+GroqValidated";
                         correctedCount++;
 
-                        _logger.LogInformation($"[GROQ_VALIDATOR] ✅ Corrected '{oldName}' → '{correction.NewLabel}' (confidence={correction.Confidence:F2}, reason: {correction.Reason})");
+                        var typeChange = !string.IsNullOrEmpty(correction.FieldType) && oldType != correction.FieldType
+                            ? $", type: {oldType} → {correction.FieldType}"
+                            : "";
+                        _logger.LogInformation($"[GROQ_VALIDATOR] ✅ Corrected '{oldName}' → '{correction.NewLabel}'{typeChange} (confidence={correction.Confidence:F2}, reason: {correction.Reason})");
                     }
                 }
 
@@ -2716,12 +2741,28 @@ Response (JSON only):";
                 {
                     foreach (var item in correctionsArray.EnumerateArray())
                     {
+                        // Support both old and new format
+                        var newLabel = "";
+                        if (item.TryGetProperty("corrected_label", out var correctedLabel))
+                            newLabel = correctedLabel.GetString();
+                        else if (item.TryGetProperty("new_label", out var oldLabel))
+                            newLabel = oldLabel.GetString();
+
+                        var reasoning = "";
+                        if (item.TryGetProperty("reasoning", out var reasoningProp))
+                            reasoning = reasoningProp.GetString();
+                        else if (item.TryGetProperty("reason", out var reasonProp))
+                            reasoning = reasonProp.GetString();
+
+                        var fieldType = item.TryGetProperty("field_type", out var typeProp) ? typeProp.GetString() : "";
+
                         var correction = new GroqCorrection
                         {
                             FieldId = item.TryGetProperty("id", out var id) ? id.GetString() : "",
-                            NewLabel = item.TryGetProperty("new_label", out var label) ? label.GetString() : "",
+                            NewLabel = newLabel,
+                            FieldType = fieldType,
                             Confidence = item.TryGetProperty("confidence", out var conf) ? (float)conf.GetDouble() : 0.5f,
-                            Reason = item.TryGetProperty("reason", out var reason) ? reason.GetString() : ""
+                            Reason = reasoning
                         };
 
                         if (!string.IsNullOrEmpty(correction.FieldId) && !string.IsNullOrEmpty(correction.NewLabel))
@@ -2743,6 +2784,7 @@ Response (JSON only):";
         {
             public string FieldId { get; set; }
             public string NewLabel { get; set; }
+            public string FieldType { get; set; }
             public float Confidence { get; set; }
             public string Reason { get; set; }
         }

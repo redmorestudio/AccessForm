@@ -41,7 +41,7 @@ namespace AccessFormServer.Services
             
             _enabled = _configuration.GetValue<bool>("AiServices:LlamaGroq:Enabled", false);
             _apiKey = _configuration["AiServices:LlamaGroq:ApiKey"];
-            _model = _configuration["AiServices:LlamaGroq:Model"] ?? "llama-3.3-70b-versatile";
+            _model = _configuration["AiServices:LlamaGroq:Model"] ?? "openai/gpt-oss-120b";
             _baseUrl = _configuration["AiServices:LlamaGroq:BaseUrl"] ?? "https://api.groq.com/openai/v1";
             _maxTokens = _configuration.GetValue<int>("AiServices:LlamaGroq:MaxTokens", 4096);
             _temperature = _configuration.GetValue<float>("AiServices:LlamaGroq:Temperature", 0.3f);
