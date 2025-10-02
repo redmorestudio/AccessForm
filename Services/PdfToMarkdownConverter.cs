@@ -50,7 +50,7 @@ namespace WordToPdfConverter.Services
         {
             if (!File.Exists(_markerWrapperPath))
             {
-                _logger.LogWarning("Marker wrapper script not found, skipping markdown conversion");
+                _logger.LogError($"[MARKER_ERROR] Marker wrapper script not found at: {_markerWrapperPath}");
                 return string.Empty;
             }
 
@@ -73,7 +73,7 @@ namespace WordToPdfConverter.Services
                 }
                 else
                 {
-                    _logger.LogWarning($"Marker conversion failed: {result.Error}");
+                    _logger.LogError($"[MARKER_ERROR] Marker conversion failed: {result.Error}");
                     return string.Empty;
                 }
             }
@@ -118,6 +118,9 @@ namespace WordToPdfConverter.Services
 
                 using var process = new Process { StartInfo = processStartInfo };
 
+                // Start the process BEFORE reading from streams
+                process.Start();
+
                 var outputTask = Task.Run(async () =>
                 {
                     using var reader = process.StandardOutput;
@@ -129,8 +132,6 @@ namespace WordToPdfConverter.Services
                     using var reader = process.StandardError;
                     return await reader.ReadToEndAsync();
                 });
-
-                process.Start();
 
                 // Wait for process to complete with timeout (5 minutes)
                 var processTask = Task.Run(() => process.WaitForExit(300000)); // 5 minute timeout
