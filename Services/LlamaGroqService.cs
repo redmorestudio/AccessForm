@@ -165,7 +165,7 @@ Rules:";
             return GetDefaultValidationRules(fieldType);
         }
 
-        private async Task<string> CallGroqApiAsync(string prompt, CancellationToken cancellationToken)
+        public async Task<string> CallGroqApiAsync(string prompt, CancellationToken cancellationToken)
         {
             try
             {

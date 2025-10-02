@@ -33,6 +33,7 @@ namespace WordToPdfConverter.Services
         private readonly GoogleDocumentAiService _googleAiService;
         private readonly ClaudeBoundingBoxValidator _boundingBoxValidator;
         private readonly NLPLabelGenerator _nlpGenerator;
+        private readonly LlamaGroqService _groqService;
         private int _fieldCounter = 0;
 
         public ConfigurableFieldDetectionService(
@@ -44,7 +45,8 @@ namespace WordToPdfConverter.Services
             ClaudeVisionFieldDetector visionDetector,
             GoogleDocumentAiService googleAiService,
             ClaudeBoundingBoxValidator boundingBoxValidator,
-            NLPLabelGenerator nlpGenerator)
+            NLPLabelGenerator nlpGenerator,
+            LlamaGroqService groqService = null)
         {
             _logger = logger;
             _loggerFactory = loggerFactory;
@@ -55,11 +57,13 @@ namespace WordToPdfConverter.Services
             _googleAiService = googleAiService;
             _boundingBoxValidator = boundingBoxValidator;
             _nlpGenerator = nlpGenerator;
+            _groqService = groqService;
 
             // DEBUG: Log service initialization status
             _logger.LogInformation($"[SERVICE-INIT] ClaudeVisionFieldDetector: {(_visionDetector != null ? "Available" : "NULL")}");
             _logger.LogInformation($"[SERVICE-INIT] GoogleDocumentAiService: {(_googleAiService != null ? "Available" : "NULL")}");
             _logger.LogInformation($"[SERVICE-INIT] AnthropicService: {(_anthropicService != null ? "Available" : "NULL")}");
+            _logger.LogInformation($"[SERVICE-INIT] LlamaGroqService: {(_groqService != null ? "Available" : "NULL")}");
         }
 
         /// <summary>
@@ -279,12 +283,39 @@ namespace WordToPdfConverter.Services
                 detectedFields = detectedFields.Where(f => f.IsValid).ToList();
             }
             */
-            
+
+            // PHASE 4: Auto-detect signature fields with "X" markers
+            string pdfMarkdownForValidation = "";
+            try
+            {
+                var markdownLogger = _loggerFactory.CreateLogger<PdfToMarkdownConverter>();
+                var markdownConverter = new PdfToMarkdownConverter(markdownLogger);
+                pdfMarkdownForValidation = markdownConverter.ConvertToMarkdown(pdfBytes);
+                _logger.LogInformation($"[VALIDATION] Converted PDF to Markdown: {pdfMarkdownForValidation.Length} characters");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"[VALIDATION] Failed to convert PDF to Markdown: {ex.Message}");
+            }
+
+            var signatureFields = await DetectAndCreateSignatureFields(pdfBytes, pdfMarkdownForValidation, detectedFields);
+            if (signatureFields.Any())
+            {
+                detectedFields.AddRange(signatureFields);
+                _logger.LogInformation($"[SIGNATURE_DETECTOR] Added {signatureFields.Count} auto-detected signature field(s)");
+            }
+
+            // PHASE 5: Groq sanity check for field label validation
+            if (_groqService != null && !string.IsNullOrEmpty(pdfMarkdownForValidation))
+            {
+                detectedFields = await ValidateFieldLabelsWithGroq(detectedFields, pdfMarkdownForValidation, pdfBytes);
+            }
+
             // Create final PDF with detected fields
             pdfBytes = await CreatePdfWithFields(pdfBytes, detectedFields, config);
-            
+
             _logger.LogInformation($"Final result: {detectedFields.Count} fields detected");
-            
+
             return (pdfBytes, detectedFields);
         }
 
@@ -2324,6 +2355,396 @@ Document:
 
             _logger.LogInformation($"[SEMANTIC_VALIDATION] Completed semantic validation, corrected {correctedFields.Count(f => f.Source.Contains("SemanticCorrected"))} fields");
             return correctedFields;
+        }
+
+        /// <summary>
+        /// Detect and auto-create signature fields based on visual indicators like "X" markers
+        /// </summary>
+        private async Task<List<FieldDetectionResult>> DetectAndCreateSignatureFields(
+            byte[] pdfBytes,
+            string pdfMarkdown,
+            List<FieldDetectionResult> existingFields)
+        {
+            var signatureFields = new List<FieldDetectionResult>();
+
+            if (string.IsNullOrEmpty(pdfMarkdown))
+            {
+                _logger.LogWarning("[SIGNATURE_DETECTOR] No markdown available for signature detection");
+                return signatureFields;
+            }
+
+            _logger.LogInformation("[SIGNATURE_DETECTOR] Scanning for signature field indicators...");
+
+            // Signature indicators to look for
+            var signaturePatterns = new[]
+            {
+                @"Signature:\s*X",
+                @"Sign here:\s*X",
+                @"Signed:\s*X",
+                @"X\s*_+",  // X followed by underline
+                @"_+\s*X",  // Underline followed by X
+                @"Contractor Signature",
+                @"Employee Signature",
+                @"Authorized Signature",
+                @"Date Signed.*X"
+            };
+
+            // Extract PDF pages to analyze
+            using (var pdfStream = new MemoryStream(pdfBytes))
+            using (var pdfDoc = new PdfLoadedDocument(pdfStream))
+            {
+                var lines = pdfMarkdown.Split('\n');
+                int currentPage = 1;
+
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    var line = lines[i];
+
+                    // Track page markers in markdown
+                    if (line.Contains("[PAGE:") || line.Contains("Page "))
+                    {
+                        var pageMatch = System.Text.RegularExpressions.Regex.Match(line, @"\[PAGE:(\d+)\]|Page (\d+)");
+                        if (pageMatch.Success)
+                        {
+                            var pageNumStr = pageMatch.Groups[1].Success ? pageMatch.Groups[1].Value : pageMatch.Groups[2].Value;
+                            if (int.TryParse(pageNumStr, out var pageNum))
+                            {
+                                currentPage = pageNum;
+                            }
+                        }
+                    }
+
+                    // Check for signature patterns
+                    foreach (var pattern in signaturePatterns)
+                    {
+                        var match = System.Text.RegularExpressions.Regex.Match(line, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                        if (match.Success)
+                        {
+                            // Extract field name from context
+                            var fieldName = ExtractSignatureFieldName(line, match.Value);
+
+                            // Check if we already have a signature field at this location
+                            var exists = existingFields.Any(f =>
+                                f.PageNumber == currentPage &&
+                                f.FieldType.ToLower() == "signature" &&
+                                (f.FieldName?.ToLower().Contains("signature") == true ||
+                                 f.FieldName?.ToLower().Contains("sign") == true));
+
+                            if (exists)
+                            {
+                                _logger.LogDebug($"[SIGNATURE_DETECTOR] Signature field already exists on page {currentPage}, skipping");
+                                continue;
+                            }
+
+                            // Estimate position based on page and line position
+                            var yPosition = EstimateYPositionFromMarkdown(i, lines.Length, pdfDoc.Pages[currentPage - 1].Size.Height);
+
+                            // Create signature field
+                            var sigField = new FieldDetectionResult
+                            {
+                                ShortId = $"SIG{signatureFields.Count + 1}",
+                                FieldName = fieldName,
+                                FieldType = "signature",
+                                X = 50f,  // Default left margin
+                                Y = yPosition,
+                                Width = 200f,  // Standard signature width
+                                Height = 40f,  // Standard signature height
+                                PageNumber = currentPage,
+                                Source = "SignatureDetector+Auto",
+                                Confidence = 0.7f,
+                                IsValid = true,
+                                HasValidCoordinates = true,
+                                Tooltip = $"Auto-detected signature field [PAGE:{currentPage}]"
+                            };
+
+                            signatureFields.Add(sigField);
+                            _logger.LogInformation($"[SIGNATURE_DETECTOR] ✅ Created signature field '{fieldName}' on page {currentPage} at Y={yPosition:F1}");
+
+                            break; // One signature per line
+                        }
+                    }
+                }
+            }
+
+            _logger.LogInformation($"[SIGNATURE_DETECTOR] Auto-created {signatureFields.Count} signature field(s)");
+            return signatureFields;
+        }
+
+        private string ExtractSignatureFieldName(string line, string matchedText)
+        {
+            // Try to extract meaningful name from the line
+            var cleanLine = line.Trim().Replace("X", "").Replace("_", "").Trim();
+
+            if (cleanLine.Contains("Contractor"))
+                return "Contractor Signature";
+            if (cleanLine.Contains("Employee"))
+                return "Employee Signature";
+            if (cleanLine.Contains("Authorized"))
+                return "Authorized Representative Signature";
+            if (cleanLine.Contains("Date Signed"))
+                return "Date Signed Signature";
+            if (cleanLine.Contains("Representative"))
+                return "Representative Signature";
+
+            // Default fallback
+            return "Signature";
+        }
+
+        private float EstimateYPositionFromMarkdown(int lineIndex, int totalLines, float pageHeight)
+        {
+            // Estimate Y position as a percentage of page height based on line position
+            // PDF coordinates are bottom-left origin, so lower line number = higher Y value
+            var positionPercent = 1.0f - ((float)lineIndex / totalLines);
+
+            // Add some variance to avoid overlapping if multiple fields on same page
+            var estimatedY = pageHeight * positionPercent;
+
+            // Clamp to reasonable bounds
+            return Math.Max(50f, Math.Min(pageHeight - 50f, estimatedY));
+        }
+
+        /// <summary>
+        /// Use Groq to validate field labels against nearby question text (sanity check)
+        /// </summary>
+        private async Task<List<FieldDetectionResult>> ValidateFieldLabelsWithGroq(
+            List<FieldDetectionResult> fields,
+            string pdfMarkdown,
+            byte[] pdfBytes)
+        {
+            if (_groqService == null)
+            {
+                _logger.LogWarning("[GROQ_VALIDATOR] Groq service not available, skipping validation");
+                return fields;
+            }
+
+            if (string.IsNullOrEmpty(pdfMarkdown))
+            {
+                _logger.LogWarning("[GROQ_VALIDATOR] No markdown available for validation");
+                return fields;
+            }
+
+            _logger.LogInformation($"[GROQ_VALIDATOR] Starting field label validation for {fields.Count} fields...");
+
+            // Step 1: Pre-filter high-confidence fields (skip validation)
+            var fieldsToValidate = new List<FieldDetectionResult>();
+            var highConfidenceFields = new List<FieldDetectionResult>();
+
+            foreach (var field in fields)
+            {
+                // Skip validation if high confidence
+                if (field.Confidence >= 0.9f)
+                {
+                    highConfidenceFields.Add(field);
+                    continue;
+                }
+
+                // Skip validation if field has generic auto-generated name
+                if (string.IsNullOrEmpty(field.FieldName) ||
+                    field.FieldName.StartsWith("text", StringComparison.OrdinalIgnoreCase) ||
+                    field.FieldName.StartsWith("field", StringComparison.OrdinalIgnoreCase) ||
+                    field.FieldName.StartsWith("checkbox", StringComparison.OrdinalIgnoreCase) ||
+                    System.Text.RegularExpressions.Regex.IsMatch(field.FieldName, @"^[a-f0-9]{12,}$")) // Hex IDs
+                {
+                    fieldsToValidate.Add(field);
+                    continue;
+                }
+
+                // Check for obvious semantic mismatch
+                var nearbyText = ExtractNearbyText(field, pdfMarkdown);
+                if (HasSemanticMismatch(field.FieldName, nearbyText, field.FieldType))
+                {
+                    fieldsToValidate.Add(field);
+                }
+                else
+                {
+                    highConfidenceFields.Add(field);
+                }
+            }
+
+            _logger.LogInformation($"[GROQ_VALIDATOR] Pre-filter: {highConfidenceFields.Count} high-confidence, {fieldsToValidate.Count} to validate");
+
+            if (!fieldsToValidate.Any())
+            {
+                _logger.LogInformation("[GROQ_VALIDATOR] No fields need validation");
+                return fields;
+            }
+
+            // Step 2: Build batch validation prompt
+            var fieldValidationData = new List<object>();
+            foreach (var field in fieldsToValidate.Take(50)) // Limit to 50 fields per batch
+            {
+                var nearbyText = ExtractNearbyText(field, pdfMarkdown);
+                fieldValidationData.Add(new
+                {
+                    id = field.ShortId,
+                    label = field.FieldName,
+                    type = field.FieldType,
+                    nearby_text = nearbyText
+                });
+            }
+
+            var prompt = $@"You are a PDF form field validator. Analyze each field and determine if the label matches the nearby question text.
+
+For each field, check if the label makes sense given the nearby context. Look for obvious mismatches like:
+- Field labeled ""Man"" but question asks for ""License Number""
+- Field labeled ""State"" but nearby text asks for ""Gender""
+- Field labeled ""Staff"" but nearby text says ""Date Signed""
+- Field type mismatch (signature field but text says ""date"")
+
+Return ONLY valid JSON (no markdown, no explanations) with corrections for mismatched fields:
+
+{{
+  ""corrections"": [
+    {{""id"": ""F1"", ""new_label"": ""License Number"", ""confidence"": 0.95, ""reason"": ""Field label doesn't match question""}},
+    {{""id"": ""F2"", ""new_label"": ""Date Signed"", ""confidence"": 0.98, ""reason"": ""Context indicates date field""}}
+  ]
+}}
+
+If no corrections needed, return: {{""corrections"": []}}
+
+Fields to validate:
+{System.Text.Json.JsonSerializer.Serialize(fieldValidationData, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })}
+
+Response (JSON only):";
+
+            try
+            {
+                // Step 3: Call Groq API
+                var response = await _groqService.CallGroqApiAsync(prompt, default);
+
+                if (string.IsNullOrEmpty(response))
+                {
+                    _logger.LogWarning("[GROQ_VALIDATOR] No response from Groq, returning original fields");
+                    return fields;
+                }
+
+                // Step 4: Parse corrections
+                var corrections = ParseGroqCorrections(response);
+                _logger.LogInformation($"[GROQ_VALIDATOR] Received {corrections.Count} correction suggestions");
+
+                // Step 5: Apply corrections
+                int correctedCount = 0;
+                foreach (var correction in corrections)
+                {
+                    if (correction.Confidence < 0.85f)
+                    {
+                        _logger.LogDebug($"[GROQ_VALIDATOR] Skipping low-confidence correction for {correction.FieldId} (confidence={correction.Confidence})");
+                        continue;
+                    }
+
+                    var field = fieldsToValidate.FirstOrDefault(f => f.ShortId == correction.FieldId);
+                    if (field != null)
+                    {
+                        var oldName = field.FieldName;
+                        field.FieldName = correction.NewLabel;
+                        field.Source += "+GroqValidated";
+                        correctedCount++;
+
+                        _logger.LogInformation($"[GROQ_VALIDATOR] ✅ Corrected '{oldName}' → '{correction.NewLabel}' (confidence={correction.Confidence:F2}, reason: {correction.Reason})");
+                    }
+                }
+
+                _logger.LogInformation($"[GROQ_VALIDATOR] 📊 Validated {fieldsToValidate.Count} fields, corrected {correctedCount}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[GROQ_VALIDATOR] Error during Groq validation");
+            }
+
+            return fields;
+        }
+
+        private string ExtractNearbyText(FieldDetectionResult field, string markdown)
+        {
+            // Extract text within ~200 characters before the field position
+            // This is a simple heuristic - could be improved with better markdown parsing
+            var lines = markdown.Split('\n');
+            var contextLines = new List<string>();
+
+            foreach (var line in lines)
+            {
+                // Simple heuristic: look for lines that might contain the field context
+                if (line.Length > 5 && line.Length < 200)
+                {
+                    contextLines.Add(line.Trim());
+                }
+
+                if (contextLines.Count >= 10)
+                    break;
+            }
+
+            return string.Join(" ", contextLines.Take(5));
+        }
+
+        private bool HasSemanticMismatch(string fieldLabel, string nearbyText, string fieldType)
+        {
+            if (string.IsNullOrEmpty(fieldLabel) || string.IsNullOrEmpty(nearbyText))
+                return false;
+
+            var labelLower = fieldLabel.ToLower();
+            var textLower = nearbyText.ToLower();
+
+            // Check for obvious mismatches
+            var mismatches = new[]
+            {
+                (labelLower.Contains("man") || labelLower.Contains("woman"), textLower.Contains("license") || textLower.Contains("number")),
+                (labelLower.Contains("state"), textLower.Contains("gender") || textLower.Contains("sex")),
+                (labelLower.Contains("staff"), textLower.Contains("date") || textLower.Contains("signed")),
+                (labelLower.Contains("gender"), textLower.Contains("license") || textLower.Contains("state")),
+                (fieldType == "signature", textLower.Contains("date") && !textLower.Contains("sign"))
+            };
+
+            return mismatches.Any(m => m.Item1 && m.Item2);
+        }
+
+        private List<GroqCorrection> ParseGroqCorrections(string response)
+        {
+            var corrections = new List<GroqCorrection>();
+
+            try
+            {
+                // Clean up response - remove markdown if present
+                var jsonStart = response.IndexOf('{');
+                var jsonEnd = response.LastIndexOf('}');
+                if (jsonStart >= 0 && jsonEnd > jsonStart)
+                {
+                    response = response.Substring(jsonStart, jsonEnd - jsonStart + 1);
+                }
+
+                var json = System.Text.Json.JsonDocument.Parse(response);
+                if (json.RootElement.TryGetProperty("corrections", out var correctionsArray))
+                {
+                    foreach (var item in correctionsArray.EnumerateArray())
+                    {
+                        var correction = new GroqCorrection
+                        {
+                            FieldId = item.TryGetProperty("id", out var id) ? id.GetString() : "",
+                            NewLabel = item.TryGetProperty("new_label", out var label) ? label.GetString() : "",
+                            Confidence = item.TryGetProperty("confidence", out var conf) ? (float)conf.GetDouble() : 0.5f,
+                            Reason = item.TryGetProperty("reason", out var reason) ? reason.GetString() : ""
+                        };
+
+                        if (!string.IsNullOrEmpty(correction.FieldId) && !string.IsNullOrEmpty(correction.NewLabel))
+                        {
+                            corrections.Add(correction);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[GROQ_VALIDATOR] Failed to parse Groq response: {Response}", response);
+            }
+
+            return corrections;
+        }
+
+        private class GroqCorrection
+        {
+            public string FieldId { get; set; }
+            public string NewLabel { get; set; }
+            public float Confidence { get; set; }
+            public string Reason { get; set; }
         }
 
     }
