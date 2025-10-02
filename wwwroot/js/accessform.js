@@ -299,6 +299,8 @@ window.accessForm = {
                 if (config.useGoogle !== undefined) formData.append("useGoogle", String(config.useGoogle));
                 if (config.useClaudeVision !== undefined) formData.append("useClaudeVision", String(config.useClaudeVision));
                 if (config.useClaudeValidation !== undefined) formData.append("useClaudeValidation", String(config.useClaudeValidation));
+                if (config.useGroqValidation !== undefined) formData.append("useGroqValidation", String(config.useGroqValidation));
+                if (config.useSignatureDetection !== undefined) formData.append("useSignatureDetection", String(config.useSignatureDetection));
                 if (config.mode !== undefined) formData.append("mode", config.mode);
                 if (config.debugMode !== undefined) formData.append("debugMode", String(config.debugMode));
                 if (config.showFieldIds !== undefined) formData.append("showFieldIds", String(config.showFieldIds));
@@ -360,6 +362,8 @@ window.accessForm = {
                 if (config.useGoogle !== undefined) formData.append("useGoogle", String(config.useGoogle));
                 if (config.useClaudeVision !== undefined) formData.append("useClaudeVision", String(config.useClaudeVision));
                 if (config.useClaudeValidation !== undefined) formData.append("useClaudeValidation", String(config.useClaudeValidation));
+                if (config.useGroqValidation !== undefined) formData.append("useGroqValidation", String(config.useGroqValidation));
+                if (config.useSignatureDetection !== undefined) formData.append("useSignatureDetection", String(config.useSignatureDetection));
                 if (config.mode !== undefined) formData.append("mode", config.mode);
                 if (config.debugMode !== undefined) formData.append("debugMode", String(config.debugMode));
                 if (config.showFieldIds !== undefined) formData.append("showFieldIds", String(config.showFieldIds));
