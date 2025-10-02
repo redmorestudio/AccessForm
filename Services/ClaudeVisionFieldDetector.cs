@@ -430,8 +430,13 @@ POSITIONING (CRITICAL):
 DETECTION REQUIREMENTS:
 1. Find ALL fields - count carefully, don't miss any
 2. Detect ALL checkboxes (□ ☐ [ ]) - forms often have 10-20+
-3. Provide EXACT bounds for each field
-4. Use precise field labels from the form
+3. Detect ALL signature fields - look for:
+   - Large ""X"" markers (common signature placeholder)
+   - Labels containing ""Signature:"", ""Sign here:"", ""Signed:"", etc.
+   - Horizontal lines with ""X"" or ""Signature"" nearby
+   - Wider rectangular areas (signature fields are typically 2-4x wider than regular text fields)
+4. Provide EXACT bounds for each field
+5. Use precise field labels from the form
 
 ***RETURN ONLY THE JSON - NO EXPLANATORY TEXT BEFORE OR AFTER***";
                 
