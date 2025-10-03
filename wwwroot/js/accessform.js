@@ -535,6 +535,7 @@ window.accessForm = {
                         formData.append('useClaudeVision', 'true');
                         formData.append('useClaudeValidation', 'true');
                         formData.append('useGroqValidation', 'true');
+                        formData.append('useSignatureDetection', 'true');
                         formData.append('useAsposeFontEmbed', 'true');
 
                         // Make the fetch request to PassportPDF endpoint

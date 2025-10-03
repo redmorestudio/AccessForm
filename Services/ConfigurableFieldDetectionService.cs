@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Syncfusion.DocIO;
@@ -16,6 +18,7 @@ using AccessFormServer.Services;
 using WordToPdfConverter.Models;
 using WordToPdfConverter.Services;
 using PDFtoImage;
+using SkiaSharp;
 
 namespace WordToPdfConverter.Services
 {
@@ -34,6 +37,8 @@ namespace WordToPdfConverter.Services
         private readonly ClaudeBoundingBoxValidator _boundingBoxValidator;
         private readonly NLPLabelGenerator _nlpGenerator;
         private readonly LlamaGroqService _groqService;
+        private readonly Microsoft.Extensions.Configuration.IConfiguration _configuration;
+        private readonly HttpClient _httpClient;
         private int _fieldCounter = 0;
 
         public ConfigurableFieldDetectionService(
@@ -46,6 +51,8 @@ namespace WordToPdfConverter.Services
             GoogleDocumentAiService googleAiService,
             ClaudeBoundingBoxValidator boundingBoxValidator,
             NLPLabelGenerator nlpGenerator,
+            Microsoft.Extensions.Configuration.IConfiguration configuration,
+            HttpClient httpClient,
             LlamaGroqService groqService = null)
         {
             _logger = logger;
@@ -57,6 +64,8 @@ namespace WordToPdfConverter.Services
             _googleAiService = googleAiService;
             _boundingBoxValidator = boundingBoxValidator;
             _nlpGenerator = nlpGenerator;
+            _configuration = configuration;
+            _httpClient = httpClient;
             _groqService = groqService;
 
             // DEBUG: Log service initialization status
@@ -2508,222 +2517,270 @@ Document:
         }
 
         /// <summary>
-        /// Use Groq to validate field labels against nearby question text (sanity check)
+        /// Use Claude Vision to validate field labels by showing annotated images
         /// </summary>
         private async Task<List<FieldDetectionResult>> ValidateFieldLabelsWithGroq(
             List<FieldDetectionResult> fields,
             string pdfMarkdown,
             byte[] pdfBytes)
         {
-            if (_groqService == null)
+            if (_visionDetector == null)
             {
-                _logger.LogWarning("[GROQ_VALIDATOR] Groq service not available, skipping validation");
+                _logger.LogWarning("[VISION_VALIDATOR] Claude Vision not available, skipping validation");
                 return fields;
             }
 
-            if (string.IsNullOrEmpty(pdfMarkdown))
+            if (pdfBytes == null || pdfBytes.Length == 0)
             {
-                _logger.LogWarning("[GROQ_VALIDATOR] No markdown available for validation");
+                _logger.LogWarning("[VISION_VALIDATOR] No PDF bytes available for validation");
                 return fields;
             }
 
-            _logger.LogInformation($"[GROQ_VALIDATOR] Starting field label validation for {fields.Count} fields...");
-
-            // Step 1: Pre-filter high-confidence fields (skip validation)
-            var fieldsToValidate = new List<FieldDetectionResult>();
-            var highConfidenceFields = new List<FieldDetectionResult>();
-
-            foreach (var field in fields)
-            {
-                // Skip validation if high confidence
-                if (field.Confidence >= 0.9f)
-                {
-                    highConfidenceFields.Add(field);
-                    continue;
-                }
-
-                // Skip validation if field has generic auto-generated name
-                if (string.IsNullOrEmpty(field.FieldName) ||
-                    field.FieldName.StartsWith("text", StringComparison.OrdinalIgnoreCase) ||
-                    field.FieldName.StartsWith("field", StringComparison.OrdinalIgnoreCase) ||
-                    field.FieldName.StartsWith("checkbox", StringComparison.OrdinalIgnoreCase) ||
-                    System.Text.RegularExpressions.Regex.IsMatch(field.FieldName, @"^[a-f0-9]{12,}$")) // Hex IDs
-                {
-                    fieldsToValidate.Add(field);
-                    continue;
-                }
-
-                // Check for obvious semantic mismatch
-                var nearbyText = ExtractNearbyText(field, pdfMarkdown);
-                if (HasSemanticMismatch(field.FieldName, nearbyText, field.FieldType))
-                {
-                    fieldsToValidate.Add(field);
-                }
-                else
-                {
-                    highConfidenceFields.Add(field);
-                }
-            }
-
-            _logger.LogInformation($"[GROQ_VALIDATOR] Pre-filter: {highConfidenceFields.Count} high-confidence, {fieldsToValidate.Count} to validate");
-
-            if (!fieldsToValidate.Any())
-            {
-                _logger.LogInformation("[GROQ_VALIDATOR] No fields need validation");
-                return fields;
-            }
-
-            // Step 2: Build batch validation prompt
-            var fieldValidationData = new List<object>();
-            foreach (var field in fieldsToValidate.Take(50)) // Limit to 50 fields per batch
-            {
-                var nearbyText = ExtractNearbyText(field, pdfMarkdown);
-                fieldValidationData.Add(new
-                {
-                    id = field.ShortId,
-                    label = field.FieldName,
-                    type = field.FieldType,
-                    nearby_text = nearbyText
-                });
-            }
-
-            var prompt = $@"You are a PDF form field validation assistant. Your task is to validate and correct form field labels based on their visual context.
-
-For each field provided, analyze:
-- Current label vs surrounding text (primary context)
-- Field characteristics (position, type, format hints)
-- Common patterns: ""Date:"", ""Signature:"", ""Check if:"", ""Enter your""
-
-Rules:
-- Be conservative - only correct if clearly wrong (confidence >= 0.85)
-- If current label is correct, do NOT include it in corrections
-- Match field type to likely input format
-- Use surrounding text as the authoritative source
-
-Common mistakes to catch:
-- Field labeled ""Man"" but context says ""License Number"" → correct to ""License Number""
-- Field labeled ""State"" but context says ""Gender"" → correct to ""Gender""
-- Field labeled ""Staff"" but context says ""Date Signed"" → correct to ""Date Signed""
-- Signature field but text says ""Date"" → correct type to ""date""
-
-Return ONLY valid JSON (no markdown, no explanations):
-
-{{
-  ""corrections"": [
-    {{
-      ""id"": ""F1"",
-      ""corrected_label"": ""License Number"",
-      ""field_type"": ""text"",
-      ""confidence"": 0.95,
-      ""reasoning"": ""Context 'License Number: ___' clearly indicates this field""
-    }}
-  ]
-}}
-
-If no corrections needed, return: {{""corrections"": []}}
-
-Fields to validate:
-{System.Text.Json.JsonSerializer.Serialize(fieldValidationData, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })}
-
-Response (JSON only):";
+            _logger.LogInformation($"[VISION_VALIDATOR] Starting vision-based field label validation for {fields.Count} fields...");
 
             try
             {
-                // Step 3: Call Groq API
-                var response = await _groqService.CallGroqApiAsync(prompt, default);
+                // Group fields by page
+                var fieldsByPage = fields.GroupBy(f => f.PageNumber).OrderBy(g => g.Key).ToList();
+                _logger.LogInformation($"[VISION_VALIDATOR] Validating fields across {fieldsByPage.Count} pages");
 
-                if (string.IsNullOrEmpty(response))
+                int totalCorrected = 0;
+
+                // Process each page
+                foreach (var pageGroup in fieldsByPage)
                 {
-                    _logger.LogWarning("[GROQ_VALIDATOR] No response from Groq, returning original fields");
-                    return fields;
-                }
+                    var pageNumber = pageGroup.Key;
+                    var pageFields = pageGroup.ToList();
 
-                // Step 4: Parse corrections
-                var corrections = ParseGroqCorrections(response);
-                _logger.LogInformation($"[GROQ_VALIDATOR] Received {corrections.Count} correction suggestions");
+                    _logger.LogInformation($"[VISION_VALIDATOR] Processing page {pageNumber} with {pageFields.Count} fields");
 
-                // Step 5: Apply corrections
-                int correctedCount = 0;
-                foreach (var correction in corrections)
-                {
-                    if (correction.Confidence < 0.85f)
+                    // Render PDF page with annotated field labels
+                    var annotatedImageBytes = await RenderAnnotatedPageImage(pdfBytes, pageNumber - 1, pageFields);
+                    if (annotatedImageBytes == null)
                     {
-                        _logger.LogDebug($"[GROQ_VALIDATOR] Skipping low-confidence correction for {correction.FieldId} (confidence={correction.Confidence})");
+                        _logger.LogWarning($"[VISION_VALIDATOR] Failed to render annotated image for page {pageNumber}, skipping");
                         continue;
                     }
 
-                    var field = fieldsToValidate.FirstOrDefault(f => f.ShortId == correction.FieldId);
-                    if (field != null)
+                    // Call Claude Vision to validate labels
+                    var corrections = await ValidateFieldLabelsWithVision(annotatedImageBytes, pageFields);
+
+                    // Apply corrections
+                    foreach (var correction in corrections)
                     {
-                        var oldName = field.FieldName;
-                        var oldType = field.FieldType;
-
-                        field.FieldName = correction.NewLabel;
-                        if (!string.IsNullOrEmpty(correction.FieldType))
+                        var field = pageFields.FirstOrDefault(f => f.ShortId == correction.FieldId);
+                        if (field != null && correction.Confidence >= 0.5f)
                         {
-                            field.FieldType = correction.FieldType;
-                        }
-                        field.Source += "+GroqValidated";
-                        correctedCount++;
+                            var oldName = field.FieldName;
+                            field.FieldName = correction.NewLabel;
+                            if (!string.IsNullOrEmpty(correction.FieldType))
+                            {
+                                field.FieldType = correction.FieldType;
+                            }
+                            field.Source += "+VisionValidated";
+                            totalCorrected++;
 
-                        var typeChange = !string.IsNullOrEmpty(correction.FieldType) && oldType != correction.FieldType
-                            ? $", type: {oldType} → {correction.FieldType}"
-                            : "";
-                        _logger.LogInformation($"[GROQ_VALIDATOR] ✅ Corrected '{oldName}' → '{correction.NewLabel}'{typeChange} (confidence={correction.Confidence:F2}, reason: {correction.Reason})");
+                            _logger.LogInformation($"[VISION_VALIDATOR] ✅ Corrected '{oldName}' → '{correction.NewLabel}' (confidence={correction.Confidence:F2})");
+                        }
                     }
                 }
 
-                _logger.LogInformation($"[GROQ_VALIDATOR] 📊 Validated {fieldsToValidate.Count} fields, corrected {correctedCount}");
+                _logger.LogInformation($"[VISION_VALIDATOR] 📊 Validated {fields.Count} fields across {fieldsByPage.Count} pages, corrected {totalCorrected}");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[GROQ_VALIDATOR] Error during Groq validation");
+                _logger.LogError(ex, "[VISION_VALIDATOR] Error during vision validation");
             }
 
             return fields;
         }
 
-        private string ExtractNearbyText(FieldDetectionResult field, string markdown)
+        /// <summary>
+        /// Render a PDF page with annotated field rectangles and labels
+        /// </summary>
+        private async Task<byte[]> RenderAnnotatedPageImage(byte[] pdfBytes, int pageIndex, List<FieldDetectionResult> fields)
         {
-            // Extract text within ~200 characters before the field position
-            // This is a simple heuristic - could be improved with better markdown parsing
-            var lines = markdown.Split('\n');
-            var contextLines = new List<string>();
-
-            foreach (var line in lines)
+            try
             {
-                // Simple heuristic: look for lines that might contain the field context
-                if (line.Length > 5 && line.Length < 200)
+                // Use PDFtoImage to render the page
+                using var bitmap = PDFtoImage.Conversion.ToImage(pdfBytes, pageIndex,
+                    options: new PDFtoImage.RenderOptions
+                    {
+                        Dpi = 150,
+                        AntiAliasing = PDFtoImage.PdfAntiAliasing.All
+                    });
+
+                if (bitmap == null)
                 {
-                    contextLines.Add(line.Trim());
+                    _logger.LogWarning($"[VISION_VALIDATOR] PDFtoImage returned null for page {pageIndex + 1}");
+                    return null;
                 }
 
-                if (contextLines.Count >= 10)
-                    break;
-            }
+                // Convert to SKBitmap for drawing
+                using var skBitmap = SKBitmap.FromImage(SKImage.FromBitmap(bitmap));
+                using var canvas = new SKCanvas(skBitmap);
 
-            return string.Join(" ", contextLines.Take(5));
+                // Draw field annotations
+                int fieldIndex = 0;
+                foreach (var field in fields)
+                {
+                    fieldIndex++;
+                    var fieldId = field.ShortId ?? $"F{fieldIndex}";
+
+                    // Calculate rectangle (PDF coordinates to image coordinates)
+                    var scale = 150f / 72f; // DPI scaling
+                    var rect = new SKRect(
+                        field.X * scale,
+                        field.Y * scale,
+                        (field.X + field.Width) * scale,
+                        (field.Y + field.Height) * scale
+                    );
+
+                    // Draw semi-transparent yellow rectangle
+                    using var fieldPaint = new SKPaint
+                    {
+                        Color = SKColors.Yellow.WithAlpha(100),
+                        Style = SKPaintStyle.Fill
+                    };
+                    canvas.DrawRect(rect, fieldPaint);
+
+                    // Draw red border
+                    using var borderPaint = new SKPaint
+                    {
+                        Color = SKColors.Red,
+                        Style = SKPaintStyle.Stroke,
+                        StrokeWidth = 2
+                    };
+                    canvas.DrawRect(rect, borderPaint);
+
+                    // Draw label above the rectangle
+                    var label = $"{fieldId}: {field.FieldName}";
+                    using var textPaint = new SKPaint
+                    {
+                        Color = SKColors.Black,
+                        TextSize = 12,
+                        IsAntialias = true,
+                        Typeface = SKTypeface.FromFamilyName("Arial", SKFontStyle.Bold)
+                    };
+
+                    // Draw white background for text
+                    var textBounds = new SKRect();
+                    textPaint.MeasureText(label, ref textBounds);
+                    var textX = rect.Left;
+                    var textY = rect.Top - 5;
+
+                    using var bgPaint = new SKPaint
+                    {
+                        Color = SKColors.White.WithAlpha(200),
+                        Style = SKPaintStyle.Fill
+                    };
+                    canvas.DrawRect(new SKRect(textX, textY - textBounds.Height - 2,
+                                               textX + textBounds.Width + 4, textY + 2), bgPaint);
+
+                    canvas.DrawText(label, textX + 2, textY, textPaint);
+                }
+
+                // Convert to PNG
+                using var image = SKImage.FromBitmap(skBitmap);
+                using var data = image.Encode(SKEncodedImageFormat.Png, 85);
+                return data.ToArray();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"[VISION_VALIDATOR] Error rendering annotated image for page {pageIndex + 1}");
+                return null;
+            }
         }
 
-        private bool HasSemanticMismatch(string fieldLabel, string nearbyText, string fieldType)
+        /// <summary>
+        /// Call Claude Vision API to validate field labels on an annotated image
+        /// </summary>
+        private async Task<List<GroqCorrection>> ValidateFieldLabelsWithVision(byte[] imageBytes, List<FieldDetectionResult> fields)
         {
-            if (string.IsNullOrEmpty(fieldLabel) || string.IsNullOrEmpty(nearbyText))
-                return false;
+            var corrections = new List<GroqCorrection>();
 
-            var labelLower = fieldLabel.ToLower();
-            var textLower = nearbyText.ToLower();
-
-            // Check for obvious mismatches
-            var mismatches = new[]
+            try
             {
-                (labelLower.Contains("man") || labelLower.Contains("woman"), textLower.Contains("license") || textLower.Contains("number")),
-                (labelLower.Contains("state"), textLower.Contains("gender") || textLower.Contains("sex")),
-                (labelLower.Contains("staff"), textLower.Contains("date") || textLower.Contains("signed")),
-                (labelLower.Contains("gender"), textLower.Contains("license") || textLower.Contains("state")),
-                (fieldType == "signature", textLower.Contains("date") && !textLower.Contains("sign"))
-            };
+                var base64Image = Convert.ToBase64String(imageBytes);
 
-            return mismatches.Any(m => m.Item1 && m.Item2);
+                // Build field list for prompt
+                var fieldList = string.Join("\n", fields.Select(f => $"- {f.ShortId ?? "F?"}: \"{f.FieldName}\" (type: {f.FieldType})"));
+
+                var prompt = $@"You are validating form field labels on this PDF page. I've annotated each field with a colored rectangle and its current AI-detected label.
+
+Fields detected:
+{fieldList}
+
+Look at each annotated field and check if the label matches the nearby text in the form. Common issues:
+- Field labeled ""Birth State"" but nearby text says ""Printed Name""
+- Field labeled ""Man"" but nearby text says ""License Number""
+- Field labeled ""State"" but nearby text says ""Gender""
+
+For ANY field where the label doesn't match the nearby context text, provide a correction.
+
+Return ONLY valid JSON (no markdown):
+{{
+  ""corrections"": [
+    {{""id"": ""F1"", ""corrected_label"": ""Printed Name"", ""field_type"": ""text"", ""confidence"": 0.95, ""reasoning"": ""Context clearly shows 'Printed Name:'"" }}
+  ]
+}}
+
+If all labels are correct, return: {{""corrections"": []}}";
+
+                // Call Claude Vision API
+                var requestBody = new
+                {
+                    model = "claude-3-5-sonnet-20241022",
+                    max_tokens = 2048,
+                    temperature = 0.0,
+                    messages = new[]
+                    {
+                        new
+                        {
+                            role = "user",
+                            content = new object[]
+                            {
+                                new { type = "image", source = new { type = "base64", media_type = "image/png", data = base64Image } },
+                                new { type = "text", text = prompt }
+                            }
+                        }
+                    }
+                };
+
+                var apiKey = _configuration["ApiKeys:Anthropic"] ?? _configuration["AnthropicApiKey"];
+                var request = new HttpRequestMessage(System.Net.Http.HttpMethod.Post, "https://api.anthropic.com/v1/messages");
+                request.Headers.Add("x-api-key", apiKey);
+                request.Headers.Add("anthropic-version", "2023-06-01");
+                request.Content = new StringContent(
+                    System.Text.Json.JsonSerializer.Serialize(requestBody),
+                    System.Text.Encoding.UTF8,
+                    "application/json"
+                );
+
+                var response = await _httpClient.SendAsync(request);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var apiResponse = System.Text.Json.JsonSerializer.Deserialize<JsonElement>(responseContent);
+                    var content = apiResponse.GetProperty("content")[0].GetProperty("text").GetString();
+
+                    _logger.LogDebug($"[VISION_VALIDATOR] Raw response: {content?.Substring(0, Math.Min(500, content?.Length ?? 0))}");
+
+                    corrections = ParseGroqCorrections(content);
+                    _logger.LogInformation($"[VISION_VALIDATOR] Received {corrections.Count} correction suggestions");
+                }
+                else
+                {
+                    _logger.LogWarning($"[VISION_VALIDATOR] API call failed: {response.StatusCode} - {responseContent}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[VISION_VALIDATOR] Error calling Claude Vision API");
+            }
+
+            return corrections;
         }
 
         private List<GroqCorrection> ParseGroqCorrections(string response)
