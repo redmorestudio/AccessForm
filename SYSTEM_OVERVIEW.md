@@ -1,5 +1,5 @@
 # AccessForm System Overview
-**Last Updated:** 2025-10-01
+**Last Updated:** 2025-01-03
 **Repository:** https://github.com/redmorestudio/AccessForm
 **Current Branch:** feature/cherry-pick-improvements
 **Development Port:** http://localhost:5001
@@ -14,9 +14,15 @@ AccessForm converts Word documents into Section 508/WCAG 2.1 compliant, accessib
 - **Backend:** ASP.NET Core 8.0 (C#)
 - **Frontend:** Blazor Server (not WebAssembly)
 - **PDF Processing:** Aspose.PDF, Syncfusion PDF
-- **AI Field Detection:** Claude Vision API (claude-3-opus-20240229)
+- **AI Field Detection:** Claude Sonnet 4.5 (claude-sonnet-4-20250514), planned GPT-5 Vision
 - **Image Processing:** SkiaSharp
 - **Development Port:** http://localhost:5001
+
+### Recent Major Updates (2025-01-03)
+- ✅ **Upgraded all Claude API calls to Sonnet 4.5** for improved accuracy
+- ✅ **Fixed signature field detection** - now preserves visual signature fields (e.g., "Signature: X")
+- ✅ **Added OpenAI API key** for planned multi-stage validation pipeline
+- 📋 **Multi-Stage Validation Plan** - See MULTI_STAGE_VALIDATION_PLAN.md for details
 
 ### Document Processing Pipeline
 ```

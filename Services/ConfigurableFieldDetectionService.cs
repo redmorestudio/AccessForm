@@ -2052,20 +2052,64 @@ Document:
                 }
             }
 
-            // Add unused Claude fields as pure Claude fields
+            // Add unused Claude SIGNATURE fields from the original visionResults
+            // Go back to original vision results to get actual percentage-based coordinates
+            foreach (var page in visionResults)
+            {
+                // Find signature fields that weren't matched/used
+                var unmatchedSignatures = page.Fields.Where(vField =>
+                    !allUsedLabels.Contains(vField.FieldName) &&
+                    vField.FieldType?.ToLower() == "signature").ToList();
+
+                if (unmatchedSignatures.Any())
+                {
+                    _logger.LogWarning($"🖋️🖋️🖋️ [SIGNATURE_VISION] Found {unmatchedSignatures.Count} unmatched signature fields from Claude Vision on page {page.PageNumber} - ADDING THEM!");
+
+                    foreach (var vField in unmatchedSignatures)
+                    {
+                        // Convert percentage-based bounds to PDF coordinates
+                        float pdfX = (vField.Bounds.XPercent / 100f) * 612f;  // Standard letter width
+                        float pdfY = (vField.Bounds.YPercent / 100f) * 792f;  // Standard letter height
+                        float pdfWidth = (vField.Bounds.WidthPercent / 100f) * 612f;
+                        float pdfHeight = (vField.Bounds.HeightPercent / 100f) * 792f;
+
+                        var newSigField = new FieldDetectionResult
+                        {
+                            ShortId = $"SIG{enhancedFields.Count + 1}",
+                            FieldName = vField.FieldName,
+                            FieldType = "signature",
+                            X = pdfX,
+                            Y = pdfY,
+                            Width = pdfWidth,
+                            Height = pdfHeight,
+                            PageNumber = page.PageNumber,
+                            Source = "ClaudeVision+Signature",
+                            Confidence = 0.85f,
+                            IsValid = true,
+                            HasValidCoordinates = true,
+                            Tooltip = $"Signature field detected visually by Claude"
+                        };
+
+                        enhancedFields.Add(newSigField);
+                        _logger.LogWarning($"🖋️🖋️🖋️ [SIGNATURE_ADDED] Added signature field: '{newSigField.FieldName}' at ({pdfX:F1}, {pdfY:F1}) on page {page.PageNumber}");
+                    }
+                }
+            }
+
+            // Count other unmatched Claude fields but don't add them
+            // Claude is ONLY for naming and typing existing Syncfusion fields (except signatures)
             foreach (var sfPageGroup in sfFieldsByPage)
             {
                 var pageNum = sfPageGroup.Key;
                 var cvPageGroup = cvFieldsByPage.FirstOrDefault(g => g.Key == pageNum);
                 var cvFields = cvPageGroup?.ToList() ?? new List<FieldDetectionResult>();
 
-                // REMOVED: Claude should NEVER contribute position information
-                // Claude is ONLY for naming and typing existing Syncfusion fields
-                // Count unmatched Claude fields but don't add them
-                int unmatchedClaudeFields = cvFields.Count(cvField => !allUsedLabels.Contains(cvField.FieldName) && cvField.HasValidCoordinates);
-                if (unmatchedClaudeFields > 0)
+                int unmatchedNonSigFields = cvFields.Count(cvField =>
+                    !allUsedLabels.Contains(cvField.FieldName) &&
+                    cvField.FieldType?.ToLower() != "signature");
+                if (unmatchedNonSigFields > 0)
                 {
-                    _logger.LogWarning($"[CLAUDE_POSITION_REMOVED] Not adding {unmatchedClaudeFields} unmatched Claude fields - Claude only provides names/types, not positions");
+                    _logger.LogWarning($"[CLAUDE_POSITION_REMOVED] Not adding {unmatchedNonSigFields} unmatched non-signature Claude fields on page {pageNum} - Claude only provides names/types for existing fields");
                 }
             }
 
@@ -2730,7 +2774,7 @@ If all labels are correct, return: {{""corrections"": []}}";
                 // Call Claude Vision API
                 var requestBody = new
                 {
-                    model = "claude-3-5-sonnet-20241022",
+                    model = "claude-sonnet-4-20250514",
                     max_tokens = 2048,
                     temperature = 0.0,
                     messages = new[]
