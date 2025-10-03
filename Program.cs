@@ -1219,9 +1219,7 @@ app.MapPost("/api/convert-with-ai", async (
             }
             
             // Check if autotagging is requested from the form
-            var useAdobeAutotag = request.Form.ContainsKey("useAdobeAutotag") && 
-                                  request.Form["useAdobeAutotag"] == "true";
-            var useAsposeAutotag = request.Form.ContainsKey("useAsposeAutotag") && 
+            var useAsposeAutotag = request.Form.ContainsKey("useAsposeAutotag") &&
                                    request.Form["useAsposeAutotag"] == "true";
             var useAsposeFontEmbed = request.Form.ContainsKey("useAsposeFontEmbed") && 
                                       request.Form["useAsposeFontEmbed"] == "true";
@@ -1231,13 +1229,12 @@ app.MapPost("/api/convert-with-ai", async (
             // Create service options based on form inputs
             var serviceOptions = new PdfCompleteRebuildService.ServiceOptions
             {
-                UseAdobeAutotag = useAdobeAutotag,
                 UseAsposeAutotag = useAsposeAutotag,
                 UseAsposeFontEmbed = useAsposeFontEmbed,
                 UsePassportPdf = usePassportPdf
             };
-            
-            logger.LogInformation($"Rebuild options: Adobe={useAdobeAutotag}, Aspose={useAsposeAutotag}, FontEmbed={useAsposeFontEmbed}, PassportPdf={usePassportPdf}");
+
+            logger.LogInformation($"Rebuild options: Aspose={useAsposeAutotag}, FontEmbed={useAsposeFontEmbed}, PassportPdf={usePassportPdf}");
             
             // Call the rebuild method with the service options
             var rebuildResult = await completeRebuildService.CompletelyRebuildPdfAsync(normalPdfBytes, fieldUpdates, serviceOptions);
@@ -3834,14 +3831,12 @@ app.MapPost("/api/convert-with-config", async (
 
         logger.LogInformation($"Field detection completed. Found {fields?.Count ?? 0} fields");
 
-        // ALWAYS apply font embedding for WCAG/Section 508 compliance
-        // Font embedding is mandatory for accessibility - no checkbox needed
-        logger.LogInformation("Applying Aspose font embedding for accessibility compliance (always enabled)");
+        // Apply font embedding based on configuration (defaults to true for compliance)
+        var useAsposeFontEmbed = request.Form["useAsposeFontEmbed"].ToString()?.ToLower() != "false"; // Default to true
 
-        // Apply font embedding unconditionally
-        if (completeRebuildService != null)
+        if (useAsposeFontEmbed && completeRebuildService != null)
         {
-            logger.LogInformation("Applying Aspose font embedding to PDF");
+            logger.LogInformation("Applying Aspose font embedding for accessibility compliance");
 
             // Create empty field updates list since fields are already in the PDF
             var fieldUpdates = new List<PdfCompleteRebuildService.FieldUpdate>();
@@ -3849,13 +3844,12 @@ app.MapPost("/api/convert-with-config", async (
             // Create service options
             var serviceOptions = new PdfCompleteRebuildService.ServiceOptions
             {
-                UseAdobeAutotag = false,
                 UseAsposeAutotag = false,
                 UseAsposeFontEmbed = true,
                 UsePassportPdf = false
             };
 
-            logger.LogInformation("Rebuild options: Adobe=False, Aspose=False, FontEmbed=True, PassportPdf=False");
+            logger.LogInformation("Rebuild options: Aspose=False, FontEmbed=True, PassportPdf=False");
 
             // Run the font embedding
             var rebuildResult = await completeRebuildService.CompletelyRebuildPdfAsync(pdfBytes, fieldUpdates, serviceOptions);
@@ -3869,6 +3863,10 @@ app.MapPost("/api/convert-with-config", async (
             {
                 logger.LogWarning($"Font embedding failed: {rebuildResult.ErrorMessage}");
             }
+        }
+        else if (!useAsposeFontEmbed)
+        {
+            logger.LogInformation("Aspose font embedding disabled by user");
         }
 
         // Return response in expected format WITH detected fields for the frontend
@@ -3929,6 +3927,7 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
     HttpRequest request,
     ConfigurableFieldDetectionService fieldService,
     PassportPdfService passportPdfService,
+    PdfCompleteRebuildService completeRebuildService,
     ILogger<Program> logger) =>
 {
     try
@@ -3939,10 +3938,12 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
         }
 
         var file = request.Form.Files[0];
+        var isDocx = file.FileName.EndsWith(".docx", StringComparison.OrdinalIgnoreCase);
+        var isPdf = file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
 
-        if (!file.FileName.EndsWith(".docx", StringComparison.OrdinalIgnoreCase))
+        if (!isDocx && !isPdf)
         {
-            return Results.BadRequest("Please upload a .docx file");
+            return Results.BadRequest("Please upload a .docx or .pdf file");
         }
 
         using var stream = file.OpenReadStream();
@@ -3972,8 +3973,22 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
 
         logger.LogInformation($"Processing {file.FileName} with PassportPDF - Config: Syncfusion={config.Services.UseSyncfusion}, ClaudeVision={config.Services.UseClaudeVision}");
 
-        // First convert with field detection
-        var (pdfBytes, fields) = await fieldService.ConvertWithConfig(fileBytes, file.FileName, config);
+        byte[] pdfBytes;
+        List<WordToPdfConverter.Models.FieldDetectionResult> fields;
+
+        if (isPdf)
+        {
+            // PDF uploaded directly - use as-is, no conversion needed
+            logger.LogInformation($"PDF uploaded directly: {file.FileName}, skipping Word conversion");
+            pdfBytes = fileBytes;
+            // For now, return empty field list - PDF field detection will be added later
+            fields = new List<WordToPdfConverter.Models.FieldDetectionResult>();
+        }
+        else
+        {
+            // Word document - convert to PDF then detect fields
+            (pdfBytes, fields) = await fieldService.ConvertWithConfig(fileBytes, file.FileName, config);
+        }
 
         // Log field names that will be preserved in PDF
         if (fields != null && fields.Count > 0)
@@ -3984,6 +3999,44 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
             {
                 logger.LogInformation($"[PASSPORT FIELD] '{field.FieldName}' ({field.FieldType}) on page {field.PageNumber}");
             }
+        }
+
+        // Apply Aspose font embedding BEFORE PassportPDF (belt-and-suspenders approach)
+        var useAsposeFontEmbed = request.Form["useAsposeFontEmbed"].ToString()?.ToLower() != "false"; // Default to true
+
+        if (useAsposeFontEmbed && completeRebuildService != null)
+        {
+            logger.LogInformation("Applying Aspose font embedding before PassportPDF");
+
+            // Create empty field updates list since fields are already in the PDF
+            var fieldUpdates = new List<PdfCompleteRebuildService.FieldUpdate>();
+
+            // Create service options
+            var serviceOptions = new PdfCompleteRebuildService.ServiceOptions
+            {
+                UseAsposeAutotag = false,
+                UseAsposeFontEmbed = true,
+                UsePassportPdf = false
+            };
+
+            logger.LogInformation("Rebuild options: Aspose=False, FontEmbed=True, PassportPdf=False");
+
+            // Run the font embedding
+            var rebuildResult = await completeRebuildService.CompletelyRebuildPdfAsync(pdfBytes, fieldUpdates, serviceOptions);
+
+            if (rebuildResult.Success && rebuildResult.PdfBytes != null)
+            {
+                logger.LogInformation("Aspose font embedding successful");
+                pdfBytes = rebuildResult.PdfBytes;
+            }
+            else
+            {
+                logger.LogWarning($"Aspose font embedding failed: {rebuildResult.ErrorMessage}");
+            }
+        }
+        else if (!useAsposeFontEmbed)
+        {
+            logger.LogInformation("Aspose font embedding disabled by user");
         }
 
         // Then process with PassportPDF for PDF/UA compliance - PRESERVE FIELD NAMES

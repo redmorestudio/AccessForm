@@ -478,6 +478,7 @@ IMPORTANT: Use the document context above to accurately name fields. For example
                 {
                     model = "claude-3-5-sonnet-20241022",
                     max_tokens = 4096,
+                    temperature = 0.0,  // Make results deterministic
                     messages = new[]
                     {
                         new

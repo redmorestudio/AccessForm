@@ -108,7 +108,6 @@ namespace WordToPdfConverter.Services
         /// </summary>
         public class ServiceOptions
         {
-            public bool UseAdobeAutotag { get; set; } = true;
             public bool UseAsposeAutotag { get; set; } = false;
             public bool UseAsposeFontEmbed { get; set; } = true;
             public bool UsePassportPdf { get; set; } = false;
@@ -232,53 +231,14 @@ namespace WordToPdfConverter.Services
                         }
                         
                         // Step 3: ALWAYS run autotag LAST for proper accessibility tagging
-                        // Try Adobe first (if enabled), fallback to Aspose if Adobe fails or is unavailable
+                        // Use Aspose autotag if enabled
                         bool autotagSuccessful = false;
-                        
+
                         _logger.LogInformation($"===== CHECKING AUTOTAG SERVICES =====");
-                        _logger.LogInformation($"Adobe enabled: {options.UseAdobeAutotag}, Aspose enabled: {options.UseAsposeAutotag}");
-                        
-                        // Try Adobe autotag first (if enabled)
-                        if (options.UseAdobeAutotag && _adobeAutotagService != null)
-                        {
-                            var isConfigured = _adobeAutotagService.IsConfigured();
-                            _logger.LogInformation($"AdobeAutotagService.IsConfigured(): {isConfigured}");
-                            
-                            if (isConfigured)
-                            {
-                                try
-                                {
-                                    _logger.LogInformation("===== STEP 3A: ADOBE AUTOTAG FOR ACCESSIBILITY =====");
-                                    _logger.LogInformation($"Sending {rebuiltPdfBytes.Length} bytes to Adobe...");
-                                    var beforeAdobe = rebuiltPdfBytes.Length;
-                                    
-                                    rebuiltPdfBytes = await _adobeAutotagService.AutotagPdfAsync(rebuiltPdfBytes, generateReport: false);
-                                    
-                                    _logger.LogInformation($"===== ADOBE AUTOTAG COMPLETE =====");
-                                    _logger.LogInformation($"Received {rebuiltPdfBytes.Length} bytes from Adobe (was {beforeAdobe})");
-                                    autotagSuccessful = true;
-                                }
-                                catch (Exception ex)
-                                {
-                                    _logger.LogWarning(ex, "Adobe autotag failed, will try Aspose fallback");
-                                }
-                            }
-                            else
-                            {
-                                _logger.LogWarning("Adobe autotag service is not configured");
-                            }
-                        }
-                        else if (options.UseAdobeAutotag)
-                        {
-                            _logger.LogWarning("Adobe autotag requested but service is NULL");
-                        }
-                        else
-                        {
-                            _logger.LogInformation("Adobe autotag disabled by user");
-                        }
-                        
-                        // Try Aspose auto-tagging if enabled and Adobe didn't succeed
-                        if (!autotagSuccessful && options.UseAsposeAutotag && _asposePdfService != null && _asposePdfService.IsConfigured())
+                        _logger.LogInformation($"Aspose enabled: {options.UseAsposeAutotag}");
+
+                        // Try Aspose auto-tagging if enabled
+                        if (options.UseAsposeAutotag && _asposePdfService != null && _asposePdfService.IsConfigured())
                         {
                             try
                             {

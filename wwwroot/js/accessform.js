@@ -258,7 +258,7 @@ window.accessForm = {
                             data: '' // No base64 data needed
                         };
 
-                        await dotnetHelper.invokeMethodAsync('OnFileProcessedDirectly', fileData, result);
+                        await dotnetHelper.invokeMethodAsync('OnFileProcessedDirectly', fileData, JSON.stringify(result));
                     } else {
                         alert('File processing failed. Please try again.');
                     }
@@ -523,20 +523,31 @@ window.accessForm = {
                         }, 100);
 
                         const file = files[0];
-                        const endpoint = '/api/convert-with-config';
+                        const endpoint = '/api/process-with-passportpdf-auto';
 
-                        // Get the configuration from checkboxes
-                        const config = {
-                            useSyncfusion: document.querySelector('#useSyncfusion')?.checked ?? true,
-                            useGoogle: document.querySelector('#useGoogle')?.checked ?? false,
-                            useClaudeVision: document.querySelector('#useClaudeVision')?.checked ?? false,
-                            useClaudeValidation: document.querySelector('#useClaudeValidation')?.checked ?? false,
-                            mode: document.querySelector('input[name="processingMode"]:checked')?.value ?? 'Sequential',
-                            debugMode: document.querySelector('#debugMode')?.checked ?? true,
-                            showFieldIds: document.querySelector('#showFieldIds')?.checked ?? true
-                        };
+                        // Create FormData for PassportPDF endpoint
+                        const formData = new FormData();
+                        formData.append('file', file);
 
-                        const result = await window.accessForm.uploadOriginalFile(endpoint, file, config);
+                        // Add config parameters (defaults for PassportPDF)
+                        formData.append('useSyncfusion', 'true');
+                        formData.append('useGoogle', 'false');
+                        formData.append('useClaudeVision', 'true');
+                        formData.append('useClaudeValidation', 'true');
+                        formData.append('useGroqValidation', 'true');
+                        formData.append('useAsposeFontEmbed', 'true');
+
+                        // Make the fetch request to PassportPDF endpoint
+                        const response = await fetch(endpoint, {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+                        }
+
+                        const result = await response.json();
 
                         // Clear intervals
                         if (timerInterval) clearInterval(timerInterval);
@@ -559,7 +570,7 @@ window.accessForm = {
                             };
                             
                             if (window.accessForm.dotNetHelper) {
-                                await window.accessForm.dotNetHelper.invokeMethodAsync('OnFileProcessedDirectly', fileData, result);
+                                await window.accessForm.dotNetHelper.invokeMethodAsync('OnFileProcessedDirectly', fileData, JSON.stringify(result));
                             } else {
                                 console.error('Blazor helper not found');
                                 alert('Error: Unable to process file. Please refresh the page.');
@@ -792,7 +803,7 @@ window.accessForm = {
                             
                             // Call the same function as drag-and-drop
                             if (window.accessForm.dotNetHelper) {
-                                await window.accessForm.dotNetHelper.invokeMethodAsync('OnFileProcessedDirectly', fileData, result);
+                                await window.accessForm.dotNetHelper.invokeMethodAsync('OnFileProcessedDirectly', fileData, JSON.stringify(result));
                             } else {
                                 console.error('Blazor helper not found');
                                 alert('Error: Unable to process file. Please refresh the page.');

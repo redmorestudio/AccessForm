@@ -118,16 +118,9 @@
                         <div class="col-md-6">
                             <h6>Auto-tagging Services:</h6>
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="useAdobeAutotag" @bind="useAdobeAutotag">
-                                <label class="form-check-label" for="useAdobeAutotag">
-                                    <strong>Adobe Auto-tag</strong> 
-                                    <small class="text-muted">(Best quality, uses API credits)</small>
-                                </label>
-                            </div>
-                            <div class="form-check">
                                 <input class="form-check-input" type="checkbox" id="useAsposeAutotag" @bind="useAsposeAutotag">
                                 <label class="form-check-label" for="useAsposeAutotag">
-                                    <strong>Aspose Auto-tag</strong> 
+                                    <strong>Aspose Auto-tag</strong>
                                     <small class="text-muted">(Local processing, no credits)</small>
                                 </label>
                             </div>
@@ -135,14 +128,20 @@
                         
                         <div class="col-md-6">
                             <h6>Font & Optimization:</h6>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="useAsposeFontEmbed" @bind="useAsposeFontEmbed">
+                                <label class="form-check-label" for="useAsposeFontEmbed">
+                                    <strong>Aspose Font Embedding</strong>
+                                    <small class="text-muted">(Recommended for compliance)</small>
+                                </label>
+                            </div>
                             <!-- PassportPDF OCR checkbox removed - OCR handled by Marker/markdown conversion -->
                         </div>
                     </div>
                     
                     <div class="alert alert-info mt-3 mb-0">
                         <small>
-                            <strong>Note:</strong> If Adobe Auto-tag is enabled but fails (quota exceeded), 
-                            the system will automatically fallback to Aspose Auto-tag.
+                            <strong>Note:</strong> Aspose Auto-tag provides local PDF/UA compliance processing without API costs.
                         </small>
                     </div>
                 </div>
@@ -728,13 +727,12 @@
     private bool useClaudeValidation = false;
     private bool useGroqValidation = false;
     private bool useSignatureDetection = false;
-    private bool enableAllAI = false;
+    private bool enableAllAI = true;
     private string processingMode = "Sequential";  // Always use Sequential mode
     private bool debugMode = true;
     private bool showFieldIds = true;
     
     // Accessibility services configuration
-    private bool useAdobeAutotag = false;  // Disabled by default (too expensive)
     private bool useAsposeAutotag = true;  // Default to Aspose for autotagging
     private bool useAsposeFontEmbed = true;  // Default to true for font fixing
     private bool usePassportPdf = false;  // Optional OCR service
@@ -849,6 +847,9 @@
             await JSRuntime.InvokeVoidAsync("console.log", $"Initializing AI mode in JS to: {UseAiMode}");
             await JSRuntime.InvokeVoidAsync("accessForm.setAiMode", UseAiMode);
             await CheckAiStatus();
+
+            // Enable all AI features by default
+            UpdateAIControls();
         }
     }
     
@@ -1157,7 +1158,6 @@
                         debugMode = debugMode,
                         showFieldIds = showFieldIds,
                         // Accessibility services
-                        useAdobeAutotag = useAdobeAutotag,
                         useAsposeAutotag = useAsposeAutotag,
                         useAsposeFontEmbed = useAsposeFontEmbed,
                         usePassportPdf = usePassportPdf
