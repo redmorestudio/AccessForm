@@ -3549,11 +3549,12 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                         x = x,
                         y = y,
                         width = width,
-                        height = height
+                        height = height,
+                        pageHeight = pageHeight
                     };
 
                     // Add debugging for field data sent to UI
-                    logger.LogInformation($"[EXTRACT-TAG] Field '{displayName}' (orig: '{originalName}') -> Page {page}, Type: {fieldType}, Pos: ({x:F2},{y:F2}), Size: {width:F2}x{height:F2}");
+                    logger.LogInformation($"[EXTRACT-TAG] Field '{displayName}' (orig: '{originalName}') -> Page {page}, Type: {fieldType}, Pos: ({x:F2},{y:F2}), Size: {width:F2}x{height:F2}, PageHeight: {pageHeight:F2}");
 
                     fieldList.Add(fieldObj);
                 }
@@ -3731,7 +3732,8 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                 X = field.x,
                 Y = field.y,
                 Width = field.width,
-                Height = field.height
+                Height = field.height,
+                PageHeight = field.pageHeight
             }).ToList();
 
             // Get basic PDF info

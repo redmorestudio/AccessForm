@@ -119,6 +119,9 @@
                             <button class="btn btn-sm btn-info ms-2" @onclick="OpenCascadeCorrection">
                                 <i class="fas fa-stream"></i> Cascade Correction
                             </button>
+                            <button class="btn btn-sm btn-success ms-2" @onclick="RefreshFields" title="Reload fields from PDF">
+                                <i class="fas fa-redo"></i> Refresh Fields
+                            </button>
                         </div>
                         @if (ShowFieldBoxes)
                         {
@@ -434,6 +437,8 @@
         height: auto;
         border: 1px solid #ccc;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        position: relative;
+        z-index: 1;
     }
     
     
@@ -512,6 +517,7 @@
         box-sizing: border-box;
         user-select: none;
         transition: border-color 0.2s, background-color 0.2s;
+        z-index: 10;
     }
 
     .field-overlay:hover {
@@ -1104,7 +1110,70 @@
         await LoadPage(CurrentPage);
         StateHasChanged();
     }
-    
+
+    private async Task RefreshFields()
+    {
+        try
+        {
+            Console.WriteLine("[RefreshFields] Reloading fields from PDF...");
+
+            // Call the API to extract fields from the PDF
+            if (PdfBytes != null && PdfBytes.Length > 0)
+            {
+                using var client = new HttpClient();
+                client.BaseAddress = new Uri(Navigation.BaseUri);
+                var content = new MultipartFormDataContent();
+                content.Add(new ByteArrayContent(PdfBytes), "file", "document.pdf");
+                var response = await client.PostAsync("/api/extract-tag-structure", content);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var json = await response.Content.ReadAsStringAsync();
+                    var result = System.Text.Json.JsonDocument.Parse(json);
+
+                    if (result.RootElement.TryGetProperty("fields", out var fieldsArray))
+                    {
+                        EditableFields.Clear();
+                        int index = 1;
+
+                        foreach (var field in fieldsArray.EnumerateArray())
+                        {
+                            var editableField = new EditableField
+                            {
+                                Name = field.GetProperty("Name").GetString(),
+                                OriginalName = field.GetProperty("OriginalName").GetString(),
+                                Type = field.GetProperty("Type").GetString(),
+                                Tooltip = field.TryGetProperty("Tooltip", out var tooltip) ? tooltip.GetString() : "",
+                                Page = field.TryGetProperty("Page", out var page) ? page.GetInt32() : 1,
+                                X = field.TryGetProperty("X", out var x) ? (float)x.GetDouble() : 0,
+                                Y = field.TryGetProperty("Y", out var y) ? (float)y.GetDouble() : 0,
+                                Width = field.TryGetProperty("Width", out var width) ? (float)width.GetDouble() : 100,
+                                Height = field.TryGetProperty("Height", out var height) ? (float)height.GetDouble() : 20,
+                                PageHeight = field.TryGetProperty("PageHeight", out var pageHeight) ? (float)pageHeight.GetDouble() : 792,
+                                OriginalIndex = index++,
+                                IsRequired = false
+                            };
+                            EditableFields.Add(editableField);
+                        }
+                    }
+
+                    ShowFieldBoxes = true;
+                    await UpdatePdfPreview();
+                    await JSRuntime.InvokeVoidAsync("console.log", "Fields refreshed successfully");
+                }
+                else
+                {
+                    await JSRuntime.InvokeVoidAsync("console.error", $"Failed to refresh fields: {response.StatusCode}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error refreshing fields: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("console.error", $"Error refreshing fields: {ex.Message}");
+        }
+    }
+
     private async Task LoadPageWithFieldBoxes(int pageNumber)
     {
         try
@@ -1530,16 +1599,18 @@
     // Convert PDF coordinates to display coordinates for field overlay positioning
     private string GetFieldOverlayStyle(EditableField field)
     {
-        const float SCALE_FACTOR = 150.0f / 72.0f; // 150 DPI display / 72 DPI PDF
+        // PDF dimensions at 72 DPI
+        const float PDF_WIDTH = 612.0f; // US Letter width in points
+        float pageHeight = field.PageHeight > 0 ? field.PageHeight : 792.0f;
 
-        // IMPORTANT: Syncfusion Bounds uses TOP-LEFT origin (not PDF's standard bottom-left)
-        // No coordinate conversion needed - just scale from 72 DPI to 150 DPI
-        var displayX = field.X * SCALE_FACTOR;
-        var displayY = field.Y * SCALE_FACTOR;
-        var displayWidth = field.Width * SCALE_FACTOR;
-        var displayHeight = field.Height * SCALE_FACTOR;
+        // Convert PDF coordinates (bottom-left origin) to percentages for responsive scaling
+        // Syncfusion uses standard PDF bottom-left coordinates, so we need to flip Y axis for display
+        var leftPercent = (field.X / PDF_WIDTH) * 100;
+        var topPercent = ((pageHeight - field.Y - field.Height) / pageHeight) * 100;
+        var widthPercent = (field.Width / PDF_WIDTH) * 100;
+        var heightPercent = (field.Height / pageHeight) * 100;
 
-        return $"left: {displayX}px; top: {displayY}px; width: {displayWidth}px; height: {displayHeight}px;";
+        return $"left: {leftPercent}%; top: {topPercent}%; width: {widthPercent}%; height: {heightPercent}%;";
     }
 
     private string GetDrawingRectangleStyle()
@@ -2193,6 +2264,7 @@
         public float Y { get; set; }
         public float Width { get; set; } = 100;
         public float Height { get; set; } = 20;
+        public float PageHeight { get; set; } = 792; // Default to US Letter, but should be set per page
         public int OriginalIndex { get; set; }
     }
     

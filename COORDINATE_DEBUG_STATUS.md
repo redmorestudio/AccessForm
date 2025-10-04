@@ -67,23 +67,25 @@ var formFields = fieldList.Select((field, index) => new
 }).ToList();
 ```
 
-### 3. Coordinate System Discovery (CRITICAL INSIGHT)
+### 3. Coordinate System Discovery (CORRECTED)
 **Location**: `/Users/sethredmore/Documents/Redmore Studio/AccessForm/WordToPdfConverter/Pages/TagModificationModal.razor` lines 1531-1543
 
-**Discovery**: Syncfusion's `Bounds` property uses **TOP-LEFT origin** coordinate system, NOT the PDF specification's standard **bottom-left origin** coordinate system.
+**Correct Understanding**: Syncfusion's `Bounds` property uses **BOTTOM-LEFT origin** coordinate system, which IS the PDF specification's standard coordinate system.
 
-**Previous Wrong Assumption**: We initially tried converting from bottom-left to top-left, but this was backwards because Syncfusion already provides top-left coordinates.
+**Previous Wrong Assumption**: We mistakenly thought Syncfusion used top-left coordinates and removed the conversion, which broke field positioning.
 
-**Final Fix**: Remove coordinate conversion entirely, only apply DPI scaling:
+**Correct Fix**: Restore coordinate conversion from bottom-left (PDF) to top-left (HTML display):
 ```csharp
 private string GetFieldOverlayStyle(EditableField field)
 {
     const float SCALE_FACTOR = 150.0f / 72.0f; // 150 DPI display / 72 DPI PDF
 
-    // IMPORTANT: Syncfusion Bounds uses TOP-LEFT origin (not PDF's standard bottom-left)
-    // No coordinate conversion needed - just scale from 72 DPI to 150 DPI
+    const float STANDARD_PAGE_HEIGHT = 792.0f; // US Letter height in points
+
+    // Convert PDF coordinates (bottom-left origin) to display coordinates (top-left origin)
+    // Syncfusion uses standard PDF bottom-left coordinates, so we need to flip Y axis for display
     var displayX = field.X * SCALE_FACTOR;
-    var displayY = field.Y * SCALE_FACTOR;  // NO conversion - use as-is
+    var displayY = (STANDARD_PAGE_HEIGHT - field.Y - field.Height) * SCALE_FACTOR;
     var displayWidth = field.Width * SCALE_FACTOR;
     var displayHeight = field.Height * SCALE_FACTOR;
 
@@ -95,8 +97,9 @@ private string GetFieldOverlayStyle(EditableField field)
 
 ### Coordinate Systems
 - **PDF Specification Standard**: Bottom-left origin (0,0) at lower-left corner
-- **Syncfusion Bounds Property**: TOP-LEFT origin (0,0) at upper-left corner (non-standard!)
+- **Syncfusion Bounds Property**: BOTTOM-LEFT origin (0,0) at lower-left corner (follows PDF standard)
 - **HTML/CSS**: Top-left origin (0,0) at upper-left corner
+- **Conversion Required**: Must flip Y-axis when displaying PDF fields in HTML
 
 ### DPI Scaling
 - **PDF Points**: 72 DPI

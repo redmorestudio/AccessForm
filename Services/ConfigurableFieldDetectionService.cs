@@ -298,17 +298,21 @@ namespace WordToPdfConverter.Services
             */
 
             // PHASE 4: Auto-detect signature fields with "X" markers
+            // Only convert PDF to markdown if signature detection or Groq validation is enabled
             string pdfMarkdownForValidation = "";
-            try
+            if (config.Services.UseSignatureDetection || config.Services.UseGroqValidation)
             {
-                var markdownLogger = _loggerFactory.CreateLogger<PdfToMarkdownConverter>();
-                var markdownConverter = new PdfToMarkdownConverter(markdownLogger);
-                pdfMarkdownForValidation = markdownConverter.ConvertToMarkdown(pdfBytes);
-                _logger.LogInformation($"[VALIDATION] Converted PDF to Markdown: {pdfMarkdownForValidation.Length} characters");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning($"[VALIDATION] Failed to convert PDF to Markdown: {ex.Message}");
+                try
+                {
+                    var markdownLogger = _loggerFactory.CreateLogger<PdfToMarkdownConverter>();
+                    var markdownConverter = new PdfToMarkdownConverter(markdownLogger);
+                    pdfMarkdownForValidation = markdownConverter.ConvertToMarkdown(pdfBytes);
+                    _logger.LogInformation($"[VALIDATION] Converted PDF to Markdown: {pdfMarkdownForValidation.Length} characters");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning($"[VALIDATION] Failed to convert PDF to Markdown: {ex.Message}");
+                }
             }
 
             // Only run signature detection if enabled in config
