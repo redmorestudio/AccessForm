@@ -32,17 +32,43 @@
                             </button>
                         </div>
                         <div class="pdf-preview-panel" id="pdfPreviewPanel" @ref="previewPanel">
-                            <div class="pdf-page-container">
+                            <div class="pdf-page-container" id="pdfPageContainer" style="position: relative; display: inline-block;">
                                 @if (!string.IsNullOrEmpty(CurrentPageImage))
                                 {
                                     <img src="@($"data:image/png;base64,{CurrentPageImage}")"
                                          class="pdf-page-image"
+                                         id="pdfPageImage"
                                          @ref="pageImage"
-                                         @onclick="HandleImageClick"
-                                         @oncontextmenu="HandleImageRightClick"
-                                         @oncontextmenu:preventDefault="true" />
+                                         @onmousedown="HandleImageMouseDown"
+                                         style="display: block;" />
 
-                                    <!-- Field boxes are drawn directly on the server-generated image -->
+                                    <!-- Draggable field overlays -->
+                                    @if (ShowFieldBoxes)
+                                    {
+                                        @foreach (var field in CurrentPageFields)
+                                        {
+                                            <div class="field-overlay @(SelectedField == field ? "selected" : "")"
+                                                 id="field-@field.OriginalIndex"
+                                                 data-field-index="@field.OriginalIndex"
+                                                 @onmousedown="e => HandleFieldMouseDown(e, field)"
+                                                 @onmousedown:stopPropagation="true"
+                                                 style="@GetFieldOverlayStyle(field)">
+                                                <div class="field-label">@field.Name</div>
+                                                <div class="resize-handle-nw"></div>
+                                                <div class="resize-handle-ne"></div>
+                                                <div class="resize-handle-sw"></div>
+                                                <div class="resize-handle-se"></div>
+                                            </div>
+                                        }
+                                    }
+
+                                    <!-- Drawing rectangle for new field -->
+                                    @if (isDrawingNewField)
+                                    {
+                                        <div class="field-overlay drawing"
+                                             style="@GetDrawingRectangleStyle()">
+                                        </div>
+                                    }
                                 }
                                 else
                                 {
@@ -79,7 +105,7 @@
                         </div>
                         <div class="mb-2">
                             <button class="btn btn-sm btn-primary" @onclick="UpdatePdfPreview">
-                                <i class="fas fa-sync-alt"></i> Update Preview
+                                <i class="fas fa-sync-alt"></i> Show Field Boxes
                             </button>
                             @if (ShowFieldBoxes)
                             {
@@ -88,15 +114,18 @@
                                 </button>
                             }
                             <button class="btn btn-sm btn-warning ms-2" @onclick="AddNewField">
-                                <i class="fas fa-plus"></i> Add Field
+                                <i class="fas fa-plus"></i> Add Field (Manual)
                             </button>
                             <button class="btn btn-sm btn-info ms-2" @onclick="OpenCascadeCorrection">
                                 <i class="fas fa-stream"></i> Cascade Correction
                             </button>
-                            <span class="text-muted ms-2">
-                                <small>@(ShowFieldBoxes ? "Boxes shown - edit and update" : "Click Update to show field boxes")</small>
-                            </span>
                         </div>
+                        @if (ShowFieldBoxes)
+                        {
+                            <div class="alert alert-info py-2 mb-2" style="font-size: 0.85em;">
+                                <strong>Drag & Drop Mode:</strong> Drag fields to move • Drag corner handles to resize • Hold Shift + Click-drag to create new field • Delete key to remove selected field
+                            </div>
+                        }
                         <div class="fields-panel" id="fieldsPanel">
                             <table class="table table-sm table-hover">
                                 <thead class="table-light sticky-top">
@@ -471,7 +500,93 @@
     }
 
     .pdf-page-image {
-        cursor: pointer;
+        cursor: crosshair;
+        user-select: none;
+    }
+
+    .field-overlay {
+        position: absolute;
+        border: 2px solid #0d6efd;
+        background-color: rgba(13, 110, 253, 0.1);
+        cursor: move;
+        box-sizing: border-box;
+        user-select: none;
+        transition: border-color 0.2s, background-color 0.2s;
+    }
+
+    .field-overlay:hover {
+        border-color: #0a58ca;
+        background-color: rgba(13, 110, 253, 0.2);
+    }
+
+    .field-overlay.selected {
+        border-color: #ff6b6b;
+        background-color: rgba(255, 107, 107, 0.15);
+        border-width: 3px;
+    }
+
+    .field-overlay.drawing {
+        border-color: #28a745;
+        background-color: rgba(40, 167, 69, 0.1);
+        border-style: dashed;
+    }
+
+    .field-label {
+        position: absolute;
+        top: -20px;
+        left: 0;
+        background: rgba(13, 110, 253, 0.9);
+        color: white;
+        padding: 2px 6px;
+        font-size: 11px;
+        border-radius: 3px;
+        white-space: nowrap;
+        pointer-events: none;
+    }
+
+    .selected .field-label {
+        background: rgba(255, 107, 107, 0.9);
+    }
+
+    .resize-handle-nw, .resize-handle-ne, .resize-handle-sw, .resize-handle-se {
+        position: absolute;
+        width: 8px;
+        height: 8px;
+        background: white;
+        border: 2px solid #0d6efd;
+        box-sizing: border-box;
+    }
+
+    .resize-handle-nw {
+        top: -4px;
+        left: -4px;
+        cursor: nwse-resize;
+    }
+
+    .resize-handle-ne {
+        top: -4px;
+        right: -4px;
+        cursor: nesw-resize;
+    }
+
+    .resize-handle-sw {
+        bottom: -4px;
+        left: -4px;
+        cursor: nesw-resize;
+    }
+
+    .resize-handle-se {
+        bottom: -4px;
+        right: -4px;
+        cursor: nwse-resize;
+    }
+
+    .selected .resize-handle-nw,
+    .selected .resize-handle-ne,
+    .selected .resize-handle-sw,
+    .selected .resize-handle-se {
+        border-color: #ff6b6b;
+        background: #fff;
     }
 </style>
 
@@ -692,6 +807,52 @@
         previewPanel.scrollTo({ top: scrollPosition, behavior: 'smooth' });
         console.log(`scrollPreviewToField: PDF Y=${fieldY} (${fieldY < 100 ? 'BOTTOM' : fieldY > 700 ? 'TOP' : 'MIDDLE'} of page) -> Display Y=${displayY}, scroll=${scrollPosition}`);
     };
+
+    // Global drag and drop handlers
+    window.globalDragState = {
+        dotNetRef: null,
+        mouseMoveHandler: null,
+        mouseUpHandler: null
+    };
+
+    window.registerGlobalDragHandlers = function(dotNetRef) {
+        window.globalDragState.dotNetRef = dotNetRef;
+
+        // Remove existing handlers if any
+        if (window.globalDragState.mouseMoveHandler) {
+            document.removeEventListener('mousemove', window.globalDragState.mouseMoveHandler);
+        }
+        if (window.globalDragState.mouseUpHandler) {
+            document.removeEventListener('mouseup', window.globalDragState.mouseUpHandler);
+        }
+
+        // Create new handlers
+        window.globalDragState.mouseMoveHandler = function(e) {
+            e.preventDefault();
+            dotNetRef.invokeMethodAsync('HandleGlobalMouseMove', e.clientX, e.clientY);
+        };
+
+        window.globalDragState.mouseUpHandler = function(e) {
+            e.preventDefault();
+            dotNetRef.invokeMethodAsync('HandleGlobalMouseUp', e.clientX, e.clientY);
+        };
+
+        // Register handlers
+        document.addEventListener('mousemove', window.globalDragState.mouseMoveHandler);
+        document.addEventListener('mouseup', window.globalDragState.mouseUpHandler);
+    };
+
+    window.unregisterGlobalDragHandlers = function() {
+        if (window.globalDragState.mouseMoveHandler) {
+            document.removeEventListener('mousemove', window.globalDragState.mouseMoveHandler);
+            window.globalDragState.mouseMoveHandler = null;
+        }
+        if (window.globalDragState.mouseUpHandler) {
+            document.removeEventListener('mouseup', window.globalDragState.mouseUpHandler);
+            window.globalDragState.mouseUpHandler = null;
+        }
+        window.globalDragState.dotNetRef = null;
+    };
 </script>
 
 <!-- Cascade Correction Panel -->
@@ -708,6 +869,23 @@
     private CascadeCorrectionPanel cascadeCorrectionPanel;
     private bool showCascadeCorrection = false;
     private List<dynamic> cascadeCorrectionFields = new List<dynamic>();
+
+    // Drag and drop state
+    private bool isDraggingField = false;
+    private bool isResizingField = false;
+    private bool isDrawingNewField = false;
+    private EditableField? draggedField = null;
+    private string? resizeHandle = null;
+    private double dragStartX = 0;
+    private double dragStartY = 0;
+    private double drawStartX = 0;
+    private double drawStartY = 0;
+    private double drawCurrentX = 0;
+    private double drawCurrentY = 0;
+    private float originalFieldX = 0;
+    private float originalFieldY = 0;
+    private float originalFieldWidth = 0;
+    private float originalFieldHeight = 0;
 
     [Parameter] public bool IsVisible { get; set; }
     [Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
@@ -889,28 +1067,28 @@
     {
         await JSRuntime.InvokeVoidAsync("console.log", "=== UPDATE PDF PREVIEW CLICKED ===");
         await JSRuntime.InvokeVoidAsync("console.log", "Regenerating preview with current field dimensions...");
-        
-        if (PdfBytes == null) 
+
+        if (PdfBytes == null)
         {
             await JSRuntime.InvokeVoidAsync("console.log", "No PDF to preview");
             return;
         }
-        
+
         try
         {
             // Always show field boxes when updating (that's the point of the button)
             ShowFieldBoxes = true;
-            
+
             // Log current field data for debugging
             foreach (var field in EditableFields.Where(f => f.Page == CurrentPage))
             {
-                await JSRuntime.InvokeVoidAsync("console.log", 
+                await JSRuntime.InvokeVoidAsync("console.log",
                     $"Field: {field.Name}, Type: {field.Type}, Width: {field.Width}, Height: {field.Height}, X: {field.X}, Y: {field.Y}");
             }
-            
-            // Always regenerate with current field dimensions
-            await LoadPageWithFieldBoxes(CurrentPage);
-            
+
+            // Load plain PDF image - field boxes will be rendered as client-side overlays
+            await LoadPage(CurrentPage);
+
             StateHasChanged();
             await JSRuntime.InvokeVoidAsync("console.log", "Preview regenerated with updated field dimensions");
         }
@@ -1172,29 +1350,17 @@
     {
         if (CurrentPage > 1)
         {
-            if (ShowFieldBoxes)
-            {
-                await LoadPageWithFieldBoxes(CurrentPage - 1);
-            }
-            else
-            {
-                await LoadPage(CurrentPage - 1);
-            }
+            // Always use plain PDF - field boxes are rendered as client-side overlays
+            await LoadPage(CurrentPage - 1);
         }
     }
-    
+
     private async Task NextPage()
     {
         if (CurrentPage < TotalPages)
         {
-            if (ShowFieldBoxes)
-            {
-                await LoadPageWithFieldBoxes(CurrentPage + 1);
-            }
-            else
-            {
-                await LoadPage(CurrentPage + 1);
-            }
+            // Always use plain PDF - field boxes are rendered as client-side overlays
+            await LoadPage(CurrentPage + 1);
         }
     }
     
@@ -1219,13 +1385,11 @@
         if (field.Page != CurrentPage)
         {
             CurrentPage = field.Page;
-            await LoadPageWithFieldBoxes(CurrentPage);
+            // Always use plain PDF - field boxes are rendered as client-side overlays
+            await LoadPage(CurrentPage);
         }
-        // If field boxes are currently shown, refresh to highlight the selected field
-        else if (ShowFieldBoxes)
-        {
-            await LoadPageWithFieldBoxes(CurrentPage);
-        }
+        // Don't reload the page if we're already on it - this breaks click detection
+        // The field selection highlighting happens in the field list, not the PDF preview
 
         StateHasChanged();
 
@@ -1363,12 +1527,222 @@
     }
     
     
+    // Convert PDF coordinates to display coordinates for field overlay positioning
+    private string GetFieldOverlayStyle(EditableField field)
+    {
+        const float SCALE_FACTOR = 150.0f / 72.0f; // 150 DPI display / 72 DPI PDF
+        const float STANDARD_PAGE_HEIGHT = 792.0f; // US Letter height in points
+
+        // Convert PDF coordinates (bottom-left origin) to display coordinates (top-left origin)
+        var displayX = field.X * SCALE_FACTOR;
+        var displayY = (STANDARD_PAGE_HEIGHT - field.Y - field.Height) * SCALE_FACTOR;
+        var displayWidth = field.Width * SCALE_FACTOR;
+        var displayHeight = field.Height * SCALE_FACTOR;
+
+        return $"left: {displayX}px; top: {displayY}px; width: {displayWidth}px; height: {displayHeight}px;";
+    }
+
+    private string GetDrawingRectangleStyle()
+    {
+        if (!isDrawingNewField) return "display: none;";
+
+        var left = Math.Min(drawStartX, drawCurrentX);
+        var top = Math.Min(drawStartY, drawCurrentY);
+        var width = Math.Abs(drawCurrentX - drawStartX);
+        var height = Math.Abs(drawCurrentY - drawStartY);
+
+        return $"left: {left}px; top: {top}px; width: {width}px; height: {height}px;";
+    }
+
+    private void HandleImageMouseDown(MouseEventArgs e)
+    {
+        // Check if Shift key is held - if so, start drawing a new field
+        if (!e.ShiftKey)
+        {
+            return; // Only draw new fields when Shift is held
+        }
+
+        isDrawingNewField = true;
+        drawStartX = e.OffsetX;
+        drawStartY = e.OffsetY;
+        drawCurrentX = e.OffsetX;
+        drawCurrentY = e.OffsetY;
+
+        // Register global mouse move and up handlers via JavaScript
+        _ = JSRuntime.InvokeVoidAsync("registerGlobalDragHandlers", dotNetRef);
+
+        StateHasChanged();
+    }
+
+    private void HandleFieldMouseDown(MouseEventArgs e, EditableField field)
+    {
+        // Check if clicking on a resize handle
+        var target = e.Target as string;
+        if (target != null && target.Contains("resize-handle"))
+        {
+            // Start resizing
+            isResizingField = true;
+            draggedField = field;
+            resizeHandle = target.Contains("nw") ? "nw" :
+                          target.Contains("ne") ? "ne" :
+                          target.Contains("sw") ? "sw" :
+                          target.Contains("se") ? "se" : null;
+
+            dragStartX = e.ClientX;
+            dragStartY = e.ClientY;
+            originalFieldX = field.X;
+            originalFieldY = field.Y;
+            originalFieldWidth = field.Width;
+            originalFieldHeight = field.Height;
+        }
+        else
+        {
+            // Start dragging
+            isDraggingField = true;
+            draggedField = field;
+            dragStartX = e.ClientX;
+            dragStartY = e.ClientY;
+            originalFieldX = field.X;
+            originalFieldY = field.Y;
+        }
+
+        SelectedField = field;
+
+        // Register global mouse move and up handlers via JavaScript
+        _ = JSRuntime.InvokeVoidAsync("registerGlobalDragHandlers", dotNetRef);
+
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void HandleGlobalMouseMove(double clientX, double clientY)
+    {
+        if (isDrawingNewField)
+        {
+            // Update drawing rectangle
+            drawCurrentX = clientX - (dragStartX - drawStartX);
+            drawCurrentY = clientY - (dragStartY - drawStartY);
+            StateHasChanged();
+        }
+        else if (isDraggingField && draggedField != null)
+        {
+            // Update field position
+            const float SCALE_FACTOR = 150.0f / 72.0f;
+            var deltaX = (float)((clientX - dragStartX) / SCALE_FACTOR);
+            var deltaY = (float)((clientY - dragStartY) / SCALE_FACTOR);
+
+            draggedField.X = originalFieldX + deltaX;
+            // PDF Y increases upward, display Y increases downward
+            draggedField.Y = originalFieldY - deltaY;
+
+            StateHasChanged();
+        }
+        else if (isResizingField && draggedField != null && resizeHandle != null)
+        {
+            // Update field size based on resize handle
+            const float SCALE_FACTOR = 150.0f / 72.0f;
+            var deltaX = (float)((clientX - dragStartX) / SCALE_FACTOR);
+            var deltaY = (float)((clientY - dragStartY) / SCALE_FACTOR);
+
+            switch (resizeHandle)
+            {
+                case "se": // Southeast: increase width and height
+                    draggedField.Width = Math.Max(20, originalFieldWidth + deltaX);
+                    draggedField.Height = Math.Max(10, originalFieldHeight - deltaY);
+                    break;
+
+                case "sw": // Southwest: move X, change width, change height
+                    var newWidth = Math.Max(20, originalFieldWidth - deltaX);
+                    draggedField.X = originalFieldX + (originalFieldWidth - newWidth);
+                    draggedField.Width = newWidth;
+                    draggedField.Height = Math.Max(10, originalFieldHeight - deltaY);
+                    break;
+
+                case "ne": // Northeast: change width, move Y, change height
+                    draggedField.Width = Math.Max(20, originalFieldWidth + deltaX);
+                    var newHeight = Math.Max(10, originalFieldHeight + deltaY);
+                    draggedField.Y = originalFieldY - (newHeight - originalFieldHeight);
+                    draggedField.Height = newHeight;
+                    break;
+
+                case "nw": // Northwest: move both X and Y, change both dimensions
+                    newWidth = Math.Max(20, originalFieldWidth - deltaX);
+                    draggedField.X = originalFieldX + (originalFieldWidth - newWidth);
+                    draggedField.Width = newWidth;
+                    newHeight = Math.Max(10, originalFieldHeight + deltaY);
+                    draggedField.Y = originalFieldY - (newHeight - originalFieldHeight);
+                    draggedField.Height = newHeight;
+                    break;
+            }
+
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public void HandleGlobalMouseUp(double clientX, double clientY)
+    {
+        if (isDrawingNewField)
+        {
+            // Create new field from drawing rectangle
+            const float SCALE_FACTOR = 150.0f / 72.0f;
+            const float STANDARD_PAGE_HEIGHT = 792.0f;
+
+            var left = Math.Min(drawStartX, drawCurrentX);
+            var top = Math.Min(drawStartY, drawCurrentY);
+            var width = Math.Abs(drawCurrentX - drawStartX);
+            var height = Math.Abs(drawCurrentY - drawStartY);
+
+            // Only create field if it has minimum size (avoid accidental clicks)
+            if (width > 10 && height > 5)
+            {
+                // Convert display coordinates to PDF coordinates
+                var pdfX = (float)(left / SCALE_FACTOR);
+                var pdfY = STANDARD_PAGE_HEIGHT - (float)((top + height) / SCALE_FACTOR);
+                var pdfWidth = (float)(width / SCALE_FACTOR);
+                var pdfHeight = (float)(height / SCALE_FACTOR);
+
+                var fieldName = $"NewField_{EditableFields.Count + 1}";
+                var newField = new EditableField
+                {
+                    Name = fieldName,
+                    OriginalName = fieldName,
+                    Type = "text",
+                    Tooltip = "",
+                    IsRequired = false,
+                    Page = CurrentPage,
+                    X = pdfX,
+                    Y = pdfY,
+                    Width = pdfWidth,
+                    Height = pdfHeight,
+                    OriginalIndex = EditableFields.Count + 1
+                };
+
+                EditableFields.Add(newField);
+                CurrentPageFields.Add(newField);
+                SelectedField = newField;
+            }
+
+            isDrawingNewField = false;
+        }
+
+        isDraggingField = false;
+        isResizingField = false;
+        draggedField = null;
+        resizeHandle = null;
+
+        _ = JSRuntime.InvokeVoidAsync("unregisterGlobalDragHandlers");
+
+        StateHasChanged();
+    }
+
     private async Task DeleteFieldAsync(EditableField field)
     {
         // Log field being deleted
         Console.WriteLine($"[DELETE] Removing field '{field.Name}' with coords: X={field.X}, Y={field.Y}, W={field.Width}, H={field.Height}");
 
         EditableFields.Remove(field);
+        CurrentPageFields.Remove(field);
         if (SelectedField == field)
         {
             SelectedField = null;
@@ -1381,12 +1755,7 @@
             Console.WriteLine($"  - '{f.Name}': X={f.X}, Y={f.Y}, W={f.Width}, H={f.Height}");
         }
 
-        // Automatically refresh the preview if field boxes are shown
-        if (ShowFieldBoxes)
-        {
-            await LoadPageWithFieldBoxes(CurrentPage);
-        }
-
+        // Field overlays are client-side, so just update the UI
         StateHasChanged();
     }
 
@@ -1730,8 +2099,7 @@
     private async Task ApplyChanges()
     {
         await OnApplyChanges.InvokeAsync(EditableFields);
-        IsVisible = false;
-        await IsVisibleChanged.InvokeAsync(false);
+        // Keep modal open to allow continuous editing - user can close manually when done
     }
 
     private void ToggleFieldEditor()

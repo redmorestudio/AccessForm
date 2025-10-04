@@ -60,7 +60,13 @@
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="useGroqValidation" @bind="useGroqValidation" disabled="@enableAllAI">
                                     <label class="form-check-label" for="useGroqValidation" style="@(enableAllAI ? "opacity: 0.6;" : "")">
-                                        <strong>Groq Label Validation</strong> <small class="text-muted">(AI sanity check)</small>
+                                        <strong>Groq Label Validation</strong> <small class="text-muted">(DEPRECATED - use Multi-Stage)</small>
+                                    </label>
+                                </div>
+                                <div class="form-check p-2" style="background-color: rgba(40, 123, 255, 0.1); border-left: 3px solid #287bff;">
+                                    <input class="form-check-input" type="checkbox" id="useMultiStageValidation" @bind="useMultiStageValidation" disabled="@enableAllAI">
+                                    <label class="form-check-label" for="useMultiStageValidation" style="@(enableAllAI ? "opacity: 0.6;" : "")">
+                                        <strong>🎯 Multi-Stage Validation</strong> <small class="text-muted">(Claude + GPT-5 Consensus)</small>
                                     </label>
                                 </div>
                                 <div class="form-check">
@@ -726,6 +732,7 @@
     private bool useClaudeVision = false;
     private bool useClaudeValidation = false;
     private bool useGroqValidation = false;
+    private bool useMultiStageValidation = false;
     private bool useSignatureDetection = false;
     private bool enableAllAI = true;
     private string processingMode = "Sequential";  // Always use Sequential mode
@@ -898,6 +905,7 @@
         useClaudeVision = false;
         useClaudeValidation = false;
         useGroqValidation = false;
+        useMultiStageValidation = false;
         useSignatureDetection = false;
         processingMode = "Sequential";
         StateHasChanged();
@@ -910,7 +918,8 @@
         useGoogle = false;
         useClaudeVision = false;
         useClaudeValidation = true;
-        useGroqValidation = true;
+        useGroqValidation = false;  // Deprecated
+        useMultiStageValidation = true;  // Use multi-stage instead
         useSignatureDetection = true;
         processingMode = "SyncfusionWithValidation";
         StateHasChanged();
@@ -923,7 +932,8 @@
         useGoogle = true;
         useClaudeVision = true;
         useClaudeValidation = true;
-        useGroqValidation = true;
+        useGroqValidation = false;  // Deprecated
+        useMultiStageValidation = true;  // Use multi-stage instead
         useSignatureDetection = true;
         processingMode = "Sequential";
         StateHasChanged();
@@ -938,7 +948,8 @@
             useGoogle = true;
             useClaudeVision = true;
             useClaudeValidation = true;
-            useGroqValidation = true;
+            useGroqValidation = false;  // Deprecated
+            useMultiStageValidation = true;  // Use multi-stage instead
             useSignatureDetection = true;
         }
         // When master toggle is off, individual checkboxes remain in their current state
@@ -1153,6 +1164,7 @@
                         useClaudeVision = useClaudeVision,
                         useClaudeValidation = useClaudeValidation,
                         useGroqValidation = useGroqValidation,
+                        useMultiStageValidation = useMultiStageValidation,
                         useSignatureDetection = useSignatureDetection,
                         mode = processingMode,
                         debugMode = debugMode,
@@ -1999,14 +2011,10 @@
                                 field.OriginalName = field.Name;
                             }
                         }
-                        
-                        // Auto-download the updated PDF
-                        await DownloadFile(updatedPdfData, 
-                            processingResults.AccessibleFileName.Replace(".pdf", "_updated.pdf"));
-                        
-                        await JSRuntime.InvokeVoidAsync("alert", 
-                            $"Successfully updated {updatedFields.Count} fields! The updated PDF has been downloaded.");
-                        
+
+                        // PDF updated in memory - user can download manually using "Download Accessible PDF" button
+                        // (Auto-download removed to allow continuous editing)
+
                         // Refresh the preview
                         StateHasChanged();
                     }
@@ -2029,7 +2037,7 @@
         finally
         {
             isProcessing = false;
-            showTagEditor = false;
+            // Keep editor open to allow continuous editing - user can close manually when done
             StateHasChanged();
         }
     }

@@ -62,8 +62,15 @@ namespace WordToPdfConverter.Models
 
         /// <summary>
         /// Use Groq to validate field labels for semantic accuracy
+        /// DEPRECATED: Use UseMultiStageValidation instead
         /// </summary>
         public bool UseGroqValidation { get; set; } = false;
+
+        /// <summary>
+        /// Use multi-stage validation with Claude Sonnet 4.5 + GPT-5 consensus
+        /// Replaces UseGroqValidation with comprehensive 3-stage validation pipeline
+        /// </summary>
+        public bool UseMultiStageValidation { get; set; } = false;
 
         /// <summary>
         /// Auto-detect signature fields marked with X placeholders

@@ -529,14 +529,15 @@ window.accessForm = {
                         const formData = new FormData();
                         formData.append('file', file);
 
-                        // Add config parameters (defaults for PassportPDF)
-                        formData.append('useSyncfusion', 'true');
-                        formData.append('useGoogle', 'false');
-                        formData.append('useClaudeVision', 'true');
-                        formData.append('useClaudeValidation', 'true');
-                        formData.append('useGroqValidation', 'true');
-                        formData.append('useSignatureDetection', 'true');
-                        formData.append('useAsposeFontEmbed', 'true');
+                        // Add config parameters from UI checkboxes
+                        formData.append('useSyncfusion', String(document.querySelector('#useSyncfusion')?.checked ?? true));
+                        formData.append('useGoogle', String(document.querySelector('#useGoogle')?.checked ?? false));
+                        formData.append('useClaudeVision', String(document.querySelector('#useClaudeVision')?.checked ?? false));
+                        formData.append('useClaudeValidation', String(document.querySelector('#useClaudeValidation')?.checked ?? false));
+                        formData.append('useGroqValidation', String(document.querySelector('#useGroqValidation')?.checked ?? false));
+                        formData.append('useMultiStageValidation', String(document.querySelector('#useMultiStageValidation')?.checked ?? false));
+                        formData.append('useSignatureDetection', String(document.querySelector('#useSignatureDetection')?.checked ?? false));
+                        formData.append('useAsposeFontEmbed', String(document.querySelector('#useAsposeFontEmbed')?.checked ?? true));
 
                         // Make the fetch request to PassportPDF endpoint
                         const response = await fetch(endpoint, {

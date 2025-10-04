@@ -83,6 +83,8 @@ builder.Services.AddScoped<AnthropicService>();
 builder.Services.AddSingleton<DebugCacheService>();
 builder.Services.AddScoped<AiDebugProcessor>();
 builder.Services.AddScoped<LlamaGroqService>();
+builder.Services.AddScoped<AccessFormServer.Services.OpenAIService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.MultiStageValidationService>();
 builder.Services.AddHttpClient();
 builder.Services.AddHttpContextAccessor();
 
@@ -3795,6 +3797,7 @@ app.MapPost("/api/convert-with-config", async (
                 UseGoogle = request.Form["useGoogle"].ToString()?.ToLower() == "true",
                 UseClaudeValidation = request.Form["useClaudeValidation"].ToString()?.ToLower() == "true",
                 UseGroqValidation = request.Form["useGroqValidation"].ToString()?.ToLower() == "true",
+                UseMultiStageValidation = request.Form["useMultiStageValidation"].ToString()?.ToLower() == "true",
                 UseSignatureDetection = request.Form["useSignatureDetection"].ToString()?.ToLower() == "true"
             },
             Mode = request.Form["mode"].ToString() switch
@@ -3809,6 +3812,7 @@ app.MapPost("/api/convert-with-config", async (
                               $"ClaudeVision={config.Services.UseClaudeVision}, " +
                               $"Google={config.Services.UseGoogle}, " +
                               $"ClaudeValidation={config.Services.UseClaudeValidation}, " +
+                              $"MultiStageValidation={config.Services.UseMultiStageValidation}, " +
                               $"Mode={config.Mode}");
 
         byte[] pdfBytes;
@@ -3961,6 +3965,7 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
                 UseGoogle = request.Form["useGoogle"].ToString()?.ToLower() == "true",
                 UseClaudeValidation = request.Form["useClaudeValidation"].ToString()?.ToLower() == "true",
                 UseGroqValidation = request.Form["useGroqValidation"].ToString()?.ToLower() == "true",
+                UseMultiStageValidation = request.Form["useMultiStageValidation"].ToString()?.ToLower() == "true",
                 UseSignatureDetection = request.Form["useSignatureDetection"].ToString()?.ToLower() == "true"
             },
             Mode = request.Form["mode"].ToString() switch
@@ -3971,7 +3976,7 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
             }
         };
 
-        logger.LogInformation($"Processing {file.FileName} with PassportPDF - Config: Syncfusion={config.Services.UseSyncfusion}, ClaudeVision={config.Services.UseClaudeVision}");
+        logger.LogInformation($"Processing {file.FileName} with PassportPDF - Config: Syncfusion={config.Services.UseSyncfusion}, ClaudeVision={config.Services.UseClaudeVision}, MultiStage={config.Services.UseMultiStageValidation}, Groq={config.Services.UseGroqValidation}");
 
         byte[] pdfBytes;
         List<WordToPdfConverter.Models.FieldDetectionResult> fields;

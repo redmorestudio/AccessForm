@@ -37,6 +37,7 @@ namespace WordToPdfConverter.Services
         private readonly ClaudeBoundingBoxValidator _boundingBoxValidator;
         private readonly NLPLabelGenerator _nlpGenerator;
         private readonly LlamaGroqService _groqService;
+        private readonly MultiStageValidationService _multiStageValidation;
         private readonly Microsoft.Extensions.Configuration.IConfiguration _configuration;
         private readonly HttpClient _httpClient;
         private int _fieldCounter = 0;
@@ -53,7 +54,8 @@ namespace WordToPdfConverter.Services
             NLPLabelGenerator nlpGenerator,
             Microsoft.Extensions.Configuration.IConfiguration configuration,
             HttpClient httpClient,
-            LlamaGroqService groqService = null)
+            LlamaGroqService groqService = null,
+            MultiStageValidationService multiStageValidation = null)
         {
             _logger = logger;
             _loggerFactory = loggerFactory;
@@ -67,12 +69,14 @@ namespace WordToPdfConverter.Services
             _configuration = configuration;
             _httpClient = httpClient;
             _groqService = groqService;
+            _multiStageValidation = multiStageValidation;
 
             // DEBUG: Log service initialization status
             _logger.LogInformation($"[SERVICE-INIT] ClaudeVisionFieldDetector: {(_visionDetector != null ? "Available" : "NULL")}");
             _logger.LogInformation($"[SERVICE-INIT] GoogleDocumentAiService: {(_googleAiService != null ? "Available" : "NULL")}");
             _logger.LogInformation($"[SERVICE-INIT] AnthropicService: {(_anthropicService != null ? "Available" : "NULL")}");
             _logger.LogInformation($"[SERVICE-INIT] LlamaGroqService: {(_groqService != null ? "Available" : "NULL")}");
+            _logger.LogInformation($"[SERVICE-INIT] MultiStageValidationService: {(_multiStageValidation != null ? "Available" : "NULL")}");
         }
 
         /// <summary>
@@ -318,9 +322,17 @@ namespace WordToPdfConverter.Services
                 }
             }
 
-            // PHASE 5: Groq sanity check for field label validation (only if enabled in config)
-            if (config.Services.UseGroqValidation && _groqService != null && !string.IsNullOrEmpty(pdfMarkdownForValidation))
+            // PHASE 5: Multi-stage validation (replaces Groq validation)
+            if (config.Services.UseMultiStageValidation && _multiStageValidation != null)
             {
+                _logger.LogInformation("[MULTI-STAGE] Starting multi-stage validation pipeline");
+                detectedFields = await _multiStageValidation.ValidateFieldsAsync(detectedFields, pdfBytes, config);
+                _logger.LogInformation("[MULTI-STAGE] Multi-stage validation complete");
+            }
+            // Legacy: Groq sanity check for field label validation (DEPRECATED - use UseMultiStageValidation instead)
+            else if (config.Services.UseGroqValidation && _groqService != null && !string.IsNullOrEmpty(pdfMarkdownForValidation))
+            {
+                _logger.LogWarning("[GROQ-VALIDATION] Using deprecated Groq validation - consider switching to UseMultiStageValidation");
                 detectedFields = await ValidateFieldLabelsWithGroq(detectedFields, pdfMarkdownForValidation, pdfBytes);
             }
 
