@@ -75,6 +75,9 @@ builder.Services.AddSingleton<WordToPdfConverter.Services.InteractiveCascadeCorr
 // Add document preprocessing service for invisible text removal
 builder.Services.AddScoped<WordToPdfConverter.Services.DocumentPreprocessingService>();
 
+// Add PDF preservation service for PDF-to-PDF workflow (preserves existing fields with calculations)
+builder.Services.AddScoped<WordToPdfConverter.Services.PdfPreservationService>();
+
 // Add AI services
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<CostTrackingService>();
@@ -3761,6 +3764,7 @@ app.MapPost("/api/convert-with-config", async (
     HttpRequest request,
     ConfigurableFieldDetectionService fieldService,
     PdfCompleteRebuildService completeRebuildService,
+    WordToPdfConverter.Services.PdfPreservationService pdfPreservationService,
     ILogger<Program> logger) =>
 {
     try
@@ -3820,11 +3824,16 @@ app.MapPost("/api/convert-with-config", async (
 
         if (isPdf)
         {
-            // PDF uploaded directly - use as-is, no conversion needed
-            logger.LogInformation($"PDF uploaded directly: {file.FileName}, skipping Word conversion");
-            pdfBytes = fileBytes;
-            // For now, return empty field list - PDF field detection will be added later
-            fields = new List<WordToPdfConverter.Models.FieldDetectionResult>();
+            // PDF uploaded directly - use preservation service to keep calculations intact
+            logger.LogInformation($"PDF uploaded directly: {file.FileName}, using preservation pipeline to keep calculations");
+
+            // Get existing fields from the PDF
+            fields = pdfPreservationService.GetExistingFields(fileBytes);
+            logger.LogInformation($"Found {fields.Count} existing fields in PDF (preserving calculations)");
+
+            // Process the PDF while preserving fields and their JavaScript actions
+            pdfBytes = await pdfPreservationService.ProcessExistingPdfAsync(fileBytes);
+            logger.LogInformation("PDF processed with all fields and calculations preserved");
         }
         else
         {
