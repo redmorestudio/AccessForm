@@ -952,7 +952,17 @@
             useMultiStageValidation = true;  // Use multi-stage instead
             useSignatureDetection = true;
         }
-        // When master toggle is off, individual checkboxes remain in their current state
+        else
+        {
+            // When master toggle is off, disable all AI features (user can manually re-enable what they want)
+            useSyncfusion = false;
+            useGoogle = false;
+            useClaudeVision = false;
+            useClaudeValidation = false;
+            useGroqValidation = false;
+            useMultiStageValidation = false;
+            useSignatureDetection = false;
+        }
         StateHasChanged();
     }
     
