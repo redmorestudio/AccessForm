@@ -3484,6 +3484,36 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                             width = comboField.Bounds.Width;
                             height = comboField.Bounds.Height;
                         }
+                        else if (f is PdfLoadedTextBoxField loadedTextField)
+                        {
+                            // Get page number - text fields in existing PDFs should already be on correct pages
+                            if (loadedTextField.Page != null)
+                            {
+                                for (int i = 0; i < pdfDoc.Pages.Count; i++)
+                                {
+                                    if (pdfDoc.Pages[i] == loadedTextField.Page)
+                                    {
+                                        page = i + 1;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            // Get the correct page height for this specific page
+                            if (page > 0 && page <= pdfDoc.Pages.Count)
+                            {
+                                pageHeight = pdfDoc.Pages[page - 1].Size.Height;
+                            }
+
+                            x = loadedTextField.Bounds.X;
+                            // COORDINATE FIX: Fields are already stored in PDF bottom-left format
+                            // No conversion needed - use coordinates as-is
+                            y = loadedTextField.Bounds.Y;
+                            width = loadedTextField.Bounds.Width;
+                            height = loadedTextField.Bounds.Height;
+
+                            logger.LogInformation($"[TEXTFIELD] '{f.Name}' on page {page} at X={x}, Y={y}, W={width}, H={height}");
+                        }
                         else
                         {
                             // Unknown field type - use defaults to avoid breaking SignalR connection
@@ -3692,16 +3722,16 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
             // Now assign human-readable names with tab order
             var formFields = fieldList.Select((field, index) => new
             {
-                name = GenerateHumanReadableName(field, index, fieldList.Count),
-                tabOrder = index + 1, // Sequential tab order for proper navigation
-                originalName = field.originalName,
-                type = field.type,
-                tooltip = field.tooltip,
-                page = field.page,
-                x = field.x,
-                y = field.y,
-                width = field.width,
-                height = field.height
+                Name = GenerateHumanReadableName(field, index, fieldList.Count),
+                TabOrder = index + 1, // Sequential tab order for proper navigation
+                OriginalName = field.originalName,
+                Type = field.type,
+                Tooltip = field.tooltip,
+                Page = field.page,
+                X = field.x,
+                Y = field.y,
+                Width = field.width,
+                Height = field.height
             }).ToList();
 
             // Get basic PDF info
@@ -4016,9 +4046,10 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
         }
 
         // Apply Aspose font embedding BEFORE PassportPDF (belt-and-suspenders approach)
+        // IMPORTANT: Skip Aspose for existing PDFs to preserve field coordinates!
         var useAsposeFontEmbed = request.Form["useAsposeFontEmbed"].ToString()?.ToLower() != "false"; // Default to true
 
-        if (useAsposeFontEmbed && completeRebuildService != null)
+        if (useAsposeFontEmbed && completeRebuildService != null && !isPdf)
         {
             logger.LogInformation("Applying Aspose font embedding before PassportPDF");
 
@@ -4054,15 +4085,23 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
         }
 
         // Then process with PassportPDF for PDF/UA compliance - PRESERVE FIELD NAMES
-        try
+        // IMPORTANT: Skip PassportPDF for existing PDFs to preserve field coordinates!
+        if (!isPdf)
         {
-            pdfBytes = await passportPdfService.ConvertToPdfAPreservingFieldsAsync(pdfBytes, file.FileName);
-            logger.LogInformation("PassportPDF PDF/A conversion successful with field name preservation");
+            try
+            {
+                pdfBytes = await passportPdfService.ConvertToPdfAPreservingFieldsAsync(pdfBytes, file.FileName);
+                logger.LogInformation("PassportPDF PDF/A conversion successful with field name preservation");
+            }
+            catch (Exception passportEx)
+            {
+                logger.LogWarning(passportEx, "PassportPDF processing failed, returning AI-enhanced PDF without PDF/A conversion");
+                // Continue with the AI-enhanced PDF even if PassportPDF fails
+            }
         }
-        catch (Exception passportEx)
+        else
         {
-            logger.LogWarning(passportEx, "PassportPDF processing failed, returning AI-enhanced PDF without PDF/A conversion");
-            // Continue with the AI-enhanced PDF even if PassportPDF fails
+            logger.LogInformation("Skipping PassportPDF for existing PDF to preserve field coordinates");
         }
 
         // Return response in expected format
@@ -4150,6 +4189,12 @@ app.MapPost("/api/fields/load", async (
             var fieldId = 1;
             foreach (PdfLoadedField field in loadedDocument.Form.Fields)
             {
+                var bounds = GetFieldBounds(field);
+                var pageNum = GetFieldPageNumber(field, loadedDocument);
+
+                // DEBUG: Log field coordinates as they're read from the PDF
+                logger.LogWarning($"[LOAD-FIELDS] Field '{field.Name}': Page={pageNum}, X={bounds.X:F2}, Y={bounds.Y:F2}, W={bounds.Width:F2}, H={bounds.Height:F2}");
+
                 var fieldInfo = new
                 {
                     ShortId = $"F{fieldId++}",
@@ -4164,16 +4209,16 @@ app.MapPost("/api/fields/load", async (
                         PdfLoadedSignatureField => "signature",
                         _ => "unknown"
                     },
-                    PageNumber = GetFieldPageNumber(field, loadedDocument),
-                    X = GetFieldBounds(field).X,
-                    Y = GetFieldBounds(field).Y,
-                    Width = GetFieldBounds(field).Width,
-                    Height = GetFieldBounds(field).Height,
+                    PageNumber = pageNum,
+                    X = bounds.X,
+                    Y = bounds.Y,
+                    Width = bounds.Width,
+                    Height = bounds.Height,
                     Tooltip = GetFieldTooltip(field),
                     IsRequired = GetFieldRequired(field),
                     Source = "PDF",
                     Confidence = 1.0f,
-                    PageHeight = GetFieldPageNumber(field, loadedDocument) > 0 ? loadedDocument.Pages[GetFieldPageNumber(field, loadedDocument) - 1].Size.Height : 792,
+                    PageHeight = pageNum > 0 ? loadedDocument.Pages[pageNum - 1].Size.Height : 792,
                     TabIndex = fieldId - 1
                 };
                 fields.Add(fieldInfo);
@@ -4223,6 +4268,8 @@ app.MapPost("/api/fields/save", async (
         var pdfBytes = ms.ToArray();
 
         // Parse field updates from JSON
+        logger.LogWarning($"[FIELD-SAVE-DEBUG] /api/fields/save received fieldsJson: {fieldsJson.Substring(0, Math.Min(500, fieldsJson.Length))}...");
+
         var fieldUpdates = JsonSerializer.Deserialize<List<PdfFieldTagEditorService.FieldUpdate>>(
             fieldsJson,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
@@ -4232,6 +4279,7 @@ app.MapPost("/api/fields/save", async (
             return Results.BadRequest("Invalid field update data");
         }
 
+        logger.LogWarning($"[FIELD-SAVE-DEBUG] Parsed {fieldUpdates.Count} field updates from JSON");
         logger.LogInformation($"Processing {fieldUpdates.Count} field updates");
 
         // Update fields using the field editor service

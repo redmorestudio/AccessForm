@@ -1,6 +1,7 @@
 using Syncfusion.Pdf;
 using Syncfusion.Pdf.Parsing;
 using Syncfusion.Pdf.Interactive;
+using Syncfusion.Drawing;
 using Microsoft.Extensions.Logging;
 using AccessFormServer.Services;
 
@@ -73,22 +74,31 @@ namespace WordToPdfConverter.Services
                 // This would be used when AI detects missing fields
             }
 
-            // Save the document with fields preserved
-            using var intermediateMs = new MemoryStream();
-            loadedDoc.Save(intermediateMs);
-            var intermediateBytes = intermediateMs.ToArray();
+            // Apply the FULL accessibility pipeline - these services are solid and don't break PDFs
 
-            _logger.LogInformation("[PDF-PRESERVATION] Fields preserved, now applying accessibility enhancements");
+            // Step 1: AccessibilityRetrofitService - adds structure/tagging to the loaded document
+            _logger.LogInformation("[PDF-PRESERVATION] Step 1: Running AccessibilityRetrofitService for structure/tagging");
+            _retrofitService.RetrofitAccessibility(loadedDoc);
 
-            // Apply all accessibility enhancements (font replacement, tagging, metadata, etc.)
-            // These services are already used in the Word-to-PDF pipeline, now we use them for PDF-to-PDF too
-            var accessibleBytes = await _accessibilityService.MakePdfAccessibleAsync(intermediateBytes);
-            accessibleBytes = await _retrofitService.RetrofitAccessibilityAsync(accessibleBytes);
-            accessibleBytes = await _enhancer.EnhanceAccessibilityAsync(accessibleBytes);
+            // Step 2: PdfAccessibilityEnhancer - final enhancements on the loaded document
+            _logger.LogInformation("[PDF-PRESERVATION] Step 2: Running PdfAccessibilityEnhancer for final enhancements");
+            _enhancer.EnhanceAccessibility(loadedDoc, "existing-pdf.pdf");
 
-            _logger.LogInformation("[PDF-PRESERVATION] Accessibility enhancements complete, all fields and calculations preserved");
+            // Save the document with accessibility enhancements
+            using var tempMs = new MemoryStream();
+            loadedDoc.Save(tempMs);
+            var pdfBytesWithFields = tempMs.ToArray();
 
-            return accessibleBytes;
+            _logger.LogInformation("[PDF-PRESERVATION] Saved PDF with accessibility enhancements, now applying AccessibilityService");
+
+            // Step 3: AccessibilityService - replaces fonts, handles ZapfDingbats → Unicode, etc.
+            // This one works on byte[] and returns (byte[], report)
+            _logger.LogInformation("[PDF-PRESERVATION] Step 3: Running AccessibilityService for font replacement");
+            var (finalPdfBytes, accessibilityReport) = _accessibilityService.MakeAccessible(pdfBytesWithFields, "existing-pdf.pdf");
+
+            _logger.LogInformation("[PDF-PRESERVATION] Full accessibility pipeline complete - fields should be preserved");
+
+            return finalPdfBytes;
         }
 
         /// <summary>
@@ -167,7 +177,23 @@ namespace WordToPdfConverter.Services
                     }
                 }
 
-                var bounds = field.Bounds;
+                // Get bounds - need to cast to specific field type
+                RectangleF bounds;
+                if (field is PdfLoadedTextBoxField textBox)
+                    bounds = textBox.Bounds;
+                else if (field is PdfLoadedCheckBoxField checkBox)
+                    bounds = checkBox.Bounds;
+                else if (field is PdfLoadedRadioButtonListField radioList && radioList.Items.Count > 0)
+                    bounds = radioList.Items[0].Bounds;
+                else if (field is PdfLoadedComboBoxField comboBox)
+                    bounds = comboBox.Bounds;
+                else if (field is PdfLoadedListBoxField listBox)
+                    bounds = listBox.Bounds;
+                else if (field is PdfLoadedSignatureField signature)
+                    bounds = signature.Bounds;
+                else
+                    continue; // Skip unknown field types
+
                 var detectedField = new Models.FieldDetectionResult
                 {
                     ShortId = $"PDF{fieldCounter}",
@@ -185,7 +211,8 @@ namespace WordToPdfConverter.Services
 
                 results.Add(detectedField);
 
-                _logger.LogInformation($"[PDF-PRESERVATION] Detected existing field: {detectedField.FieldName} ({detectedField.FieldType}) on page {pageNum}");
+                _logger.LogWarning($"[PDF-PRESERVATION] Detected existing field: {detectedField.FieldName} ({detectedField.FieldType}) " +
+                    $"on page {pageNum} at X={bounds.X}, Y={bounds.Y}, W={bounds.Width}, H={bounds.Height}");
             }
 
             return results;

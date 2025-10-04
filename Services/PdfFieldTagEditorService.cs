@@ -64,14 +64,23 @@ namespace WordToPdfConverter.Services
         /// Updates PDF fields and tag tree structure comprehensively.
         /// </summary>
         public async Task<EditResult> UpdateFieldsAndTagsAsync(
-            byte[] pdfBytes, 
+            byte[] pdfBytes,
             List<FieldUpdate> fieldUpdates,
             bool ensurePdfUaCompliance = true)
         {
             var result = new EditResult();
-            
+
             try
             {
+                _logger.LogWarning($"[FIELD-SAVE-DEBUG] UpdateFieldsAndTagsAsync called with {fieldUpdates.Count} field updates");
+
+                // Log each field update to see what coordinates we have
+                foreach (var update in fieldUpdates)
+                {
+                    _logger.LogWarning($"[FIELD-SAVE-DEBUG] Field '{update.OriginalName}' -> '{update.NewName}': " +
+                        $"X={update.X}, Y={update.Y}, W={update.Width}, H={update.Height}, Page={update.PageNumber}");
+                }
+
                 _logger.LogInformation($"Starting comprehensive field and tag update for {fieldUpdates.Count} fields");
 
                 // Step 1: Initial field modification using Syncfusion
@@ -271,16 +280,21 @@ namespace WordToPdfConverter.Services
                 var tempInputPath = Path.Combine(Path.GetTempPath(), $"input_{Guid.NewGuid()}.pdf");
                 await File.WriteAllBytesAsync(tempInputPath, pdfBytes);
 
-                // Prepare field updates JSON
+                // Prepare field updates JSON - INCLUDE COORDINATES
                 var updates = fieldUpdates.Select(u => new
                 {
                     originalName = u.OriginalName,
                     newName = u.NewName,
                     fieldType = u.FieldType,
-                    tooltip = u.Tooltip
+                    tooltip = u.Tooltip,
+                    X = u.X,
+                    Y = u.Y,
+                    Width = u.Width,
+                    Height = u.Height
                 }).ToList();
 
                 var updatesJson = JsonSerializer.Serialize(updates);
+                _logger.LogWarning($"[FIELD-SAVE-DEBUG] Sending to Python: {updatesJson}");
                 
                 // Log the command for debugging
                 var scriptPath = Path.Combine(Directory.GetCurrentDirectory(), _pythonScript);

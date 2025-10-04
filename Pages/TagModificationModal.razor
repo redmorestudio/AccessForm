@@ -1531,11 +1531,11 @@
     private string GetFieldOverlayStyle(EditableField field)
     {
         const float SCALE_FACTOR = 150.0f / 72.0f; // 150 DPI display / 72 DPI PDF
-        const float STANDARD_PAGE_HEIGHT = 792.0f; // US Letter height in points
 
-        // Convert PDF coordinates (bottom-left origin) to display coordinates (top-left origin)
+        // IMPORTANT: Syncfusion Bounds uses TOP-LEFT origin (not PDF's standard bottom-left)
+        // No coordinate conversion needed - just scale from 72 DPI to 150 DPI
         var displayX = field.X * SCALE_FACTOR;
-        var displayY = (STANDARD_PAGE_HEIGHT - field.Y - field.Height) * SCALE_FACTOR;
+        var displayY = field.Y * SCALE_FACTOR;
         var displayWidth = field.Width * SCALE_FACTOR;
         var displayHeight = field.Height * SCALE_FACTOR;
 
@@ -1576,35 +1576,13 @@
 
     private void HandleFieldMouseDown(MouseEventArgs e, EditableField field)
     {
-        // Check if clicking on a resize handle
-        var target = e.Target as string;
-        if (target != null && target.Contains("resize-handle"))
-        {
-            // Start resizing
-            isResizingField = true;
-            draggedField = field;
-            resizeHandle = target.Contains("nw") ? "nw" :
-                          target.Contains("ne") ? "ne" :
-                          target.Contains("sw") ? "sw" :
-                          target.Contains("se") ? "se" : null;
-
-            dragStartX = e.ClientX;
-            dragStartY = e.ClientY;
-            originalFieldX = field.X;
-            originalFieldY = field.Y;
-            originalFieldWidth = field.Width;
-            originalFieldHeight = field.Height;
-        }
-        else
-        {
-            // Start dragging
-            isDraggingField = true;
-            draggedField = field;
-            dragStartX = e.ClientX;
-            dragStartY = e.ClientY;
-            originalFieldX = field.X;
-            originalFieldY = field.Y;
-        }
+        // Start dragging (resize functionality disabled for now)
+        isDraggingField = true;
+        draggedField = field;
+        dragStartX = e.ClientX;
+        dragStartY = e.ClientY;
+        originalFieldX = field.X;
+        originalFieldY = field.Y;
 
         SelectedField = field;
 

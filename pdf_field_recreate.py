@@ -105,7 +105,7 @@ def recreate_fields(pdf_path, field_updates):
         # Third pass: create new fields
         for field_info in fields_to_delete:
             page = doc[field_info['page_num']]
-            
+
             # Determine position and size
             if all(field_info.get(k) is not None for k in ['custom_x', 'custom_y', 'custom_width', 'custom_height']):
                 # Use custom position/size if provided
@@ -115,8 +115,10 @@ def recreate_fields(pdf_path, field_updates):
                 height = field_info['custom_height']
                 rect = fitz.Rect(x, y, x + width, y + height)
             else:
-                # Use original position
+                # Use original position - this is already in the correct coordinate system
+                # because PyMuPDF reads widget.rect in its own coordinates
                 rect = field_info['rect']
+                logging.debug(f"Using original rect for '{field_info['new_name']}': {rect}")
             
             # Create the appropriate widget type
             new_type = field_info['new_type'].lower()
