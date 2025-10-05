@@ -453,7 +453,9 @@ namespace AccessFormServer.Services
                 // Method 2: Scan all text fragments for fonts (catches fonts not in page resources)
                 try
                 {
-                    var absorber = new TextFragmentAbsorber();
+                    // Use text edit options that will allow us to remove unused fonts later
+                    var textEditOptions = new TextEditOptions(TextEditOptions.FontReplace.RemoveUnusedFonts);
+                    var absorber = new TextFragmentAbsorber(textEditOptions);
                     document.Pages.Accept(absorber);
 
                     foreach (TextFragment fragment in absorber.TextFragments)
@@ -497,8 +499,9 @@ namespace AccessFormServer.Services
 
                     try
                     {
-                        // Use TextFragmentAbsorber to find all text using this font and replace it
-                        var absorber = new TextFragmentAbsorber();
+                        // Use TextFragmentAbsorber with RemoveUnusedFonts option to clean up font resources
+                        var textEditOptions = new TextEditOptions(TextEditOptions.FontReplace.RemoveUnusedFonts);
+                        var absorber = new TextFragmentAbsorber(textEditOptions);
                         document.Pages.Accept(absorber);
 
                         int fontReplacements = 0;
@@ -540,6 +543,7 @@ namespace AccessFormServer.Services
                             var substitutionMsg = $"Base-14 font substitution: '{base14Font}' → '{targetFont}' ({fontReplacements} instances)";
                             substitutions.Add(substitutionMsg);
                             _logger.LogWarning($"⚠️ {substitutionMsg}");
+                            _logger.LogInformation($"🧹 Removed unused font resource: '{base14Font}' from page resources");
                             totalReplacements += fontReplacements;
                         }
                     }
