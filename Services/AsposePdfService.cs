@@ -328,9 +328,10 @@ namespace AccessFormServer.Services
                 _logger.LogInformation($"Applied {substitutions.Count} base-14 font substitutions");
             }
 
-            // Then clean up checkbox fields
-            CleanCheckboxFonts(document, ref checkboxesCleaned);
-            _logger.LogInformation($"Checkboxes cleaned: {checkboxesCleaned}");
+            // DISABLED: Checkbox cleaning uses ZapfDingbats which cannot be embedded
+            // CleanCheckboxFonts(document, ref checkboxesCleaned);
+            // _logger.LogInformation($"Checkboxes cleaned: {checkboxesCleaned}");
+            _logger.LogInformation("Skipping checkbox font cleaning (would introduce non-embeddable ZapfDingbats)");
 
             // Use FontUtilities to embed and subset ALL fonts (including base 14 fonts)
             // This is the key: SubsetAllFonts will force embedding of all fonts, even base 14
