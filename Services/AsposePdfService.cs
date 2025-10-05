@@ -19,12 +19,14 @@ namespace AccessFormServer.Services
     {
         private readonly ILogger<AsposePdfService> _logger;
         private readonly TwcFontComplianceService _fontComplianceService;
+        private readonly TableLinkAccessibilityService _tableLinkService;
         private bool _isConfigured = false;
 
-        public AsposePdfService(ILogger<AsposePdfService> logger, TwcFontComplianceService fontComplianceService)
+        public AsposePdfService(ILogger<AsposePdfService> logger, TwcFontComplianceService fontComplianceService, TableLinkAccessibilityService tableLinkService)
         {
             _logger = logger;
             _fontComplianceService = fontComplianceService;
+            _tableLinkService = tableLinkService;
             
             try
             {
@@ -1238,12 +1240,26 @@ namespace AccessFormServer.Services
                         int figuresFixed = FixFigureElements(taggedContent.RootElement);
                         _logger.LogInformation($"✅ Fixed {figuresFixed} Figure elements with alt text");
 
-                        // 3. Fix TH cells - add Scope attribute
-                        _logger.LogInformation("Fixing TH cell headers...");
-                        int thCellsFixed = FixTableHeaderCells(taggedContent.RootElement);
-                        _logger.LogInformation($"✅ Fixed {thCellsFixed} TH cells with Scope attributes");
+                        // 3. Fix orphaned TH cells and table/link structure
+                        _logger.LogInformation("Cleaning up orphaned TH cells and table/link structure...");
+                        var cleanupConfig = new TableLinkCleanupConfig
+                        {
+                            FixOrphanedTableHeaders = true,
+                            RemoveEmptyTables = true,
+                            LinkHandling = LinkHandlingMode.Remove,
+                            VerboseLogging = true
+                        };
+                        var cleanupReport = _tableLinkService.CleanupDocument(document, cleanupConfig);
+                        _logger.LogInformation($"✅ Fixed {cleanupReport.OrphanedHeadersFixed} orphaned TH cells, " +
+                                             $"removed {cleanupReport.EmptyTablesRemoved} empty tables, " +
+                                             $"processed {cleanupReport.LinksProcessed} links");
 
-                        // 4. Embed all fonts (including Times-Roman)
+                        // 4. Fix remaining TH cells - add alt text
+                        _logger.LogInformation("Fixing remaining TH cell headers...");
+                        int thCellsFixed = FixTableHeaderCells(taggedContent.RootElement);
+                        _logger.LogInformation($"✅ Added alt text to {thCellsFixed} TH cells");
+
+                        // 5. Embed all fonts (including Times-Roman)
                         _logger.LogInformation("Embedding all fonts...");
                         EmbedFonts(document);
                         _logger.LogInformation("✅ All fonts embedded");

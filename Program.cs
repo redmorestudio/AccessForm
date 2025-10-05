@@ -118,6 +118,9 @@ builder.Services.AddScoped<PassportPdfService>();
 // Add PDF/UA compliance service
 builder.Services.AddScoped<PdfUAComplianceService>();
 
+// Add table/link accessibility cleanup service
+builder.Services.AddScoped<AccessFormServer.Services.TableLinkAccessibilityService>();
+
 // Add comprehensive PDF field and tag editor service
 builder.Services.AddScoped<PdfFieldTagEditorService>();
 
@@ -143,7 +146,8 @@ builder.Services.AddScoped<AccessFormServer.Services.AsposePdfService>(provider 
 {
     var logger = provider.GetRequiredService<ILogger<AccessFormServer.Services.AsposePdfService>>();
     var fontComplianceService = provider.GetRequiredService<AccessFormServer.Services.TwcFontComplianceService>();
-    return new AccessFormServer.Services.AsposePdfService(logger, fontComplianceService);
+    var tableLinkService = provider.GetRequiredService<AccessFormServer.Services.TableLinkAccessibilityService>();
+    return new AccessFormServer.Services.AsposePdfService(logger, fontComplianceService, tableLinkService);
 });
 
 // Add PDF Form Structure service
