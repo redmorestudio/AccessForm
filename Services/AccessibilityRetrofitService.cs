@@ -14,12 +14,12 @@ namespace WordToPdfConverter.Services
     public class AccessibilityRetrofitService
     {
         private readonly Dictionary<string, string> _fieldGroupings = new();
-        
+
         public void RetrofitAccessibility(PdfLoadedDocument document)
         {
             // 1. Smart Field Analysis and Enhancement
             AnalyzeAndEnhanceFormFields(document);
-            
+
             // 2. Auto-generate Navigation
             GenerateBookmarksFromContent(document);
         }

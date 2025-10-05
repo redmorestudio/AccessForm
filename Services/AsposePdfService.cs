@@ -317,33 +317,225 @@ namespace AccessFormServer.Services
         /// </summary>
         private void EmbedFonts(Document document)
         {
-            _logger.LogInformation("===== EMBEDDING FONTS AND REPLACING BASE-14 FONTS =====");
+            _logger.LogInformation("===== EMBEDDING ALL FONTS (INCLUDING BASE-14) =====");
 
-            int checkboxesCleaned = 0;
-
-            // First, detect and substitute all base-14 fonts using Aspose's native substitution API
-            var substitutions = DetectAndSubstituteBase14Fonts(document);
-            if (substitutions.Any())
-            {
-                _logger.LogInformation($"Applied {substitutions.Count} base-14 font substitutions");
-            }
-
-            // DISABLED: Checkbox cleaning uses ZapfDingbats which cannot be embedded
-            // CleanCheckboxFonts(document, ref checkboxesCleaned);
-            // _logger.LogInformation($"Checkboxes cleaned: {checkboxesCleaned}");
-            _logger.LogInformation("Skipping checkbox font cleaning (would introduce non-embeddable ZapfDingbats)");
-
-            // Use FontUtilities to embed and subset ALL fonts (including base 14 fonts)
-            // This is the key: SubsetAllFonts will force embedding of all fonts, even base 14
             try
             {
-                _logger.LogInformation("Embedding and subsetting ALL fonts...");
-                document.FontUtilities.SubsetFonts(FontSubsetStrategy.SubsetAllFonts);
-                _logger.LogInformation("Successfully embedded and subsetted all fonts");
+                // Enable embedding of standard Type 1 fonts (base-14 fonts)
+                // This is the key setting that allows embedding fonts like ArialMT, Helvetica, Times-Roman, etc.
+                document.EmbedStandardFonts = true;
+                _logger.LogInformation("✅ Enabled EmbedStandardFonts flag");
+
+                // Mark all fonts in page resources for embedding
+                int fontsMarkedForEmbedding = 0;
+                foreach (Page page in document.Pages)
+                {
+                    if (page.Resources?.Fonts != null)
+                    {
+                        foreach (var font in page.Resources.Fonts)
+                        {
+                            if (!font.IsEmbedded)
+                            {
+                                font.IsEmbedded = true;
+                                fontsMarkedForEmbedding++;
+                                _logger.LogInformation($"📌 Marked font for embedding: {font.FontName}");
+                            }
+                        }
+                    }
+                }
+                _logger.LogInformation($"✅ Marked {fontsMarkedForEmbedding} fonts in page resources for embedding");
+
+                // Also check and handle fonts in form field appearance streams
+                if (document.Form != null && document.Form.Fields.Length > 0)
+                {
+                    _logger.LogInformation($"Checking {document.Form.Fields.Length} form fields for problematic fonts...");
+                    int formFieldFontsFound = 0;
+                    int zapfDingbatsFieldsReplaced = 0;
+                    int checkboxesRegenerated = 0;
+                    var base14Fonts = new[] { "ZapfDingbats", "Times-Roman", "Helvetica", "Courier", "Symbol" };
+
+                    // First pass: Force regenerate ALL checkbox appearances to replace any embedded base-14 fonts
+                    // This is necessary because ZapfDingbats and other base-14 fonts are often embedded
+                    // in checkbox appearance streams in ways that can't be detected through the Aspose API
+                    foreach (var field in document.Form.Fields)
+                    {
+                        if (field is Aspose.Pdf.Forms.CheckboxField checkbox)
+                        {
+                            try
+                            {
+                                // Preserve current state
+                                bool isChecked = checkbox.Checked;
+
+                                // Clear existing appearance to force regeneration
+                                checkbox.Appearance.Clear();
+
+                                // Set style to standard checkmark
+                                checkbox.Style = Aspose.Pdf.Forms.BoxStyle.Check;
+
+                                // Set a proper DefaultAppearance with embeddable font
+                                var arialFont = FontRepository.FindFont("Arial");
+                                if (arialFont != null)
+                                {
+                                    checkbox.DefaultAppearance = new Aspose.Pdf.Annotations.DefaultAppearance(
+                                        arialFont,
+                                        10,
+                                        System.Drawing.Color.Black
+                                    );
+                                }
+
+                                // Force regeneration by toggling and restoring
+                                checkbox.Checked = !isChecked;
+                                checkbox.Checked = isChecked;
+
+                                checkboxesRegenerated++;
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogDebug($"Could not regenerate checkbox appearance for {field.FullName}: {ex.Message}");
+                            }
+                        }
+                    }
+
+                    if (checkboxesRegenerated > 0)
+                    {
+                        _logger.LogInformation($"✅ Regenerated {checkboxesRegenerated} checkboxes to replace ZapfDingbats");
+                    }
+
+                    // Second pass: Check DefaultAppearance for other base-14 fonts
+                    foreach (var field in document.Form.Fields)
+                    {
+                        try
+                        {
+                            // Get the field's appearance dictionary to access fonts
+                            if (field is Aspose.Pdf.Forms.Field formField)
+                            {
+                                // Try to access the font through the field's default appearance
+                                var defaultAppearance = formField.DefaultAppearance;
+                                if (defaultAppearance != null && !string.IsNullOrEmpty(defaultAppearance.FontName))
+                                {
+                                    _logger.LogDebug($"Field '{field.FullName}' uses font: {defaultAppearance.FontName}");
+                                    formFieldFontsFound++;
+
+                                    // Check if this field uses a base-14 font (especially ZapfDingbats)
+                                    if (base14Fonts.Any(f => defaultAppearance.FontName.Contains(f, StringComparison.OrdinalIgnoreCase)))
+                                    {
+                                        _logger.LogInformation($"⚠️ Found base-14 font '{defaultAppearance.FontName}' in form field: {field.FullName}");
+
+                                        // For ZapfDingbats in checkboxes, regenerate appearance with embeddable font
+                                        if (defaultAppearance.FontName.Contains("ZapfDingbats", StringComparison.OrdinalIgnoreCase) &&
+                                            field is Aspose.Pdf.Forms.CheckboxField checkbox)
+                                        {
+                                            try
+                                            {
+                                                // Preserve current checked state
+                                                bool isChecked = checkbox.Checked;
+
+                                                // Get font size (default to 10 if not set)
+                                                var fontSize = defaultAppearance.FontSize > 0 ? defaultAppearance.FontSize : 10;
+
+                                                // Create new appearance with Arial (embeddable) instead of ZapfDingbats
+                                                var arialFont = FontRepository.FindFont("Arial");
+                                                if (arialFont != null)
+                                                {
+                                                    var textColor = defaultAppearance.TextColor == System.Drawing.Color.Empty
+                                                        ? System.Drawing.Color.Black
+                                                        : defaultAppearance.TextColor;
+                                                    checkbox.DefaultAppearance = new Aspose.Pdf.Annotations.DefaultAppearance(
+                                                        arialFont,
+                                                        fontSize,
+                                                        textColor
+                                                    );
+
+                                                    // Trigger appearance stream regeneration by re-setting checked state
+                                                    checkbox.Checked = isChecked;
+
+                                                    zapfDingbatsFieldsReplaced++;
+                                                    _logger.LogInformation($"✅ Regenerated checkbox appearance with Arial: {field.FullName} (checked: {isChecked})");
+                                                }
+                                            }
+                                            catch (Exception ex)
+                                            {
+                                                _logger.LogWarning($"Could not regenerate checkbox appearance for {field.FullName}: {ex.Message}");
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogDebug($"Could not check font for field {field.FullName}: {ex.Message}");
+                        }
+                    }
+                    _logger.LogInformation($"Found {formFieldFontsFound} form fields with font information");
+                    if (zapfDingbatsFieldsReplaced > 0)
+                    {
+                        _logger.LogInformation($"✅ Replaced ZapfDingbats font in {zapfDingbatsFieldsReplaced} form fields");
+                    }
+                }
+
+                // Detect and substitute base-14 fonts (Times-Roman, Helvetica, ZapfDingbats, etc.) in text content
+                // This handles fonts in regular text and converts special characters (ZapfDingbats/Symbol) to Unicode
+                DetectAndSubstituteBase14Fonts(document);
+
+                // Check for fonts known to cause CIDset subsetting issues
+                bool hasProblematicFonts = false;
+                foreach (Page page in document.Pages)
+                {
+                    if (page.Resources?.Fonts != null)
+                    {
+                        foreach (var font in page.Resources.Fonts)
+                        {
+                            var fontName = font.FontName ?? "";
+                            // OpenSansRegular and Arial fonts create incomplete CIDset when subsetted
+                            if (fontName.Contains("OpenSansRegular", StringComparison.OrdinalIgnoreCase) ||
+                                fontName.Contains("OpenSans-Regular", StringComparison.OrdinalIgnoreCase) ||
+                                fontName.Contains("Arial", StringComparison.OrdinalIgnoreCase))
+                            {
+                                hasProblematicFonts = true;
+                                _logger.LogWarning($"⚠️ Found font with known CIDset subsetting issues: {fontName}");
+                                break;
+                            }
+                        }
+                        if (hasProblematicFonts) break;
+                    }
+                }
+
+                // IMPORTANT: Font subsetting can cause issues with CIDset completeness
+                // Skip subsetting if problematic fonts detected, otherwise try subsetting
+                if (hasProblematicFonts)
+                {
+                    _logger.LogWarning("⚠️ Skipping font subsetting due to fonts with CIDset issues - fonts will be fully embedded");
+                    _logger.LogInformation("✅ All fonts will be fully embedded (larger file size but no CIDset errors)");
+                }
+                else
+                {
+                    // Try SubsetEmbeddedFontsOnly first (safer), fall back to SubsetAllFonts if needed
+                    try
+                    {
+                        _logger.LogInformation("Subsetting embedded fonts...");
+                        document.FontUtilities.SubsetFonts(FontSubsetStrategy.SubsetEmbeddedFontsOnly);
+                        _logger.LogInformation("✅ Successfully subsetted embedded fonts");
+                    }
+                    catch (Exception subsetEx)
+                    {
+                        _logger.LogWarning($"SubsetEmbeddedFontsOnly failed ({subsetEx.Message}), trying SubsetAllFonts...");
+                        try
+                        {
+                            document.FontUtilities.SubsetFonts(FontSubsetStrategy.SubsetAllFonts);
+                            _logger.LogInformation("✅ Successfully subsetted all fonts");
+                        }
+                        catch (Exception allSubsetEx)
+                        {
+                            _logger.LogWarning($"Font subsetting failed: {allSubsetEx.Message}");
+                            // Continue without subsetting - at least the fonts are marked for embedding
+                        }
+                    }
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning($"Could not apply font subsetting: {ex.Message}");
+                _logger.LogError(ex, "Failed to embed/subset fonts");
             }
 
             // DISABLED: TwcFontComplianceService requires Liberation font files which don't exist

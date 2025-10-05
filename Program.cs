@@ -57,6 +57,7 @@ builder.Services.AddScoped<AccessibilityService>();
 builder.Services.AddScoped<AccessibilityReportService>();
 builder.Services.AddScoped<AccessibilityRetrofitService>();
 builder.Services.AddScoped<PdfAccessibilityEnhancer>();
+builder.Services.AddScoped<AccessFormServer.Services.ImageAltTextService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.FieldAnalysisService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.FormFieldCreationService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.WordFormFieldAnalyzer>();
@@ -629,8 +630,42 @@ app.MapPost("/api/convert", async (HttpRequest request, AccessibilityService acc
         // Now create the ACCESSIBLE version
         // Reload the PDF for accessibility processing
         normalPdfStream.Position = 0;
-        using var accessiblePdf = new PdfLoadedDocument(normalPdfStream);
-        
+
+        // FIRST: Clean up table/link issues using Aspose (before Syncfusion processing)
+        Console.WriteLine("\n🧹 Cleaning up table and link accessibility issues...");
+        normalPdfStream.Position = 0;
+        using var asposeDocForCleanup = new Aspose.Pdf.Document(normalPdfStream);
+
+        var tableLinkService = new AccessFormServer.Services.TableLinkAccessibilityService(
+            app.Services.GetRequiredService<ILogger<AccessFormServer.Services.TableLinkAccessibilityService>>());
+        var cleanupConfig = new AccessFormServer.Services.TableLinkCleanupConfig
+        {
+            FixOrphanedTableHeaders = true,
+            RemoveEmptyTables = true,
+            LinkHandling = AccessFormServer.Services.LinkHandlingMode.Remove,
+            VerboseLogging = true
+        };
+        var cleanupReport = tableLinkService.CleanupDocument(asposeDocForCleanup, cleanupConfig);
+        Console.WriteLine($"✅ Table/Link cleanup: {cleanupReport.OrphanedHeadersFixed} tables fixed, " +
+            $"{cleanupReport.EmptyTablesRemoved} empty tables removed, {cleanupReport.LinksProcessed} links processed");
+
+        // SECOND: Generate and add alt text to images using Claude Vision
+        Console.WriteLine("\n🖼️  Generating alt text for images using Claude Vision...");
+        var imageAltTextService = new AccessFormServer.Services.ImageAltTextService(
+            app.Services.GetRequiredService<AccessFormServer.Services.AnthropicService>(),
+            app.Services.GetRequiredService<ILogger<AccessFormServer.Services.ImageAltTextService>>());
+        var altTextReport = await imageAltTextService.AddAltTextToImagesAsync(asposeDocForCleanup);
+        Console.WriteLine($"✅ Alt text generation: {altTextReport.ImagesProcessed} images processed, " +
+            $"{altTextReport.ImagesWithExistingAltText} already had alt text, {altTextReport.ImagesFailed} failed");
+
+        // Save cleaned document back to stream
+        var cleanedStream = new MemoryStream();
+        asposeDocForCleanup.Save(cleanedStream);
+        cleanedStream.Position = 0;
+
+        // Now load the cleaned PDF into Syncfusion for further processing
+        using var accessiblePdf = new PdfLoadedDocument(cleanedStream);
+
         // Apply ENHANCED accessibility with PDF/UA compliance
         Console.WriteLine("\n🔧 Applying enhanced PDF/UA accessibility...");
         enhancer.EnhanceAccessibility(accessiblePdf, file.FileName);
@@ -772,19 +807,53 @@ app.MapPost("/api/remediate-pdf", async (HttpRequest request, AccessibilityServi
         
         // Reload for accessibility processing
         normalStream.Position = 0;
-        using var pdfToRemediate = new PdfLoadedDocument(normalStream);
-        
+
+        // FIRST: Clean up table/link issues using Aspose (before Syncfusion processing)
+        Console.WriteLine("\n🧹 Cleaning up table and link accessibility issues...");
+        normalStream.Position = 0;
+        using var asposeDocForCleanup = new Aspose.Pdf.Document(normalStream);
+
+        var tableLinkService = new AccessFormServer.Services.TableLinkAccessibilityService(
+            app.Services.GetRequiredService<ILogger<AccessFormServer.Services.TableLinkAccessibilityService>>());
+        var cleanupConfig = new AccessFormServer.Services.TableLinkCleanupConfig
+        {
+            FixOrphanedTableHeaders = true,
+            RemoveEmptyTables = true,
+            LinkHandling = AccessFormServer.Services.LinkHandlingMode.Remove,
+            VerboseLogging = true
+        };
+        var cleanupReport = tableLinkService.CleanupDocument(asposeDocForCleanup, cleanupConfig);
+        Console.WriteLine($"✅ Table/Link cleanup: {cleanupReport.OrphanedHeadersFixed} tables fixed, " +
+            $"{cleanupReport.EmptyTablesRemoved} empty tables removed, {cleanupReport.LinksProcessed} links processed");
+
+        // SECOND: Generate and add alt text to images using Claude Vision
+        Console.WriteLine("\n🖼️  Generating alt text for images using Claude Vision...");
+        var imageAltTextService = new AccessFormServer.Services.ImageAltTextService(
+            app.Services.GetRequiredService<AccessFormServer.Services.AnthropicService>(),
+            app.Services.GetRequiredService<ILogger<AccessFormServer.Services.ImageAltTextService>>());
+        var altTextReport = await imageAltTextService.AddAltTextToImagesAsync(asposeDocForCleanup);
+        Console.WriteLine($"✅ Alt text generation: {altTextReport.ImagesProcessed} images processed, " +
+            $"{altTextReport.ImagesWithExistingAltText} already had alt text, {altTextReport.ImagesFailed} failed");
+
+        // Save cleaned document back to stream
+        var cleanedStream = new MemoryStream();
+        asposeDocForCleanup.Save(cleanedStream);
+        cleanedStream.Position = 0;
+
+        // Now load the cleaned PDF into Syncfusion for further processing
+        using var pdfToRemediate = new PdfLoadedDocument(cleanedStream);
+
         // Initialize field processing data tracking
         Console.WriteLine("\n🔍 Initializing field processing data tracking...");
         var fieldProcessingData = new WordToPdfConverter.Models.FieldProcessingData();
-        
+
         // Capture the original field count
         if (pdfToRemediate.Form != null)
         {
             fieldProcessingData.OriginalFieldCount = pdfToRemediate.Form.Fields.Count;
             Console.WriteLine($"Original fields detected in PDF: {fieldProcessingData.OriginalFieldCount}");
         }
-        
+
         // Step 2: Apply algorithmic retrofitting
         Console.WriteLine("\n🔧 Phase 1: Algorithmic Retrofitting");
         Console.WriteLine("----------------------------------------");
@@ -4100,24 +4169,22 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
         }
 
         // Then process with PassportPDF for PDF/UA compliance - PRESERVE FIELD NAMES
-        // IMPORTANT: Skip PassportPDF for existing PDFs to preserve field coordinates!
-        if (!isPdf)
+        // Run PassportPDF if it's enabled in the options (for both Word and PDF inputs)
+        // PassportPDF's PDF/A-2u conversion is critical for font embedding compliance
+        try
         {
-            try
-            {
-                pdfBytes = await passportPdfService.ConvertToPdfAPreservingFieldsAsync(pdfBytes, file.FileName);
-                logger.LogInformation("PassportPDF PDF/A conversion successful with field name preservation");
-            }
-            catch (Exception passportEx)
-            {
-                logger.LogWarning(passportEx, "PassportPDF processing failed, returning AI-enhanced PDF without PDF/A conversion");
-                // Continue with the AI-enhanced PDF even if PassportPDF fails
-            }
+            pdfBytes = await passportPdfService.ConvertToPdfAPreservingFieldsAsync(pdfBytes, file.FileName);
+            logger.LogInformation("PassportPDF PDF/A conversion successful with field name preservation");
         }
-        else
+        catch (Exception passportEx)
         {
-            logger.LogInformation("Skipping PassportPDF for existing PDF to preserve field coordinates");
+            logger.LogWarning(passportEx, "PassportPDF processing failed, returning AI-enhanced PDF without PDF/A conversion");
+            // Continue with the AI-enhanced PDF even if PassportPDF fails
         }
+
+        // NOTE: Table/link cleanup and image alt-text generation are DISABLED here
+        // because loading/saving with Aspose after PassportPDF breaks font embedding.
+        // These features are available in the /api/convert and /api/remediate-pdf endpoints.
 
         // Return response in expected format
         return Results.Ok(new
