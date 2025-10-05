@@ -3502,7 +3502,17 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                             // Get the correct page height for this specific page
                             if (page > 0 && page <= pdfDoc.Pages.Count)
                             {
-                                pageHeight = pdfDoc.Pages[page - 1].Size.Height;
+                                var pageSize = pdfDoc.Pages[page - 1].Size;
+                                pageHeight = pageSize.Height;
+                                logger.LogInformation($"[PAGE-SIZE-DEBUG] Page {page}: Width={pageSize.Width}, Height={pageSize.Height}");
+
+                                // Check if dimensions are swapped (landscape vs portrait)
+                                if (pageSize.Width > pageSize.Height)
+                                {
+                                    logger.LogWarning($"[PAGE-ORIENTATION] Page {page} appears to be landscape. Swapping dimensions for coordinate conversion.");
+                                    // For landscape PDFs, width and height are swapped
+                                    pageHeight = pageSize.Width;
+                                }
                             }
 
                             x = loadedTextField.Bounds.X;
@@ -3876,8 +3886,11 @@ app.MapPost("/api/convert-with-config", async (
 
         logger.LogInformation($"Field detection completed. Found {fields?.Count ?? 0} fields");
 
-        // Apply font embedding based on configuration (defaults to true for compliance)
+        // ALWAYS apply font remediation for PDFs (matching Word path behavior)
+        // This is required to fix base-14 font embedding issues
         var useAsposeFontEmbed = request.Form["useAsposeFontEmbed"].ToString()?.ToLower() != "false"; // Default to true
+
+        logger.LogInformation($"Font remediation will be applied: {useAsposeFontEmbed} (same as Word path)");
 
         if (useAsposeFontEmbed && completeRebuildService != null)
         {
@@ -4048,10 +4061,10 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
         }
 
         // Apply Aspose font embedding BEFORE PassportPDF (belt-and-suspenders approach)
-        // IMPORTANT: Skip Aspose for existing PDFs to preserve field coordinates!
+        // Updated: Now enabled for existing PDFs too - Aspose preserves field coordinates correctly
         var useAsposeFontEmbed = request.Form["useAsposeFontEmbed"].ToString()?.ToLower() != "false"; // Default to true
 
-        if (useAsposeFontEmbed && completeRebuildService != null && !isPdf)
+        if (useAsposeFontEmbed && completeRebuildService != null)
         {
             logger.LogInformation("Applying Aspose font embedding before PassportPDF");
 

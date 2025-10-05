@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Field Coordinate Diagnostics</title>
+    <style>
+        body { font-family: monospace; margin: 20px; }
+        .container { display: flex; gap: 20px; margin-bottom: 20px; }
+        .panel { flex: 1; border: 1px solid #ccc; padding: 10px; }
+        .pdf-container { position: relative; display: inline-block; border: 2px solid blue; }
+        .field-overlay {
+            position: absolute;
+            border: 2px solid red;
+            background: rgba(255,0,0,0.2);
+            pointer-events: none;
+            font-size: 10px;
+            color: red;
+            font-weight: bold;
+        }
+        #log {
+            background: #f5f5f5;
+            padding: 10px;
+            height: 200px;
+            overflow-y: auto;
+            white-space: pre;
+            font-size: 11px;
+        }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 4px; text-align: left; font-size: 11px; }
+        th { background: #f0f0f0; }
+        .coord-info { background: #fffbf0; padding: 10px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>Field Coordinate Diagnostics</h1>
+
+    <div class="container">
+        <div class="panel">
+            <h3>1. Upload PDF</h3>
+            <input type="file" id="pdfFile" accept=".pdf">
+            <button onclick="loadPDF()">Load PDF</button>
+        </div>
+
+        <div class="panel">
+            <h3>2. Get Fields</h3>
+            <button onclick="detectFields()">Detect Fields</button>
+            <button onclick="clearOverlays()">Clear Overlays</button>
+        </div>
+    </div>
+
+    <div class="coord-info">
+        <strong>Page Info:</strong>
+        <span id="pageInfo">Not loaded</span>
+    </div>
+
+    <h3>Debug Log</h3>
+    <div id="log"></div>
+
+    <h3>Field Data</h3>
+    <table id="fieldTable">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>PDF X</th>
+                <th>PDF Y</th>
+                <th>Width</th>
+                <th>Height</th>
+                <th>Display Y</th>
+                <th>% Top</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <h3>Visual Test</h3>
+    <div id="pdfDisplay"></div>
+
+    <script>
+        let currentPDF = null;
+        let currentFields = [];
+        let pageHeight = 792;
+        let pageWidth = 612;
+
+        function log(msg) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toISOString().substr(11, 12);
+            logDiv.textContent += `[${timestamp}] ${msg}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        async function loadPDF() {
+            const file = document.getElementById('pdfFile').files[0];
+            if (!file) {
+                alert('Please select a PDF file');
+                return;
+            }
+
+            currentPDF = file;
+            log(`Loaded PDF: ${file.name}`);
+
+            // Create FormData and send to server to get page preview
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                // Get page preview
+                const response = await fetch('http://localhost:5010/api/pdf-page-with-field-boxes', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+
+                    const img = new Image();
+                    img.onload = function() {
+                        const container = document.getElementById('pdfDisplay');
+                        container.innerHTML = '';
+
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'pdf-container';
+                        wrapper.appendChild(img);
+                        container.appendChild(wrapper);
+
+                        // Store dimensions
+                        const aspectRatio = img.height / img.width;
+                        pageHeight = 792; // Standard PDF height
+                        pageWidth = 612;  // Standard PDF width
+
+                        document.getElementById('pageInfo').textContent =
+                            `PDF: ${pageWidth}x${pageHeight} points | Image: ${img.width}x${img.height} pixels | Scale: ${(img.width/pageWidth).toFixed(3)}`;
+
+                        log(`Page loaded - PDF dimensions: ${pageWidth}x${pageHeight}`);
+                        log(`Image dimensions: ${img.width}x${img.height}`);
+                    };
+                    img.src = url;
+                    img.style.maxWidth = '800px';
+                    img.style.height = 'auto';
+                }
+            } catch (error) {
+                log(`Error loading PDF: ${error.message}`);
+            }
+        }
+
+        async function detectFields() {
+            if (!currentPDF) {
+                alert('Please load a PDF first');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', currentPDF);
+
+            log('Calling field detection API...');
+
+            try {
+                const response = await fetch('http://localhost:5010/api/fields/load', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                log(`Received response with ${data.fields?.length || 0} fields`);
+
+                currentFields = data.fields || [];
+                displayFields();
+                drawOverlays();
+            } catch (error) {
+                log(`Error: ${error.message}`);
+            }
+        }
+
+        function displayFields() {
+            const tbody = document.querySelector('#fieldTable tbody');
+            tbody.innerHTML = '';
+
+            currentFields.forEach((field, idx) => {
+                const row = tbody.insertRow();
+
+                // Get coordinates
+                let pdfX, pdfY, width, height;
+                if (field.coordinates) {
+                    pdfX = field.coordinates.pdfX;
+                    pdfY = field.coordinates.pdfY;
+                    width = field.coordinates.pdfWidth;
+                    height = field.coordinates.pdfHeight;
+                    pageHeight = field.coordinates.pageHeight || 792;
+                    pageWidth = field.coordinates.pageWidth || 612;
+                } else {
+                    pdfX = field.x;
+                    pdfY = field.y;
+                    width = field.width;
+                    height = field.height;
+                }
+
+                // Calculate display Y (top-left origin)
+                const displayY = pageHeight - (pdfY + height);
+                const percentTop = (displayY / pageHeight) * 100;
+
+                row.insertCell().textContent = field.fieldName?.substr(0, 30) || 'Unknown';
+                row.insertCell().textContent = pdfX.toFixed(2);
+                row.insertCell().textContent = pdfY.toFixed(2);
+                row.insertCell().textContent = width.toFixed(2);
+                row.insertCell().textContent = height.toFixed(2);
+                row.insertCell().textContent = displayY.toFixed(2);
+                row.insertCell().textContent = percentTop.toFixed(1) + '%';
+
+                // Log first few fields in detail
+                if (idx < 3) {
+                    log(`\nField ${idx + 1}: ${field.fieldName}`);
+                    log(`  PDF coords: (${pdfX.toFixed(2)}, ${pdfY.toFixed(2)})`);
+                    log(`  Size: ${width.toFixed(2)} x ${height.toFixed(2)}`);
+                    log(`  Display Y: ${displayY.toFixed(2)} (${percentTop.toFixed(1)}% from top)`);
+                    log(`  Page: ${pageWidth} x ${pageHeight}`);
+                }
+            });
+        }
+
+        function drawOverlays() {
+            const container = document.querySelector('.pdf-container');
+            if (!container) {
+                log('No PDF container found');
+                return;
+            }
+
+            // Remove existing overlays
+            container.querySelectorAll('.field-overlay').forEach(el => el.remove());
+
+            const img = container.querySelector('img');
+            if (!img) {
+                log('No image found');
+                return;
+            }
+
+            const scaleX = img.width / pageWidth;
+            const scaleY = img.height / pageHeight;
+
+            log(`Drawing overlays with scale: ${scaleX.toFixed(3)} x ${scaleY.toFixed(3)}`);
+
+            currentFields.forEach((field, idx) => {
+                // Get coordinates
+                let pdfX, pdfY, width, height;
+                if (field.coordinates) {
+                    pdfX = field.coordinates.pdfX;
+                    pdfY = field.coordinates.pdfY;
+                    width = field.coordinates.pdfWidth;
+                    height = field.coordinates.pdfHeight;
+                } else {
+                    pdfX = field.x;
+                    pdfY = field.y;
+                    width = field.width;
+                    height = field.height;
+                }
+
+                // Convert PDF coordinates to display coordinates
+                // PDF: bottom-left origin, Y increases upward
+                // Display: top-left origin, Y increases downward
+                const displayX = pdfX * scaleX;
+                const displayY = (pageHeight - (pdfY + height)) * scaleY;
+                const displayWidth = width * scaleX;
+                const displayHeight = height * scaleY;
+
+                const overlay = document.createElement('div');
+                overlay.className = 'field-overlay';
+                overlay.style.left = displayX + 'px';
+                overlay.style.top = displayY + 'px';
+                overlay.style.width = displayWidth + 'px';
+                overlay.style.height = displayHeight + 'px';
+                overlay.textContent = (idx + 1).toString();
+
+                container.appendChild(overlay);
+
+                if (idx < 3) {
+                    log(`  Overlay ${idx + 1}: left=${displayX.toFixed(1)}px, top=${displayY.toFixed(1)}px`);
+                }
+            });
+        }
+
+        function clearOverlays() {
+            document.querySelectorAll('.field-overlay').forEach(el => el.remove());
+            log('Overlays cleared');
+        }
+    </script>
+</body>
+</html>

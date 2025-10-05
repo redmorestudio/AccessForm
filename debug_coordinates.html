@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Coordinate Debug Tool</title>
+    <style>
+        body { font-family: monospace; margin: 20px; }
+        .container { display: flex; gap: 20px; }
+        .panel { flex: 1; border: 1px solid #ccc; padding: 10px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ddd; padding: 4px; text-align: left; }
+        th { background: #f0f0f0; }
+        .field-box { position: absolute; border: 2px solid red; background: rgba(255,0,0,0.2); }
+        #pdf-viewer { position: relative; }
+        #log { height: 300px; overflow-y: scroll; background: #f5f5f5; padding: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Field Coordinate Debugging</h1>
+
+    <div class="container">
+        <div class="panel">
+            <h2>Upload PDF</h2>
+            <input type="file" id="fileInput" accept=".pdf">
+            <button onclick="loadFields()">Detect Fields</button>
+            <button onclick="testCoordinates()">Test Coordinate System</button>
+        </div>
+
+        <div class="panel">
+            <h2>Detection Log</h2>
+            <div id="log"></div>
+        </div>
+    </div>
+
+    <div class="container" style="margin-top: 20px;">
+        <div class="panel">
+            <h2>Detected Fields</h2>
+            <table id="fieldsTable">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>PDF X</th>
+                        <th>PDF Y</th>
+                        <th>Width</th>
+                        <th>Height</th>
+                        <th>Page</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div class="panel">
+            <h2>Visual Preview</h2>
+            <div id="pdf-viewer"></div>
+        </div>
+    </div>
+
+    <script>
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            logDiv.innerHTML += message + '<br>';
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        async function loadFields() {
+            const fileInput = document.getElementById('fileInput');
+            if (!fileInput.files[0]) {
+                alert('Please select a PDF file');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            log('Sending PDF to server for field detection...');
+
+            try {
+                const response = await fetch('http://localhost:5010/api/fields/debug', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                log(`Detected ${data.fields?.length || 0} fields`);
+
+                // Display fields in table
+                const tbody = document.querySelector('#fieldsTable tbody');
+                tbody.innerHTML = '';
+
+                data.fields?.forEach(field => {
+                    log(`Field: ${field.fieldName} at (${field.x}, ${field.y})`);
+
+                    const row = tbody.insertRow();
+                    row.insertCell().textContent = field.fieldName;
+                    row.insertCell().textContent = field.fieldType;
+                    row.insertCell().textContent = field.x?.toFixed(2);
+                    row.insertCell().textContent = field.y?.toFixed(2);
+                    row.insertCell().textContent = field.width?.toFixed(2);
+                    row.insertCell().textContent = field.height?.toFixed(2);
+                    row.insertCell().textContent = field.pageNumber;
+                });
+
+                // Show coordinate details
+                if (data.coordinateInfo) {
+                    log('\n=== Coordinate System Info ===');
+                    log(`Page dimensions: ${data.coordinateInfo.pageWidth} x ${data.coordinateInfo.pageHeight}`);
+                    log(`Coordinate origin: ${data.coordinateInfo.origin}`);
+                    log(`DPI/Scale factor: ${data.coordinateInfo.scaleFactor}`);
+                }
+            } catch (error) {
+                log('Error: ' + error.message);
+            }
+        }
+
+        async function testCoordinates() {
+            log('\n=== Testing Coordinate Conversions ===');
+
+            // Test a sample coordinate
+            const testPoint = { x: 100, y: 100, width: 150, height: 30 };
+
+            try {
+                const response = await fetch('http://localhost:5010/api/test/coordinates', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(testPoint)
+                });
+
+                const data = await response.json();
+                log('Test point: ' + JSON.stringify(testPoint));
+                log('PDF coords: ' + JSON.stringify(data.pdf));
+                log('Display coords: ' + JSON.stringify(data.display));
+                log('Percentage: ' + JSON.stringify(data.percentage));
+            } catch (error) {
+                log('Error: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>

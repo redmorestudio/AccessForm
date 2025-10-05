@@ -1123,18 +1123,18 @@
             
             if (UseAiMode)
             {
-                // Always use the configurable endpoint for Word docs with AI processing
+                // Use the configurable endpoint for BOTH Word and PDF with AI processing
+                endpoint = "/api/convert-with-config";
                 if (isWord)
                 {
-                    endpoint = "/api/convert-with-config";
                     processingMessage = $"Processing with: {(useSyncfusion ? "Syncfusion " : "")}{(useGoogle ? "Google " : "")}{(useClaudeVision ? "Claude Vision " : "")}{(useClaudeValidation ? "Validation" : "")}";
                     await JSRuntime.InvokeVoidAsync("console.log", $"Using config endpoint with: Syncfusion={useSyncfusion}, Google={useGoogle}, Vision={useClaudeVision}, Validation={useClaudeValidation}, Mode={processingMode}");
                 }
                 else
                 {
-                    // For PDFs, still use the AI endpoint since configurable doesn't support PDFs
-                    endpoint = "/api/convert-with-ai";
-                    await JSRuntime.InvokeVoidAsync("console.log", "Using AI endpoint for PDF processing");
+                    // PDFs use the same endpoint - it has full accessibility pipeline via PdfPreservationService
+                    processingMessage = "Processing PDF with full accessibility pipeline...";
+                    await JSRuntime.InvokeVoidAsync("console.log", "Using config endpoint for PDF processing (same pipeline as Word)");
                 }
             }
             else

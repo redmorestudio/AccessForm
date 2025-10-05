@@ -6,6 +6,7 @@
 @using Syncfusion.Pdf.Interactive
 @inject IJSRuntime JSRuntime
 @inject NavigationManager Navigation
+@inject ILogger<TagModificationModal> Logger
 @implements IDisposable
 
 <div class="tag-modification-window @(IsVisible ? "show" : "hide")" id="tagModificationWindow" style="position: fixed; left: 20px; top: 50px; width: 1200px; height: calc(100vh - 100px); z-index: 1040;">
@@ -1417,6 +1418,7 @@
     
     private async Task PreviousPage()
     {
+        Logger.LogWarning("🔥🔥🔥 HELLO WORLD - PREVIOUS PAGE CLICKED 🔥🔥🔥");
         if (CurrentPage > 1)
         {
             // Always use plain PDF - field boxes are rendered as client-side overlays
@@ -1599,18 +1601,45 @@
     // Convert PDF coordinates to display coordinates for field overlay positioning
     private string GetFieldOverlayStyle(EditableField field)
     {
-        // PDF dimensions at 72 DPI
-        const float PDF_WIDTH = 612.0f; // US Letter width in points
+        // For landscape PDFs, we get pageHeight=792 but actual dimensions are 792x612
+        // Standard US Letter: 612x792 (portrait) or 792x612 (landscape)
         float pageHeight = field.PageHeight > 0 ? field.PageHeight : 792.0f;
+        float pageWidth;
 
-        // Convert PDF coordinates (bottom-left origin) to percentages for responsive scaling
-        // Syncfusion uses standard PDF bottom-left coordinates, so we need to flip Y axis for display
-        var leftPercent = (field.X / PDF_WIDTH) * 100;
-        var topPercent = ((pageHeight - field.Y - field.Height) / pageHeight) * 100;
-        var widthPercent = (field.Width / PDF_WIDTH) * 100;
+        // The server sends pageHeight=792 even for landscape PDFs
+        // For a landscape US Letter, actual dimensions are 792x612 (width x height)
+        // Since we're getting 792 as pageHeight for a landscape doc, we need to swap
+        if (Math.Abs(pageHeight - 792.0f) < 0.01f)
+        {
+            // This is landscape: 792 wide x 612 tall
+            pageWidth = 792.0f;
+            pageHeight = 612.0f; // The actual height for landscape
+        }
+        else if (Math.Abs(pageHeight - 612.0f) < 0.01f)
+        {
+            // This is portrait: 612 wide x 792 tall
+            pageWidth = 612.0f;
+            pageHeight = 792.0f; // Keep portrait height
+        }
+        else
+        {
+            // Unknown size, assume square
+            pageWidth = pageHeight;
+        }
+
+        // DO NOT flip Y-axis - Syncfusion coordinates are already in top-left origin
+        var leftPercent = (field.X / pageWidth) * 100;
+        var topPercent = (field.Y / pageHeight) * 100;
+
+        var widthPercent = (field.Width / pageWidth) * 100;
         var heightPercent = (field.Height / pageHeight) * 100;
 
-        return $"left: {leftPercent}%; top: {topPercent}%; width: {widthPercent}%; height: {heightPercent}%;";
+        // Server-side debug logging
+        Logger.LogInformation($"[FIELD-COORD] '{field.Name}': PDF({field.X:F1},{field.Y:F1},{field.Width:F1}x{field.Height:F1}) PageSize({pageWidth}x{pageHeight}) -> Display({leftPercent:F1}%,{topPercent:F1}%,{widthPercent:F1}%x{heightPercent:F1}%)");
+
+        var styleString = $"left: {leftPercent}%; top: {topPercent}%; width: {widthPercent}%; height: {heightPercent}%;";
+        Logger.LogWarning($"🎯 [STYLE-RETURN] '{field.Name}' RETURNING: {styleString}");
+        return styleString;
     }
 
     private string GetDrawingRectangleStyle()
