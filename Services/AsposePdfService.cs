@@ -317,12 +317,16 @@ namespace AccessFormServer.Services
         /// </summary>
         private void EmbedFonts(Document document)
         {
-            _logger.LogInformation("===== EMBEDDING FONTS AND REPLACING PROBLEMATIC FONTS =====");
+            _logger.LogInformation("===== EMBEDDING FONTS AND REPLACING BASE-14 FONTS =====");
 
             int checkboxesCleaned = 0;
 
-            // First, replace all base-14 and problematic fonts (same as Word path)
-            ReplaceProblematicFonts(document);
+            // First, detect and substitute all base-14 fonts using Aspose's native substitution API
+            var substitutions = DetectAndSubstituteBase14Fonts(document);
+            if (substitutions.Any())
+            {
+                _logger.LogInformation($"Applied {substitutions.Count} base-14 font substitutions");
+            }
 
             // Then clean up checkbox fields
             CleanCheckboxFonts(document, ref checkboxesCleaned);
@@ -355,95 +359,211 @@ namespace AccessFormServer.Services
         }
         
         /// <summary>
-        /// Replace all problematic fonts with embeddable alternatives (matches Word path font substitution)
+        /// Detect and substitute all PDF base-14 fonts with embeddable alternatives using Aspose's native substitution
         /// </summary>
-        private void ReplaceProblematicFonts(Document document)
+        private List<string> DetectAndSubstituteBase14Fonts(Document document)
         {
+            var substitutions = new List<string>();
+
             try
             {
-                _logger.LogInformation("===== REPLACING PROBLEMATIC FONTS (MATCHING WORD PATH) =====");
+                _logger.LogInformation("===== DETECTING BASE-14 FONTS =====");
 
-                // Font replacement mappings - SAME as FontSubstitutionService for Word documents
-                var fontReplacements = new Dictionary<string, string>
+                // Complete list of PDF base-14 fonts (standard fonts that can't be embedded)
+                var base14Fonts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
                 {
-                    { "Times New Roman", "Liberation Serif" },
-                    { "Times-Roman", "Liberation Serif" },      // PDF base-14 name
-                    { "Times", "Liberation Serif" },            // Common variant
-                    { "Arial", "Liberation Sans" },
-                    { "Arial Bold", "Liberation Sans" },
-                    { "Helvetica", "Liberation Sans" },         // PDF base-14 name
-                    { "Helvetica-Bold", "Liberation Sans" },    // PDF base-14 name
-                    { "Calibri", "Liberation Sans" },
-                    { "Calibri Light", "Liberation Sans" },
-                    { "Courier New", "Liberation Mono" },
-                    { "Courier", "Liberation Mono" },           // PDF base-14 name
-                    { "Symbol", "DejaVu Sans" },
-                    { "ZapfDingbats", "DejaVu Sans" },
-                    { "Wingdings", "DejaVu Sans" }
+                    // Times family
+                    "Times-Roman", "Times", "Times-Bold", "Times-Italic", "Times-BoldItalic",
+                    "TimesNewRoman", "TimesNewRomanPS", "TimesNewRomanPSMT",
+
+                    // Helvetica family
+                    "Helvetica", "Helvetica-Bold", "Helvetica-Oblique", "Helvetica-BoldOblique",
+                    "ArialMT", "Arial-BoldMT", "Arial-ItalicMT", "Arial-BoldItalicMT",
+
+                    // Courier family
+                    "Courier", "Courier-Bold", "Courier-Oblique", "Courier-BoldOblique",
+                    "CourierNew", "CourierNewPS", "CourierNewPSMT",
+
+                    // Symbol fonts
+                    "Symbol", "ZapfDingbats"
                 };
 
-                int replacements = 0;
+                // Mapping to embeddable alternatives (using widely-available system fonts)
+                var fontMappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    // Times variants → Arial (serif → sans-serif, but embeddable)
+                    { "Times-Roman", "Arial" },
+                    { "Times", "Arial" },
+                    { "Times-Bold", "Arial,Bold" },
+                    { "Times-Italic", "Arial,Italic" },
+                    { "Times-BoldItalic", "Arial,BoldItalic" },
+                    { "TimesNewRoman", "Arial" },
+                    { "TimesNewRomanPS", "Arial" },
+                    { "TimesNewRomanPSMT", "Arial" },
 
+                    // Helvetica/Arial variants → Arial (already similar, ensure embeddable)
+                    { "Helvetica", "Arial" },
+                    { "Helvetica-Bold", "Arial,Bold" },
+                    { "Helvetica-Oblique", "Arial,Italic" },
+                    { "Helvetica-BoldOblique", "Arial,BoldItalic" },
+                    { "ArialMT", "Arial" },
+                    { "Arial-BoldMT", "Arial,Bold" },
+                    { "Arial-ItalicMT", "Arial,Italic" },
+                    { "Arial-BoldItalicMT", "Arial,BoldItalic" },
+
+                    // Courier variants → Courier New (monospace, usually embeddable)
+                    { "Courier", "Courier New" },
+                    { "Courier-Bold", "Courier New,Bold" },
+                    { "Courier-Oblique", "Courier New,Italic" },
+                    { "Courier-BoldOblique", "Courier New,BoldItalic" },
+                    { "CourierNew", "Courier New" },
+                    { "CourierNewPS", "Courier New" },
+                    { "CourierNewPSMT", "Courier New" },
+
+                    // Symbol fonts → Arial (will need Unicode conversion for special chars)
+                    { "Symbol", "Arial" },
+                    { "ZapfDingbats", "Arial" }
+                };
+
+                // Scan ALL fonts in document (page resources + text fragments + form fields)
+                var detectedBase14Fonts = new HashSet<string>();
+
+                // Method 1: Check page resources
                 foreach (Page page in document.Pages)
                 {
-                    // Find all text fragments
-                    var textAbsorber = new TextFragmentAbsorber();
-                    page.Accept(textAbsorber);
-
-                    foreach (TextFragment textFragment in textAbsorber.TextFragments)
+                    if (page.Resources?.Fonts != null)
                     {
-                        var fontName = textFragment.TextState?.Font?.FontName ?? "";
-
-                        // Check if this font needs replacement
-                        foreach (var mapping in fontReplacements)
+                        foreach (var font in page.Resources.Fonts)
                         {
-                            if (fontName.Equals(mapping.Key, StringComparison.OrdinalIgnoreCase) ||
-                                fontName.Contains(mapping.Key))
-                            {
-                                try
-                                {
-                                    // Special handling for ZapfDingbats - convert characters to Unicode
-                                    if (mapping.Key == "ZapfDingbats")
-                                    {
-                                        textFragment.Text = ConvertZapfDingbatsToUnicode(textFragment.Text);
-                                    }
+                            var fontName = font.FontName ?? "";
 
-                                    // Replace with embeddable font
-                                    var newFont = FontRepository.FindFont(mapping.Value);
-                                    if (newFont != null)
-                                    {
-                                        textFragment.TextState.Font = newFont;
-                                        replacements++;
-                                        _logger.LogDebug($"Replaced font: {fontName} → {mapping.Value}");
-                                    }
-                                    else
-                                    {
-                                        _logger.LogWarning($"Could not find replacement font: {mapping.Value}");
-                                    }
-                                }
-                                catch (Exception ex)
+                            if (base14Fonts.Contains(fontName) ||
+                                base14Fonts.Any(b14 => fontName.Contains(b14, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                if (!font.IsEmbedded)
                                 {
-                                    _logger.LogDebug($"Could not replace font {fontName}: {ex.Message}");
+                                    detectedBase14Fonts.Add(fontName);
+                                    _logger.LogWarning($"[PAGE-RESOURCE] Detected base-14 font: {fontName} (NOT EMBEDDED)");
                                 }
-                                break;
                             }
                         }
                     }
                 }
 
-                if (replacements > 0)
+                // Method 2: Scan all text fragments for fonts (catches fonts not in page resources)
+                try
                 {
-                    _logger.LogInformation($"Replaced {replacements} problematic font instances");
+                    var absorber = new TextFragmentAbsorber();
+                    document.Pages.Accept(absorber);
+
+                    foreach (TextFragment fragment in absorber.TextFragments)
+                    {
+                        var fontName = fragment.TextState?.Font?.FontName ?? "";
+                        if (!string.IsNullOrEmpty(fontName))
+                        {
+                            if (base14Fonts.Contains(fontName) ||
+                                base14Fonts.Any(b14 => fontName.Contains(b14, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                if (detectedBase14Fonts.Add(fontName))
+                                {
+                                    _logger.LogWarning($"[TEXT-FRAGMENT] Detected base-14 font: {fontName}");
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning($"Could not scan text fragments for fonts: {ex.Message}");
+                }
+
+                // Actually replace fonts in the document using TextFragmentAbsorber
+                int totalReplacements = 0;
+
+                foreach (var base14Font in detectedBase14Fonts)
+                {
+                    // Find the best mapping
+                    string targetFont = "Arial"; // Default fallback
+
+                    foreach (var mapping in fontMappings)
+                    {
+                        if (base14Font.Equals(mapping.Key, StringComparison.OrdinalIgnoreCase) ||
+                            base14Font.Contains(mapping.Key, StringComparison.OrdinalIgnoreCase))
+                        {
+                            targetFont = mapping.Value;
+                            break;
+                        }
+                    }
+
+                    try
+                    {
+                        // Use TextFragmentAbsorber to find all text using this font and replace it
+                        var absorber = new TextFragmentAbsorber();
+                        document.Pages.Accept(absorber);
+
+                        int fontReplacements = 0;
+                        foreach (TextFragment textFragment in absorber.TextFragments)
+                        {
+                            if (textFragment.TextState?.Font?.FontName != null &&
+                                textFragment.TextState.Font.FontName.Equals(base14Font, StringComparison.OrdinalIgnoreCase))
+                            {
+                                try
+                                {
+                                    // Special handling for symbol fonts - convert characters to Unicode first
+                                    if (base14Font.Contains("ZapfDingbats", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        textFragment.Text = ConvertZapfDingbatsToUnicode(textFragment.Text);
+                                        _logger.LogDebug($"Converted ZapfDingbats text: '{textFragment.Text}'");
+                                    }
+                                    else if (base14Font.Contains("Symbol", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        textFragment.Text = ConvertSymbolToUnicode(textFragment.Text);
+                                        _logger.LogDebug($"Converted Symbol text: '{textFragment.Text}'");
+                                    }
+
+                                    var replacementFont = FontRepository.FindFont(targetFont);
+                                    if (replacementFont != null)
+                                    {
+                                        textFragment.TextState.Font = replacementFont;
+                                        fontReplacements++;
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogDebug($"Could not replace font instance: {ex.Message}");
+                                }
+                            }
+                        }
+
+                        if (fontReplacements > 0)
+                        {
+                            var substitutionMsg = $"Base-14 font substitution: '{base14Font}' → '{targetFont}' ({fontReplacements} instances)";
+                            substitutions.Add(substitutionMsg);
+                            _logger.LogWarning($"⚠️ {substitutionMsg}");
+                            totalReplacements += fontReplacements;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"Failed to replace font {base14Font}: {ex.Message}");
+                    }
+                }
+
+                if (substitutions.Any())
+                {
+                    _logger.LogInformation($"✅ Registered {substitutions.Count} base-14 font substitutions");
                 }
                 else
                 {
-                    _logger.LogInformation("No problematic fonts found requiring replacement");
+                    _logger.LogInformation("No base-14 fonts detected - all fonts are embeddable");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning($"Could not replace problematic fonts: {ex.Message}");
+                _logger.LogError(ex, "Error detecting/substituting base-14 fonts");
             }
+
+            return substitutions;
         }
 
         /// <summary>
@@ -451,14 +571,43 @@ namespace AccessFormServer.Services
         /// </summary>
         private string ConvertZapfDingbatsToUnicode(string text)
         {
-            // Common ZapfDingbats character mappings
+            if (string.IsNullOrEmpty(text)) return text;
+
+            // ZapfDingbats character code mappings to Unicode
             var charMap = new Dictionary<char, string>
             {
-                { '4', "✓" },      // Checkmark
-                { 'q', "☐" },      // Empty box
-                { '8', "✗" },      // X mark
-                { 'l', "●" },      // Filled circle
-                { 'm', "○" }       // Empty circle
+                { '\u0034', "☑" },  // '4' = checkmark/checked box
+                { '\u0071', "☐" },  // 'q' = empty checkbox
+                { '\u0038', "✗" },  // '8' = X mark
+                { '\u006C', "●" },  // 'l' = filled circle (bullet)
+                { '\u006D', "○" },  // 'm' = empty circle
+                { '\u006E', "✓" },  // 'n' = checkmark
+                { '\u0075', "◆" },  // 'u' = diamond
+                { '\u0076', "◇" },  // 'v' = hollow diamond
+            };
+
+            var result = text;
+            foreach (var mapping in charMap)
+            {
+                result = result.Replace(mapping.Key.ToString(), mapping.Value);
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Convert Symbol font characters to Unicode equivalents
+        /// </summary>
+        private string ConvertSymbolToUnicode(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+
+            // Symbol font common mappings to Unicode
+            var charMap = new Dictionary<char, string>
+            {
+                { '\u00B7', "•" },  // bullet
+                { '\u00D7', "×" },  // multiplication
+                { '\u00F7', "÷" },  // division
             };
 
             var result = text;
