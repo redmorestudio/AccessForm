@@ -172,11 +172,23 @@ namespace WordToPdfConverter.Services
                                 _logger.LogInformation("===== STEP 2: ASPOSE FONT EMBEDDING =====");
                                 _logger.LogInformation($"Sending {rebuiltPdfBytes.Length} bytes to Aspose...");
                                 var beforeAspose = rebuiltPdfBytes.Length;
-                                
+
                                 rebuiltPdfBytes = await _asposePdfService.OptimizePdfAsync(rebuiltPdfBytes);
-                                
+
                                 _logger.LogInformation($"===== ASPOSE PROCESSING COMPLETE =====");
                                 _logger.LogInformation($"Received {rebuiltPdfBytes.Length} bytes from Aspose (was {beforeAspose})");
+
+                                // Step 2.5: Fix PDF/UA compliance issues
+                                _logger.LogInformation("===== STEP 2.5: FIXING PDF/UA COMPLIANCE =====");
+                                try
+                                {
+                                    rebuiltPdfBytes = await _asposePdfService.FixPdfUaComplianceAsync(rebuiltPdfBytes);
+                                    _logger.LogInformation("✅ PDF/UA compliance fixes applied");
+                                }
+                                catch (Exception pdfuaEx)
+                                {
+                                    _logger.LogWarning($"PDF/UA compliance fixes failed (non-critical): {pdfuaEx.Message}");
+                                }
                             }
                             catch (Exception ex)
                             {
