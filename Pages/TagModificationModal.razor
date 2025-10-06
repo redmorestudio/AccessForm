@@ -48,7 +48,7 @@
                                     {
                                         @foreach (var field in CurrentPageFields)
                                         {
-                                            <div class="field-overlay @(SelectedField == field ? "selected" : "")"
+                                            <div class="field-overlay @(GetFieldSelectionClass(field))"
                                                  id="field-@field.OriginalIndex"
                                                  data-field-index="@field.OriginalIndex"
                                                  @onmousedown="e => HandleFieldMouseDown(e, field)"
@@ -532,6 +532,13 @@
         border-width: 3px;
     }
 
+    .field-overlay.multi-selected {
+        border-color: #28a745;
+        background-color: rgba(40, 167, 69, 0.15);
+        border-width: 3px;
+        border-style: dashed;
+    }
+
     .field-overlay.drawing {
         border-color: #28a745;
         background-color: rgba(40, 167, 69, 0.1);
@@ -860,6 +867,33 @@
         }
         window.globalDragState.dotNetRef = null;
     };
+
+    // Keyboard shortcuts for multi-select operations
+    window.registerKeyboardHandlers = function(dotNetRef) {
+        window.tagEditorKeyboardHandler = function(e) {
+            // Ctrl/Cmd+A - Select All
+            if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+                e.preventDefault();
+                dotNetRef.invokeMethodAsync('SelectAllFieldsOnCurrentPage');
+            }
+            // Delete or Backspace - Delete selected fields
+            else if (e.key === 'Delete' || e.key === 'Backspace') {
+                // Only if not in an input field
+                if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+                    e.preventDefault();
+                    dotNetRef.invokeMethodAsync('DeleteSelectedFields');
+                }
+            }
+        };
+        document.addEventListener('keydown', window.tagEditorKeyboardHandler);
+    };
+
+    window.unregisterKeyboardHandlers = function() {
+        if (window.tagEditorKeyboardHandler) {
+            document.removeEventListener('keydown', window.tagEditorKeyboardHandler);
+            window.tagEditorKeyboardHandler = null;
+        }
+    };
 </script>
 
 <!-- Cascade Correction Panel -->
@@ -915,6 +949,8 @@
     
     // Field selection state
     private EditableField SelectedField = null;
+    private HashSet<EditableField> SelectedFields = new HashSet<EditableField>();
+    private Dictionary<EditableField, (float X, float Y)> OriginalFieldPositions = new Dictionary<EditableField, (float, float)>();
 
     // UI state
     private bool IsFieldEditorCollapsed { get; set; } = false;
@@ -1014,6 +1050,10 @@
         {
             // Initialize draggable/resizable window
             await JSRuntime.InvokeVoidAsync("initializeResizableWindow", "tagModificationWindow", "tagModWindowHeader");
+
+            // Register keyboard handlers for multi-select operations
+            await JSRuntime.InvokeVoidAsync("registerKeyboardHandlers", dotNetRef);
+
             windowInitialized = true;
         }
 
@@ -1485,6 +1525,7 @@
 
     public void Dispose()
     {
+        _ = JSRuntime.InvokeVoidAsync("unregisterKeyboardHandlers");
         dotNetRef?.Dispose();
     }
 
@@ -1642,6 +1683,21 @@
         return styleString;
     }
 
+    private string GetFieldSelectionClass(EditableField field)
+    {
+        if (SelectedFields.Contains(field))
+        {
+            // If multiple fields are selected and this is one of them, show multi-select style
+            if (SelectedFields.Count > 1)
+            {
+                return "multi-selected";
+            }
+            // Single selection
+            return "selected";
+        }
+        return "";
+    }
+
     private string GetDrawingRectangleStyle()
     {
         if (!isDrawingNewField) return "display: none;";
@@ -1676,15 +1732,49 @@
 
     private void HandleFieldMouseDown(MouseEventArgs e, EditableField field)
     {
-        // Start dragging (resize functionality disabled for now)
+        // Multi-select: Ctrl/Cmd+Click to add/remove from selection
+        if (e.CtrlKey || e.MetaKey)
+        {
+            if (SelectedFields.Contains(field))
+            {
+                SelectedFields.Remove(field);
+                if (SelectedField == field)
+                {
+                    SelectedField = SelectedFields.FirstOrDefault();
+                }
+            }
+            else
+            {
+                SelectedFields.Add(field);
+                SelectedField = field;
+            }
+            StateHasChanged();
+            return; // Don't start dragging on multi-select click
+        }
+
+        // If clicking a field that's not in selection, clear and select only this one
+        if (!SelectedFields.Contains(field))
+        {
+            SelectedFields.Clear();
+            SelectedFields.Add(field);
+            SelectedField = field;
+        }
+
+        // Start dragging all selected fields
         isDraggingField = true;
         draggedField = field;
         dragStartX = e.ClientX;
         dragStartY = e.ClientY;
+
+        // Store original positions for ALL selected fields
+        OriginalFieldPositions.Clear();
+        foreach (var selectedField in SelectedFields)
+        {
+            OriginalFieldPositions[selectedField] = (selectedField.X, selectedField.Y);
+        }
+
         originalFieldX = field.X;
         originalFieldY = field.Y;
-
-        SelectedField = field;
 
         // Register global mouse move and up handlers via JavaScript
         _ = JSRuntime.InvokeVoidAsync("registerGlobalDragHandlers", dotNetRef);
@@ -1704,14 +1794,22 @@
         }
         else if (isDraggingField && draggedField != null)
         {
-            // Update field position
+            // Update field position - move ALL selected fields
             const float SCALE_FACTOR = 150.0f / 72.0f;
             var deltaX = (float)((clientX - dragStartX) / SCALE_FACTOR);
             var deltaY = (float)((clientY - dragStartY) / SCALE_FACTOR);
 
-            draggedField.X = originalFieldX + deltaX;
-            // PDF Y increases upward, display Y increases downward
-            draggedField.Y = originalFieldY - deltaY;
+            // Move all selected fields by the same delta
+            foreach (var field in SelectedFields)
+            {
+                if (OriginalFieldPositions.TryGetValue(field, out var originalPos))
+                {
+                    field.X = originalPos.X + deltaX;
+                    // Both display and deltaY are in screen coordinates (Y increases downward)
+                    // Since we're moving in screen space, add the delta directly
+                    field.Y = originalPos.Y + deltaY;
+                }
+            }
 
             StateHasChanged();
         }
@@ -1842,7 +1940,40 @@
         // Synchronous wrapper for backwards compatibility
         _ = DeleteFieldAsync(field);
     }
-    
+
+    [JSInvokable]
+    public void DeleteSelectedFields()
+    {
+        if (SelectedFields.Count == 0) return;
+
+        Logger.LogInformation($"Deleting {SelectedFields.Count} selected fields");
+
+        var fieldsToDelete = SelectedFields.ToList();
+        foreach (var field in fieldsToDelete)
+        {
+            EditableFields.Remove(field);
+            CurrentPageFields.Remove(field);
+        }
+
+        SelectedFields.Clear();
+        SelectedField = null;
+
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void SelectAllFieldsOnCurrentPage()
+    {
+        SelectedFields.Clear();
+        foreach (var field in CurrentPageFields)
+        {
+            SelectedFields.Add(field);
+        }
+        SelectedField = SelectedFields.FirstOrDefault();
+        Logger.LogInformation($"Selected all {SelectedFields.Count} fields on page {CurrentPage}");
+        StateHasChanged();
+    }
+
     private void AddNewField()
     {
         var fieldName = $"NewField_{EditableFields.Count + 1}";
