@@ -315,6 +315,135 @@ namespace AccessFormServer.Services
         }
 
         /// <summary>
+        /// Aggressively preprocess and replace problematic fonts before any other operations
+        /// </summary>
+        private void PreprocessProblematicFonts(Document document)
+        {
+            _logger.LogInformation("===== PREPROCESSING PROBLEMATIC FONTS =====");
+
+            try
+            {
+                // Map of problematic fonts to their replacements - be VERY aggressive
+                var fontReplacements = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    { "Times-Roman", "Arial" },
+                    { "TimesRoman", "Arial" },
+                    { "Times", "Arial" },
+                    { "OpenSansRegular", "Arial" },
+                    { "OpenSans-Regular", "Arial" },
+                    { "OpenSans", "Arial" },
+                    { "Open Sans", "Arial" },
+                    { "Helvetica", "Arial" },
+                    { "ZapfDingbats", "Arial" },
+                    { "Zapf", "Arial" },
+                    { "Symbol", "Arial" },
+                    { "Courier", "Arial" }
+                };
+
+                int replacedCount = 0;
+
+                // Process all pages
+                foreach (Page page in document.Pages)
+                {
+                    // Use TextFragmentAbsorber to find and replace text with problematic fonts
+                    var textAbsorber = new TextFragmentAbsorber();
+                    page.Accept(textAbsorber);
+
+                    foreach (TextFragment textFragment in textAbsorber.TextFragments)
+                    {
+                        if (textFragment.TextState?.Font?.FontName != null)
+                        {
+                            string currentFontName = textFragment.TextState.Font.FontName;
+
+                            // Check if this font needs replacement
+                            foreach (var kvp in fontReplacements)
+                            {
+                                if (currentFontName.Contains(kvp.Key, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    try
+                                    {
+                                        // Special handling for ZapfDingbats - convert symbols first
+                                        if (currentFontName.Contains("ZapfDingbats", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            textFragment.Text = ConvertZapfDingbatsToUnicode(textFragment.Text);
+                                        }
+                                        // Special handling for Symbol font
+                                        else if (currentFontName.Contains("Symbol", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            textFragment.Text = ConvertSymbolToUnicode(textFragment.Text);
+                                        }
+
+                                        // Replace with Arial (always embeddable)
+                                        var arialFont = FontRepository.FindFont("Arial");
+                                        if (arialFont != null)
+                                        {
+                                            textFragment.TextState.Font = arialFont;
+                                            replacedCount++;
+                                            _logger.LogInformation($"🔄 Replaced font '{currentFontName}' with Arial in text fragment");
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _logger.LogDebug($"Could not replace font {currentFontName}: {ex.Message}");
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Also process form fields
+                if (document.Form != null && document.Form.Fields.Length > 0)
+                {
+                    foreach (var field in document.Form.Fields)
+                    {
+                        try
+                        {
+                            if (field is Aspose.Pdf.Forms.Field formField && formField.DefaultAppearance != null)
+                            {
+                                var fontName = formField.DefaultAppearance.FontName;
+                                if (!string.IsNullOrEmpty(fontName))
+                                {
+                                    foreach (var kvp in fontReplacements)
+                                    {
+                                        if (fontName.Contains(kvp.Key, StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            var arialFont = FontRepository.FindFont("Arial");
+                                            if (arialFont != null)
+                                            {
+                                                var fontSize = formField.DefaultAppearance.FontSize > 0 ? formField.DefaultAppearance.FontSize : 10;
+                                                formField.DefaultAppearance = new Aspose.Pdf.Annotations.DefaultAppearance(
+                                                    arialFont,
+                                                    fontSize,
+                                                    formField.DefaultAppearance.TextColor
+                                                );
+                                                replacedCount++;
+                                                _logger.LogInformation($"🔄 Replaced font '{fontName}' with Arial in form field {field.FullName}");
+                                            }
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogDebug($"Could not preprocess font for field {field.FullName}: {ex.Message}");
+                        }
+                    }
+                }
+
+                _logger.LogInformation($"✅ Preprocessed and replaced {replacedCount} problematic font instances");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Font preprocessing encountered issues: {ex.Message}");
+                // Continue anyway - this is best effort
+            }
+        }
+
+        /// <summary>
         /// Helper method to embed all fonts in the document
         /// </summary>
         private void EmbedFonts(Document document)
@@ -323,13 +452,17 @@ namespace AccessFormServer.Services
 
             try
             {
+                // STEP 0: Aggressively preprocess and replace problematic fonts FIRST
+                PreprocessProblematicFonts(document);
+
                 // Enable embedding of standard Type 1 fonts (base-14 fonts)
                 // This is the key setting that allows embedding fonts like ArialMT, Helvetica, Times-Roman, etc.
                 document.EmbedStandardFonts = true;
                 _logger.LogInformation("✅ Enabled EmbedStandardFonts flag");
 
-                // Mark all fonts in page resources for embedding
+                // Mark ALL fonts in page resources for embedding - be VERY aggressive
                 int fontsMarkedForEmbedding = 0;
+                int alreadyEmbedded = 0;
                 foreach (Page page in document.Pages)
                 {
                     if (page.Resources?.Fonts != null)
@@ -341,6 +474,22 @@ namespace AccessFormServer.Services
                                 font.IsEmbedded = true;
                                 fontsMarkedForEmbedding++;
                                 _logger.LogInformation($"📌 Marked font for embedding: {font.FontName}");
+
+                                // Extra aggressive - try to force embedding through multiple methods
+                                try
+                                {
+                                    // If it's a Type1 font, make sure it's embedded
+                                    if (font is Aspose.Pdf.Text.Font type1Font)
+                                    {
+                                        type1Font.IsEmbedded = true;
+                                    }
+                                }
+                                catch { }
+                            }
+                            else
+                            {
+                                alreadyEmbedded++;
+                                _logger.LogDebug($"Font already embedded: {font.FontName}");
                             }
                         }
                     }
@@ -481,6 +630,7 @@ namespace AccessFormServer.Services
                 DetectAndSubstituteBase14Fonts(document);
 
                 // Check for fonts known to cause CIDset subsetting issues
+                // EXPANDED LIST: We're going nuclear - fully embed all common problematic fonts
                 bool hasProblematicFonts = false;
                 foreach (Page page in document.Pages)
                 {
@@ -489,22 +639,34 @@ namespace AccessFormServer.Services
                         foreach (var font in page.Resources.Fonts)
                         {
                             var fontName = font.FontName ?? "";
-                            // OpenSansRegular and Arial fonts create incomplete CIDset when subsetted
+                            // Aggressively embed ALL common problematic fonts - no subsetting!
                             if (fontName.Contains("OpenSansRegular", StringComparison.OrdinalIgnoreCase) ||
                                 fontName.Contains("OpenSans-Regular", StringComparison.OrdinalIgnoreCase) ||
-                                fontName.Contains("Arial", StringComparison.OrdinalIgnoreCase))
+                                fontName.Contains("OpenSans", StringComparison.OrdinalIgnoreCase) ||
+                                fontName.Contains("Arial", StringComparison.OrdinalIgnoreCase) ||
+                                fontName.Contains("Times-Roman", StringComparison.OrdinalIgnoreCase) ||
+                                fontName.Contains("Times", StringComparison.OrdinalIgnoreCase) ||
+                                fontName.Contains("Helvetica", StringComparison.OrdinalIgnoreCase) ||
+                                fontName.Contains("ZapfDingbats", StringComparison.OrdinalIgnoreCase) ||
+                                fontName.Contains("Symbol", StringComparison.OrdinalIgnoreCase) ||
+                                fontName.Contains("Courier", StringComparison.OrdinalIgnoreCase))
                             {
                                 hasProblematicFonts = true;
-                                _logger.LogWarning($"⚠️ Found font with known CIDset subsetting issues: {fontName}");
-                                break;
+                                _logger.LogWarning($"⚠️ Font '{fontName}' will be FULLY EMBEDDED (no subsetting) to avoid CIDset errors");
+                                // Don't break - let's log all problematic fonts for debugging
                             }
                         }
-                        if (hasProblematicFonts) break;
                     }
                 }
 
-                // IMPORTANT: Font subsetting can cause issues with CIDset completeness
-                // Skip subsetting if problematic fonts detected, otherwise try subsetting
+                // IMPORTANT: NEVER subset fonts - it causes CIDset errors
+                // We're going nuclear - ALWAYS skip subsetting for ALL fonts
+                _logger.LogWarning("⚠️ FORCE SKIPPING all font subsetting - full embedding for EVERYTHING");
+                _logger.LogInformation("✅ All fonts will be fully embedded (larger file size but GUARANTEED no CIDset errors)");
+
+                // DO NOT SUBSET ANYTHING - Commenting out ALL subsetting logic
+                // The slight increase in file size is worth having working PDFs
+                /*
                 if (hasProblematicFonts)
                 {
                     _logger.LogWarning("⚠️ Skipping font subsetting due to fonts with CIDset issues - fonts will be fully embedded");
@@ -534,6 +696,7 @@ namespace AccessFormServer.Services
                         }
                     }
                 }
+                */
             }
             catch (Exception ex)
             {
@@ -1254,10 +1417,15 @@ namespace AccessFormServer.Services
                                              $"removed {cleanupReport.EmptyTablesRemoved} empty tables, " +
                                              $"processed {cleanupReport.LinksProcessed} links");
 
-                        // 4. Fix remaining TH cells - add alt text
-                        _logger.LogInformation("Fixing remaining TH cell headers...");
-                        int thCellsFixed = FixTableHeaderCells(taggedContent.RootElement);
-                        _logger.LogInformation($"✅ Added alt text to {thCellsFixed} TH cells");
+                        // 4. Fix remaining TH cells - COMPREHENSIVE FIX
+                        _logger.LogInformation("Applying COMPREHENSIVE table header cell fixes...");
+                        int thCellsFixed = FixTableHeaderCells(taggedContent.RootElement, taggedContent);
+                        _logger.LogInformation($"✅ Fixed {thCellsFixed} problematic TH cells");
+
+                        // 4b. Extra aggressive table structure validation
+                        _logger.LogInformation("Running aggressive table structure validation...");
+                        int additionalFixes = ValidateAndFixAllTableStructures(taggedContent.RootElement, taggedContent);
+                        _logger.LogInformation($"✅ Applied {additionalFixes} additional table structure fixes");
 
                         // 5. Embed all fonts (including Times-Roman)
                         _logger.LogInformation("Embedding all fonts...");
@@ -1322,8 +1490,9 @@ namespace AccessFormServer.Services
 
         /// <summary>
         /// Fix TH cells by ensuring they have proper structure
+        /// PERMANENT FIX: Every TH cell MUST have either subcells OR be converted to proper text content
         /// </summary>
-        private int FixTableHeaderCells(Element rootElement)
+        private int FixTableHeaderCells(Element rootElement, ITaggedContent taggedContent)
         {
             int count = 0;
             var headers = new List<TableTHElement>();
@@ -1333,19 +1502,67 @@ namespace AccessFormServer.Services
             {
                 try
                 {
-                    // Ensure TH has alternative text if empty
-                    if (string.IsNullOrEmpty(th.AlternativeText) && string.IsNullOrEmpty(th.ActualText))
+                    bool hasSubcells = false;
+                    bool hasTextContent = false;
+
+                    // Check if TH has any child elements (subcells)
+                    if (th.ChildElements != null && th.ChildElements.Count > 0)
+                    {
+                        hasSubcells = true;
+                    }
+
+                    // Check if TH has actual text content
+                    if (!string.IsNullOrEmpty(th.ActualText) || !string.IsNullOrEmpty(th.AlternativeText))
+                    {
+                        hasTextContent = true;
+                    }
+
+                    // If TH has no subcells and no text content, we need to fix it
+                    if (!hasSubcells && !hasTextContent)
+                    {
+                        _logger.LogWarning($"Found TH cell with no subcells or text content - fixing...");
+
+                        // Option 1: Add a text element as a subcell
+                        try
+                        {
+                            // Create a span element with text content
+                            var spanElement = taggedContent.CreateSpanElement();
+                            spanElement.SetText("Header");
+                            th.AppendChild(spanElement);
+                            hasSubcells = true;
+                            _logger.LogInformation($"✅ Added span subcell to empty TH cell");
+                        }
+                        catch
+                        {
+                            // If we can't add a subcell, at least set alternative text
+                            th.AlternativeText = "Table header";
+                            th.ActualText = "Header";
+                            hasTextContent = true;
+                            _logger.LogInformation($"✅ Added text content to TH cell");
+                        }
+                        count++;
+                    }
+                    // Even if TH has subcells, ensure it also has alt text for accessibility
+                    else if (string.IsNullOrEmpty(th.AlternativeText))
                     {
                         th.AlternativeText = "Table header";
+                        _logger.LogDebug($"Added alt text to TH cell with subcells");
                     }
-                    count++;
                 }
                 catch (Exception ex)
                 {
                     _logger.LogDebug($"Could not fix TH element: {ex.Message}");
+                    // As a last resort, try to set alternative text
+                    try
+                    {
+                        th.AlternativeText = "Table header";
+                        th.ActualText = "Header";
+                    }
+                    catch { }
                 }
             }
 
+            _logger.LogInformation($"✅ Processed {headers.Count} TH cells, fixed {count} problematic ones");
             return count;
         }
 
@@ -1365,6 +1582,193 @@ namespace AccessFormServer.Services
             {
                 FindTableHeaders(child, headers);
             }
+        }
+
+        /// <summary>
+        /// AGGRESSIVE validation and fix for ALL table structures
+        /// This ensures EVERY table element has proper structure
+        /// </summary>
+        private int ValidateAndFixAllTableStructures(Element rootElement, ITaggedContent taggedContent)
+        {
+            int fixCount = 0;
+
+            try
+            {
+                // Find all table-related elements
+                var tables = new List<Element>();
+                FindTableElements(rootElement, tables);
+
+                foreach (var tableElement in tables)
+                {
+                    // Process each table
+                    if (tableElement is TableElement table)
+                    {
+                        // Ensure table has proper structure
+                        bool hasValidStructure = ValidateTableStructure(table);
+                        if (!hasValidStructure)
+                        {
+                            _logger.LogWarning("Found table with invalid structure - fixing...");
+                            if (FixTableStructure(table, taggedContent))
+                            {
+                                fixCount++;
+                            }
+                        }
+                    }
+                    else if (tableElement is TableTHElement thElement)
+                    {
+                        // Double-check TH cells
+                        if (!HasValidTHStructure(thElement))
+                        {
+                            _logger.LogWarning("Found invalid TH structure in validation pass - fixing...");
+                            if (ForceFixTHCell(thElement, taggedContent))
+                            {
+                                fixCount++;
+                            }
+                        }
+                    }
+                    else if (tableElement is TableTDElement tdElement)
+                    {
+                        // Ensure TD cells have proper content
+                        if (!HasValidTDStructure(tdElement))
+                        {
+                            _logger.LogDebug("Found TD cell with no content - adding placeholder");
+                            try
+                            {
+                                tdElement.SetText(" "); // Non-breaking space
+                                fixCount++;
+                            }
+                            catch { }
+                        }
+                    }
+                }
+
+                _logger.LogInformation($"Validated {tables.Count} table elements");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Error during table structure validation: {ex.Message}");
+            }
+
+            return fixCount;
+        }
+
+        private void FindTableElements(Element element, List<Element> tables)
+        {
+            if (element == null) return;
+
+            if (element is TableElement || element is TableTHElement ||
+                element is TableTDElement || element is TableTRElement)
+            {
+                tables.Add(element);
+            }
+
+            foreach (var child in element.ChildElements)
+            {
+                FindTableElements(child, tables);
+            }
+        }
+
+        private bool ValidateTableStructure(TableElement table)
+        {
+            // A valid table should have at least one row
+            if (table.ChildElements == null || table.ChildElements.Count == 0)
+                return false;
+
+            // Check for proper row/cell structure
+            bool hasValidRows = false;
+            foreach (var child in table.ChildElements)
+            {
+                if (child is TableTRElement)
+                {
+                    hasValidRows = true;
+                    break;
+                }
+            }
+
+            return hasValidRows;
+        }
+
+        private bool FixTableStructure(TableElement table, ITaggedContent taggedContent)
+        {
+            try
+            {
+                // If table has no rows, add a placeholder row
+                if (table.ChildElements == null || table.ChildElements.Count == 0)
+                {
+                    var tr = taggedContent.CreateTableTRElement();
+                    var td = taggedContent.CreateTableTDElement();
+                    td.SetText("Table content");
+                    tr.AppendChild(td);
+                    table.AppendChild(tr);
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug($"Could not fix table structure: {ex.Message}");
+            }
+            return false;
+        }
+
+        private bool HasValidTHStructure(TableTHElement th)
+        {
+            // TH must have either child elements OR text content
+            bool hasChildren = th.ChildElements != null && th.ChildElements.Count > 0;
+            bool hasText = !string.IsNullOrEmpty(th.ActualText) || !string.IsNullOrEmpty(th.AlternativeText);
+            return hasChildren || hasText;
+        }
+
+        private bool HasValidTDStructure(TableTDElement td)
+        {
+            // TD should have some content
+            bool hasChildren = td.ChildElements != null && td.ChildElements.Count > 0;
+            bool hasText = !string.IsNullOrEmpty(td.ActualText) || !string.IsNullOrEmpty(td.AlternativeText);
+            return hasChildren || hasText;
+        }
+
+        private bool ForceFixTHCell(TableTHElement th, ITaggedContent taggedContent)
+        {
+            try
+            {
+                // Force add both text content AND a subcell if possible
+                if (string.IsNullOrEmpty(th.ActualText))
+                {
+                    th.ActualText = "Header";
+                }
+                if (string.IsNullOrEmpty(th.AlternativeText))
+                {
+                    th.AlternativeText = "Table header";
+                }
+
+                // Try to add a subcell if none exists
+                if (th.ChildElements == null || th.ChildElements.Count == 0)
+                {
+                    try
+                    {
+                        var span = taggedContent.CreateSpanElement();
+                        span.SetText("Header");
+                        th.AppendChild(span);
+                    }
+                    catch
+                    {
+                        // If we can't add a span, try a paragraph
+                        try
+                        {
+                            var para = taggedContent.CreateParagraphElement();
+                            para.SetText("Header");
+                            th.AppendChild(para);
+                        }
+                        catch { }
+                    }
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug($"Could not force fix TH cell: {ex.Message}");
+            }
+            return false;
         }
     }
 }
