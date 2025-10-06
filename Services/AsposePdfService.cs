@@ -505,52 +505,47 @@ namespace AccessFormServer.Services
                     int checkboxesRegenerated = 0;
                     var base14Fonts = new[] { "ZapfDingbats", "Times-Roman", "Helvetica", "Courier", "Symbol" };
 
-                    // First pass: Force regenerate ALL checkbox appearances to replace any embedded base-14 fonts
-                    // This is necessary because ZapfDingbats and other base-14 fonts are often embedded
-                    // in checkbox appearance streams in ways that can't be detected through the Aspose API
-                    foreach (var field in document.Form.Fields)
-                    {
-                        if (field is Aspose.Pdf.Forms.CheckboxField checkbox)
-                        {
-                            try
-                            {
-                                // Preserve current state
-                                bool isChecked = checkbox.Checked;
+                    // DISABLED: Clearing checkbox appearances breaks Adobe Acrobat form recognition!
+                    // When appearance streams are cleared, Adobe can't see the form fields visually.
+                    // This was causing Adobe to not recognize that forms exist in the PDF.
+                    //
+                    // Original intent was to replace ZapfDingbats font in checkboxes, but the side effect
+                    // of clearing appearances is worse than having non-embedded fonts.
+                    //
+                    // TODO: Find a way to replace fonts WITHOUT clearing appearance streams
 
-                                // Clear existing appearance to force regeneration
-                                checkbox.Appearance.Clear();
+                    _logger.LogInformation("Skipping checkbox appearance regeneration to preserve Adobe Acrobat compatibility");
 
-                                // Set style to standard checkmark
-                                checkbox.Style = Aspose.Pdf.Forms.BoxStyle.Check;
+                    // foreach (var field in document.Form.Fields)
+                    // {
+                    //     if (field is Aspose.Pdf.Forms.CheckboxField checkbox)
+                    //     {
+                    //         try
+                    //         {
+                    //             bool isChecked = checkbox.Checked;
+                    //             checkbox.Appearance.Clear();  // THIS BREAKS ADOBE!
+                    //             checkbox.Style = Aspose.Pdf.Forms.BoxStyle.Check;
+                    //             var arialFont = FontRepository.FindFont("Arial");
+                    //             if (arialFont != null)
+                    //             {
+                    //                 checkbox.DefaultAppearance = new Aspose.Pdf.Annotations.DefaultAppearance(
+                    //                     arialFont, 10, System.Drawing.Color.Black);
+                    //             }
+                    //             checkbox.Checked = !isChecked;
+                    //             checkbox.Checked = isChecked;
+                    //             checkboxesRegenerated++;
+                    //         }
+                    //         catch (Exception ex)
+                    //         {
+                    //             _logger.LogDebug($"Could not regenerate checkbox appearance for {field.FullName}: {ex.Message}");
+                    //         }
+                    //     }
+                    // }
 
-                                // Set a proper DefaultAppearance with embeddable font
-                                var arialFont = FontRepository.FindFont("Arial");
-                                if (arialFont != null)
-                                {
-                                    checkbox.DefaultAppearance = new Aspose.Pdf.Annotations.DefaultAppearance(
-                                        arialFont,
-                                        10,
-                                        System.Drawing.Color.Black
-                                    );
-                                }
-
-                                // Force regeneration by toggling and restoring
-                                checkbox.Checked = !isChecked;
-                                checkbox.Checked = isChecked;
-
-                                checkboxesRegenerated++;
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.LogDebug($"Could not regenerate checkbox appearance for {field.FullName}: {ex.Message}");
-                            }
-                        }
-                    }
-
-                    if (checkboxesRegenerated > 0)
-                    {
-                        _logger.LogInformation($"✅ Regenerated {checkboxesRegenerated} checkboxes to replace ZapfDingbats");
-                    }
+                    // if (checkboxesRegenerated > 0)
+                    // {
+                    //     _logger.LogInformation($"✅ Regenerated {checkboxesRegenerated} checkboxes to replace ZapfDingbats");
+                    // }
 
                     // Second pass: Check DefaultAppearance for other base-14 fonts
                     foreach (var field in document.Form.Fields)
