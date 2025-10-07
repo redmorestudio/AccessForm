@@ -1268,7 +1268,11 @@ app.MapPost("/api/convert-with-ai", async (
                             NewName = detectedField.FieldName,   // Use proper field name
                             FieldType = detectedField.FieldType,
                             Tooltip = tooltip,
-                            PageNumber = detectedField.PageNumber  // Use the correctly detected page number!
+                            PageNumber = detectedField.PageNumber,  // Use the correctly detected page number!
+                            X = detectedField.X,
+                            Y = detectedField.Y,
+                            Width = detectedField.Width,
+                            Height = detectedField.Height
                         });
                     }
                 }
@@ -1313,20 +1317,38 @@ app.MapPost("/api/convert-with-ai", async (
             };
 
             logger.LogInformation($"Rebuild options: Aspose={useAsposeAutotag}, FontEmbed={useAsposeFontEmbed}, PassportPdf={usePassportPdf}");
-            
-            // Call the rebuild method with the service options
-            var rebuildResult = await completeRebuildService.CompletelyRebuildPdfAsync(normalPdfBytes, fieldUpdates, serviceOptions);
-            
-            if (rebuildResult.Success && rebuildResult.PdfBytes != null)
+
+            // CRITICAL: Only call rebuild if we have field updates (Word docs with detected fields)
+            // For pre-existing PDFs (isPdf=true) or Word docs without field detection, skip the rebuild
+            if (isWord && fieldUpdates.Count > 0)
             {
-                logger.LogInformation($"PDF rebuild successful: {rebuildResult.TotalFields} fields, {rebuildResult.TagElements} tag elements");
-                normalPdfBytes = rebuildResult.PdfBytes;
-                remediatedPdfBytes = rebuildResult.PdfBytes;
+                logger.LogInformation($"Calling PDF rebuild with {fieldUpdates.Count} field updates (Word doc with detected fields)");
+                // Call the rebuild method with the service options
+                var rebuildResult = await completeRebuildService.CompletelyRebuildPdfAsync(normalPdfBytes, fieldUpdates, serviceOptions);
+
+                if (rebuildResult.Success && rebuildResult.PdfBytes != null)
+                {
+                    logger.LogInformation($"PDF rebuild successful: {rebuildResult.TotalFields} fields, {rebuildResult.TagElements} tag elements");
+                    normalPdfBytes = rebuildResult.PdfBytes;
+                    remediatedPdfBytes = rebuildResult.PdfBytes;
+                }
+                else
+                {
+                    logger.LogWarning($"PDF rebuild failed: {rebuildResult.ErrorMessage}, falling back to basic remediation");
+                    // Fall back to basic remediation
+                    using var remediationStream = new MemoryStream(normalPdfBytes);
+                    using var remediatedDoc = new PdfLoadedDocument(remediationStream);
+                    enhancer.EnhanceAccessibility(remediatedDoc, file.FileName);
+                    using var remediatedOutputStream = new MemoryStream();
+                    remediatedDoc.Save(remediatedOutputStream);
+                    remediatedPdfBytes = remediatedOutputStream.ToArray();
+                    remediatedDoc.Close(true);
+                }
             }
             else
             {
-                logger.LogWarning($"PDF rebuild failed: {rebuildResult.ErrorMessage}, falling back to basic remediation");
-                // Fall back to basic remediation
+                logger.LogInformation($"Skipping PDF rebuild (isWord={isWord}, fieldUpdates.Count={fieldUpdates.Count})");
+                // For pre-existing PDFs, just use the basic remediation
                 using var remediationStream = new MemoryStream(normalPdfBytes);
                 using var remediatedDoc = new PdfLoadedDocument(remediationStream);
                 enhancer.EnhanceAccessibility(remediatedDoc, file.FileName);
@@ -1482,6 +1504,8 @@ app.MapPost("/api/convert-with-ai", async (
                 width = f.Width,
                 height = f.Height,
                 page = f.PageNumber,
+                pageWidth = f.PageWidth,
+                pageHeight = f.PageHeight,
                 tooltip = f.ValidationNotes ?? f.Tooltip ?? f.FieldName,
                 isRequired = false,
                 source = f.Source
@@ -2892,17 +2916,25 @@ app.MapPost("/api/pdf-page-with-field-boxes", async (HttpRequest request, ILogge
                     }
 
                     // Log received field data
-                    logger.LogInformation($"Received field '{fieldName}' from {fieldSource}: x={x}, y={y}, w={width}, h={height}, type={fieldType}, page={pageNumber}");
+                    logger.LogWarning($"[FIELD-DRAW] Received field '{fieldName}' from {fieldSource}: PDF coords x={x}, y={y}, w={width}, h={height}, pageHeight={pageHeight}");
 
-                    // COORDINATE FIX: All fields from ConfigurableFieldDetectionService use top-left origin
-                    // and need only DPI scaling, no Y-flip (the UnifiedCoordinateService Y-flip was incorrect)
+                    // COORDINATE FIX: Fields from PdfPreservationService are in PDF coordinates (bottom-left origin)
+                    // Need to flip Y-axis AND apply DPI scaling
                     float scaleFactor = 150f / 72f;  // Display DPI / PDF DPI
-                    x = x * scaleFactor;
-                    y = y * scaleFactor;
-                    width = width * scaleFactor;
-                    height = height * scaleFactor;
 
-                    logger.LogInformation($"Converted to display coords: x={x}, y={y}, w={width}, h={height}");
+                    // Convert coordinates - NO FLIP needed, coordinates are already in top-left origin
+                    float displayX = x * scaleFactor;
+                    float displayY = y * scaleFactor;  // No flip - coordinates are already top-left
+                    float displayWidth = width * scaleFactor;
+                    float displayHeight = height * scaleFactor;
+
+                    logger.LogWarning($"[FIELD-DRAW] Transformed to display: x={displayX}, y={displayY}, w={displayWidth}, h={displayHeight}");
+
+                    // Apply the converted coordinates
+                    x = displayX;
+                    y = displayY;
+                    width = displayWidth;
+                    height = displayHeight;
                     
                     // Draw field rectangle with semi-transparent fill
                     using var fillPaint = new SkiaSharp.SKPaint
@@ -3171,11 +3203,12 @@ app.MapPost("/api/pdf-page-preview", async (HttpRequest request, ILogger<Program
                             width = checkField.Bounds.Width;
                             height = checkField.Bounds.Height;
                             
-                            // Checkboxes should be square and reasonable size
-                            if (width < 15 || height < 15)
+                            // Checkboxes should be square and reasonable size (7.2 PDF points = 15 display pixels)
+                            // Don't override unless clearly broken (< 5 means something went wrong)
+                            if (width < 5 || height < 5)
                             {
-                                width = 20;
-                                height = 20;
+                                width = 7.2f;
+                                height = 7.2f;
                             }
                             fieldType = "checkbox";
                         }
@@ -3415,9 +3448,17 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                             }
                             else
                             {
-                                // Skip fields without [PAGE:X] tooltip - they're from old processing runs
-                                logger.LogError($"🚫 [TAG-STRUCTURE-SKIP] Text field '{f.Name}' missing [PAGE:X] tooltip! Skipping this field (likely from previous processing)");
-                                continue; // Skip this field entirely
+                                // For existing PDFs without [PAGE:X] tooltips, use widget detection
+                                page = FindPageForWidget(txtField);
+                                if (page == -1)
+                                {
+                                    logger.LogWarning($"⚠️ [TAG-STRUCTURE-FALLBACK] Text field '{f.Name}' widget not found, defaulting to page 1");
+                                    page = 1; // Default to page 1 for existing PDFs
+                                }
+                                else
+                                {
+                                    logger.LogWarning($"🎯 [TAG-STRUCTURE-WIDGET] Text field '{f.Name}' found on page {page} via widget detection");
+                                }
                             }
 
                             // Get the correct page height for this specific page
@@ -3448,9 +3489,17 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                             }
                             else
                             {
-                                // Skip fields without [PAGE:X] tooltip - they're from old processing runs
-                                logger.LogError($"🚫 [TAG-STRUCTURE-SKIP] Checkbox '{f.Name}' missing [PAGE:X] tooltip! Skipping this field (likely from previous processing)");
-                                continue; // Skip this field entirely
+                                // For existing PDFs without [PAGE:X] tooltips, use widget detection
+                                page = FindPageForWidget(chkField);
+                                if (page == -1)
+                                {
+                                    logger.LogWarning($"⚠️ [TAG-STRUCTURE-FALLBACK] Checkbox '{f.Name}' widget not found, defaulting to page 1");
+                                    page = 1; // Default to page 1 for existing PDFs
+                                }
+                                else
+                                {
+                                    logger.LogWarning($"🎯 [TAG-STRUCTURE-WIDGET] Checkbox '{f.Name}' found on page {page} via widget detection");
+                                }
                             }
 
                             // Get the correct page height for this specific page
@@ -3479,9 +3528,17 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                             }
                             else
                             {
-                                // Skip fields without [PAGE:X] tooltip - they're from old processing runs
-                                logger.LogError($"🚫 [TAG-STRUCTURE-SKIP] Signature field '{f.Name}' missing [PAGE:X] tooltip! Skipping this field (likely from previous processing)");
-                                continue; // Skip this field entirely
+                                // For existing PDFs without [PAGE:X] tooltips, use widget detection
+                                page = FindPageForWidget(sigField);
+                                if (page == -1)
+                                {
+                                    logger.LogWarning($"⚠️ [TAG-STRUCTURE-FALLBACK] Signature field '{f.Name}' widget not found, defaulting to page 1");
+                                    page = 1; // Default to page 1 for existing PDFs
+                                }
+                                else
+                                {
+                                    logger.LogWarning($"🎯 [TAG-STRUCTURE-WIDGET] Signature field '{f.Name}' found on page {page} via widget detection");
+                                }
                             }
 
                             // Get the correct page height for this specific page
@@ -3509,9 +3566,17 @@ app.MapPost("/api/extract-tag-structure", async (HttpRequest request, ILogger<Pr
                             }
                             else
                             {
-                                // Skip fields without [PAGE:X] tooltip - they're from old processing runs
-                                logger.LogError($"🚫 [TAG-STRUCTURE-SKIP] Radio button '{f.Name}' missing [PAGE:X] tooltip! Skipping this field (likely from previous processing)");
-                                continue; // Skip this field entirely
+                                // For existing PDFs without [PAGE:X] tooltips, use widget detection
+                                page = FindPageForWidget(radioField);
+                                if (page == -1)
+                                {
+                                    logger.LogWarning($"⚠️ [TAG-STRUCTURE-FALLBACK] Radio button '{f.Name}' widget not found, defaulting to page 1");
+                                    page = 1; // Default to page 1 for existing PDFs
+                                }
+                                else
+                                {
+                                    logger.LogWarning($"🎯 [TAG-STRUCTURE-WIDGET] Radio button '{f.Name}' found on page {page} via widget detection");
+                                }
                             }
 
                             // Get the correct page height for this specific page
@@ -4038,6 +4103,8 @@ app.MapPost("/api/convert-with-config", async (
                 width = f.Width,
                 height = f.Height,
                 page = f.PageNumber,
+                pageWidth = f.PageWidth,
+                pageHeight = f.PageHeight,
                 tooltip = f.ValidationNotes ?? f.Tooltip ?? f.FieldName,
                 isRequired = false,
                 source = f.Source
@@ -4059,6 +4126,7 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
     ConfigurableFieldDetectionService fieldService,
     PassportPdfService passportPdfService,
     PdfCompleteRebuildService completeRebuildService,
+    WordToPdfConverter.Services.PdfPreservationService pdfPreservationService,
     ILogger<Program> logger) =>
 {
     try
@@ -4110,11 +4178,14 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
 
         if (isPdf)
         {
-            // PDF uploaded directly - use as-is, no conversion needed
-            logger.LogInformation($"PDF uploaded directly: {file.FileName}, skipping Word conversion");
+            // PDF uploaded directly - detect existing fields and use PDF as-is
+            logger.LogInformation($"PDF uploaded directly: {file.FileName}, detecting existing fields");
+
+            // Detect existing fields from the PDF using PdfPreservationService
+            fields = pdfPreservationService.GetExistingFields(fileBytes);
+            logger.LogInformation($"[PASSPORTPDF] Detected {fields.Count} existing fields from PDF");
+
             pdfBytes = fileBytes;
-            // For now, return empty field list - PDF field detection will be added later
-            fields = new List<WordToPdfConverter.Models.FieldDetectionResult>();
         }
         else
         {
@@ -4133,57 +4204,67 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
             }
         }
 
-        // Apply Aspose font embedding BEFORE PassportPDF (belt-and-suspenders approach)
-        // Updated: Now enabled for existing PDFs too - Aspose preserves field coordinates correctly
-        var useAsposeFontEmbed = request.Form["useAsposeFontEmbed"].ToString()?.ToLower() != "false"; // Default to true
-
-        if (useAsposeFontEmbed && completeRebuildService != null)
+        // For existing PDFs, use PdfPreservationService to avoid destroying fields
+        // For Word docs, use the Aspose/PassportPDF pipeline
+        if (isPdf)
         {
-            logger.LogInformation("Applying Aspose font embedding before PassportPDF");
+            logger.LogInformation("Processing existing PDF with PdfPreservationService to preserve all fields");
+            pdfBytes = await pdfPreservationService.ProcessExistingPdfAsync(pdfBytes);
+            logger.LogInformation("PDF processed with all fields preserved using PdfPreservationService");
+        }
+        else
+        {
+            // Word document processing - apply Aspose font embedding before PassportPDF
+            var useAsposeFontEmbed = request.Form["useAsposeFontEmbed"].ToString()?.ToLower() != "false"; // Default to true
 
-            // Create empty field updates list since fields are already in the PDF
-            var fieldUpdates = new List<PdfCompleteRebuildService.FieldUpdate>();
-
-            // Create service options
-            var serviceOptions = new PdfCompleteRebuildService.ServiceOptions
+            if (useAsposeFontEmbed && completeRebuildService != null)
             {
-                UseAsposeAutotag = false,
-                UseAsposeFontEmbed = true,
-                UsePassportPdf = false
-            };
+                logger.LogInformation("Applying Aspose font embedding before PassportPDF");
 
-            logger.LogInformation("Rebuild options: Aspose=False, FontEmbed=True, PassportPdf=False");
+                // Create empty field updates list since fields are already in the PDF
+                var fieldUpdates = new List<PdfCompleteRebuildService.FieldUpdate>();
 
-            // Run the font embedding
-            var rebuildResult = await completeRebuildService.CompletelyRebuildPdfAsync(pdfBytes, fieldUpdates, serviceOptions);
+                // Create service options
+                var serviceOptions = new PdfCompleteRebuildService.ServiceOptions
+                {
+                    UseAsposeAutotag = false,
+                    UseAsposeFontEmbed = true,
+                    UsePassportPdf = false
+                };
 
-            if (rebuildResult.Success && rebuildResult.PdfBytes != null)
-            {
-                logger.LogInformation("Aspose font embedding successful");
-                pdfBytes = rebuildResult.PdfBytes;
+                logger.LogInformation("Rebuild options: Aspose=False, FontEmbed=True, PassportPdf=False");
+
+                // Run the font embedding
+                var rebuildResult = await completeRebuildService.CompletelyRebuildPdfAsync(pdfBytes, fieldUpdates, serviceOptions);
+
+                if (rebuildResult.Success && rebuildResult.PdfBytes != null)
+                {
+                    logger.LogInformation("Aspose font embedding successful");
+                    pdfBytes = rebuildResult.PdfBytes;
+                }
+                else
+                {
+                    logger.LogWarning($"Aspose font embedding failed: {rebuildResult.ErrorMessage}");
+                }
             }
-            else
+            else if (!useAsposeFontEmbed)
             {
-                logger.LogWarning($"Aspose font embedding failed: {rebuildResult.ErrorMessage}");
+                logger.LogInformation("Aspose font embedding disabled by user");
             }
-        }
-        else if (!useAsposeFontEmbed)
-        {
-            logger.LogInformation("Aspose font embedding disabled by user");
-        }
 
-        // Then process with PassportPDF for PDF/UA compliance - PRESERVE FIELD NAMES
-        // Run PassportPDF if it's enabled in the options (for both Word and PDF inputs)
-        // PassportPDF's PDF/A-2u conversion is critical for font embedding compliance
-        try
-        {
-            pdfBytes = await passportPdfService.ConvertToPdfAPreservingFieldsAsync(pdfBytes, file.FileName);
-            logger.LogInformation("PassportPDF PDF/A conversion successful with field name preservation");
-        }
-        catch (Exception passportEx)
-        {
-            logger.LogWarning(passportEx, "PassportPDF processing failed, returning AI-enhanced PDF without PDF/A conversion");
-            // Continue with the AI-enhanced PDF even if PassportPDF fails
+            // Then process with PassportPDF for PDF/UA compliance - PRESERVE FIELD NAMES
+            // Run PassportPDF if it's enabled in the options (for both Word and PDF inputs)
+            // PassportPDF's PDF/A-2u conversion is critical for font embedding compliance
+            try
+            {
+                pdfBytes = await passportPdfService.ConvertToPdfAPreservingFieldsAsync(pdfBytes, file.FileName);
+                logger.LogInformation("PassportPDF PDF/A conversion successful with field name preservation");
+            }
+            catch (Exception passportEx)
+            {
+                logger.LogWarning(passportEx, "PassportPDF processing failed, returning AI-enhanced PDF without PDF/A conversion");
+                // Continue with the AI-enhanced PDF even if PassportPDF fails
+            }
         }
 
         // NOTE: Table/link cleanup and image alt-text generation are DISABLED here
@@ -4228,6 +4309,8 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
                 width = f.Width,
                 height = f.Height,
                 page = f.PageNumber,
+                pageWidth = f.PageWidth,
+                pageHeight = f.PageHeight,
                 tooltip = f.ValidationNotes ?? f.Tooltip ?? f.FieldName,
                 isRequired = false,
                 source = f.Source
@@ -5587,7 +5670,9 @@ app.MapPost("/api/process-pdf", async (
                     confidence = f.Confidence,
                     tooltip = f.ValidationNotes,
                     position = new { x = f.X, y = f.Y, width = f.Width, height = f.Height },
-                    page = f.PageNumber
+                    page = f.PageNumber,
+                    pageWidth = f.PageWidth,
+                    pageHeight = f.PageHeight
                 }).ToList()
             },
             enhancedPdf = new

@@ -169,21 +169,26 @@ namespace WordToPdfConverter.Services
                         {
                             try
                             {
-                                _logger.LogInformation("===== STEP 2: ASPOSE FONT EMBEDDING =====");
+                                _logger.LogWarning("╔═══════════════════════════════════════════════════════════════════╗");
+                                _logger.LogWarning("║ 🚨 REBUILD SERVICE: Calling AsposePdfService.OptimizePdfAsync   ║");
+                                _logger.LogWarning("╚═══════════════════════════════════════════════════════════════════╝");
                                 _logger.LogInformation($"Sending {rebuiltPdfBytes.Length} bytes to Aspose...");
                                 var beforeAspose = rebuiltPdfBytes.Length;
 
                                 rebuiltPdfBytes = await _asposePdfService.OptimizePdfAsync(rebuiltPdfBytes);
+                                _logger.LogWarning("✅ REBUILD SERVICE: AsposePdfService.OptimizePdfAsync returned");
 
                                 _logger.LogInformation($"===== ASPOSE PROCESSING COMPLETE =====");
                                 _logger.LogInformation($"Received {rebuiltPdfBytes.Length} bytes from Aspose (was {beforeAspose})");
 
                                 // Step 2.5: Fix PDF/UA compliance issues
-                                _logger.LogInformation("===== STEP 2.5: FIXING PDF/UA COMPLIANCE =====");
+                                _logger.LogWarning("╔═══════════════════════════════════════════════════════════════════╗");
+                                _logger.LogWarning("║ 🚨 REBUILD SERVICE: Calling FixPdfUaComplianceAsync             ║");
+                                _logger.LogWarning("╚═══════════════════════════════════════════════════════════════════╝");
                                 try
                                 {
                                     rebuiltPdfBytes = await _asposePdfService.FixPdfUaComplianceAsync(rebuiltPdfBytes);
-                                    _logger.LogInformation("✅ PDF/UA compliance fixes applied");
+                                    _logger.LogWarning("✅ REBUILD SERVICE: FixPdfUaComplianceAsync returned");
                                 }
                                 catch (Exception pdfuaEx)
                                 {

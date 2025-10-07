@@ -176,11 +176,11 @@ namespace WordToPdfConverter.Services
             {
                 case "checkbox":
                 case "radio":
-                    // Checkboxes should be square and reasonable size
-                    if (correctedWidth > correctedHeight * 2 || correctedWidth < 15 || correctedHeight < 15)
+                    // Checkboxes should be square and reasonable size - use 15x15
+                    if (correctedWidth > correctedHeight * 2 || correctedWidth < 12 || correctedHeight < 12)
                     {
-                        correctedWidth = 20;
-                        correctedHeight = 20;
+                        correctedWidth = 15;
+                        correctedHeight = 15;
                         logger?.LogInformation($"Corrected {fieldType} dimensions to {correctedWidth}x{correctedHeight}");
                     }
                     break;

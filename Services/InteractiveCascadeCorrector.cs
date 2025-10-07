@@ -645,6 +645,8 @@ public static class FieldDetectionResultExtensions
             Width = original.Width,
             Height = original.Height,
             PageNumber = original.PageNumber,
+            PageWidth = original.PageWidth,
+            PageHeight = original.PageHeight,
             ShortId = original.ShortId,
             IsValid = original.IsValid,
             ValidationNotes = original.ValidationNotes,

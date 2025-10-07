@@ -70,7 +70,9 @@ namespace AccessFormServer.Services
             {
                 try
                 {
-                    _logger.LogInformation($"===== ASPOSE OPTIMIZATION STARTING =====");
+                    _logger.LogWarning("╔═══════════════════════════════════════════════════════════════════╗");
+                    _logger.LogWarning("║ 🚨 ASPOSE OPTIMIZEPDFASYNC CALLED - WATCHING FOR FORM DAMAGE     ║");
+                    _logger.LogWarning("╚═══════════════════════════════════════════════════════════════════╝");
                     _logger.LogInformation($"Input PDF size: {pdfBytes.Length} bytes");
 
                     // Save input for debugging
@@ -85,12 +87,29 @@ namespace AccessFormServer.Services
                         _logger.LogInformation("Loading PDF into Aspose.Document...");
                         var document = new Document(inputStream);
                         _logger.LogInformation($"Document loaded: {document.Pages.Count} pages");
+
+                        // CHECK FOR FORMS BEFORE PROCESSING
+                        _logger.LogWarning($"🔍 ASPOSE: document.Form is null? {document.Form == null}");
+                        var formFieldCountBefore = document.Form?.Fields?.Length ?? 0;
+                        _logger.LogError($"🚨 ASPOSE SEES {formFieldCountBefore} FORM FIELDS IN THE PDF!");
+
+                        if (formFieldCountBefore > 0)
+                        {
+                            _logger.LogWarning($"🔍 ASPOSE: Listing first 5 fields:");
+                            for (int i = 0; i < Math.Min(5, formFieldCountBefore); i++)
+                            {
+                                var field = document.Form.Fields[i];
+                                _logger.LogWarning($"  - Field {i + 1}: Name='{field.FullName}', Type={field.GetType().Name}");
+                            }
+                        }
                         
                         // Log initial font status
                         LogFontStatus(document, "BEFORE optimization");
                         
                         // Embed all fonts
+                        _logger.LogWarning("🔍 CALLING EmbedFonts() - This used to clear checkbox appearances");
                         EmbedFonts(document);
+                        _logger.LogWarning("🔍 EmbedFonts() COMPLETED");
                         
                         // Optimize the document
                         _logger.LogInformation("Applying optimization options...");
@@ -98,8 +117,9 @@ namespace AccessFormServer.Services
                         {
                             var optimizationOptions = new Aspose.Pdf.Optimization.OptimizationOptions
                             {
-                                RemoveUnusedObjects = true,
-                                RemoveUnusedStreams = true,
+                                // DISABLED: RemoveUnusedObjects might remove form field objects!
+                                RemoveUnusedObjects = false,  // Was: true - but this can strip AcroForm objects
+                                RemoveUnusedStreams = false,  // Also disabled to preserve form streams
                                 AllowReusePageContent = false,
                                 LinkDuplcateStreams = false,
                                 UnembedFonts = false,
@@ -112,8 +132,20 @@ namespace AccessFormServer.Services
                             // Disable image compression to avoid the error
                             optimizationOptions.ImageCompressionOptions.CompressImages = false;
                             
+                            _logger.LogWarning("🔍 CALLING document.OptimizeResources() - RemoveUnusedObjects=false, RemoveUnusedStreams=false");
                             document.OptimizeResources(optimizationOptions);
-                            _logger.LogInformation("Optimization applied successfully");
+                            _logger.LogWarning("🔍 OptimizeResources() COMPLETED");
+
+                            // CHECK FOR FORMS AFTER OPTIMIZATION
+                            var formFieldCountAfterOpt = document.Form?.Fields?.Length ?? 0;
+                            if (formFieldCountAfterOpt != formFieldCountBefore)
+                            {
+                                _logger.LogError($"🚨 FORMS DESTROYED BY OPTIMIZATION! Before: {formFieldCountBefore}, After: {formFieldCountAfterOpt}");
+                            }
+                            else
+                            {
+                                _logger.LogWarning($"✅ Forms survived optimization: {formFieldCountAfterOpt} fields still present");
+                            }
                         }
                         catch (Exception optEx)
                         {
@@ -128,8 +160,12 @@ namespace AccessFormServer.Services
                         // Save optimized document
                         _logger.LogInformation("Saving optimized document...");
                         document.Save(outputStream);
-                        
+
                         var optimizedBytes = outputStream.ToArray();
+
+                        // FINAL FORM CHECK
+                        var formFieldCountFinal = document.Form?.Fields?.Length ?? 0;
+                        _logger.LogWarning($"🔍 FINAL FORM CHECK: {formFieldCountFinal} form fields in saved document");
                         
                         // Save output for debugging
                         var debugOutputPath = Path.Combine(Path.GetTempPath(), $"aspose_output_{DateTime.Now:yyyyMMdd_HHmmss}.pdf");
@@ -1372,12 +1408,19 @@ namespace AccessFormServer.Services
             {
                 try
                 {
-                    _logger.LogInformation("===== FIXING PDF/UA COMPLIANCE ISSUES =====");
+                    _logger.LogWarning("╔═══════════════════════════════════════════════════════════════════╗");
+                    _logger.LogWarning("║ 🚨 FIXPDFUACOMPLIANCEASYNC CALLED - CALLS EmbedFonts()          ║");
+                    _logger.LogWarning("╚═══════════════════════════════════════════════════════════════════╝");
 
                     using (var inputStream = new MemoryStream(pdfBytes))
                     using (var outputStream = new MemoryStream())
                     {
                         var document = new Document(inputStream);
+
+                        // CHECK FOR FORMS AT START
+                        var formFieldCountStart = document.Form?.Fields?.Length ?? 0;
+                        _logger.LogWarning($"🔍 FORM CHECK AT START OF PDF/UA FIX: {formFieldCountStart} form fields");
+
                         var taggedContent = document.TaggedContent;
 
                         if (taggedContent == null || taggedContent.RootElement == null)
@@ -1423,9 +1466,20 @@ namespace AccessFormServer.Services
                         _logger.LogInformation($"✅ Applied {additionalFixes} additional table structure fixes");
 
                         // 5. Embed all fonts (including Times-Roman)
-                        _logger.LogInformation("Embedding all fonts...");
+                        _logger.LogWarning("🔍 PDF/UA FIX: Calling EmbedFonts()...");
                         EmbedFonts(document);
-                        _logger.LogInformation("✅ All fonts embedded");
+                        _logger.LogWarning("🔍 PDF/UA FIX: EmbedFonts() completed");
+
+                        // CHECK FOR FORMS AFTER EMBEDFONTS
+                        var formFieldCountAfterEmbed = document.Form?.Fields?.Length ?? 0;
+                        if (formFieldCountAfterEmbed != formFieldCountStart)
+                        {
+                            _logger.LogError($"🚨 FORMS DESTROYED BY EmbedFonts! Before: {formFieldCountStart}, After: {formFieldCountAfterEmbed}");
+                        }
+                        else
+                        {
+                            _logger.LogWarning($"✅ Forms survived EmbedFonts: {formFieldCountAfterEmbed} fields still present");
+                        }
 
                         // Save the fixed document
                         document.Save(outputStream);

@@ -122,6 +122,8 @@ namespace WordToPdfConverter.Models
         public string CoordinateOrigin { get; set; } = "Bottom-Left";  // Always "Bottom-Left" for PDF
 
         public int PageNumber { get; set; }
+        public float PageWidth { get; set; } = 612f;  // Default to US Letter width
+        public float PageHeight { get; set; } = 792f; // Default to US Letter height
         public string Source { get; set; }  // Detection source (Syncfusion, Claude Vision, etc.)
         public float Confidence { get; set; }
         public bool IsValid { get; set; } = true;

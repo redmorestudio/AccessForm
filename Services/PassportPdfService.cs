@@ -42,7 +42,7 @@ namespace AccessFormServer.Services
         /// <summary>
         /// Converts a PDF to PDF/A-2u for accessibility compliance
         /// </summary>
-        public async Task<byte[]> ConvertToPdfAAsync(byte[] pdfBytes, string fileName)
+        public async Task<byte[]> ConvertToPdfAAsync(byte[] pdfBytes, string fileName = "document.pdf", bool preserveJavaScript = false)
         {
             try
             {
@@ -79,7 +79,7 @@ namespace AccessFormServer.Services
                 reduceParams.RemoveEmbeddedFiles = false;
                 reduceParams.RemoveHyperlinks = true; // Remove hyperlinks as requested
                 reduceParams.RemoveBookmarks = false;
-                reduceParams.RemoveJavaScript = true; // Remove JavaScript for security
+                reduceParams.RemoveJavaScript = !preserveJavaScript; // Remove JS unless explicitly preserving for calculated fields
                 reduceParams.EnableColorDetection = false;
                 reduceParams.PackDocument = true; // Optimize the document
                 reduceParams.RecompressImages = false; // Don't recompress images
@@ -340,7 +340,40 @@ namespace AccessFormServer.Services
                         _logger.LogInformation($"Extracted {fieldMetadata.Count} fields from original PDF");
                     }
                 }
-                
+
+                // CRITICAL FIX: If Syncfusion can't see any fields, don't try to preserve them
+                // This prevents us from destroying forms that Syncfusion can't read
+                //
+                // BACKGROUND: PassportPDF's PDF/A conversion breaks form fields, so the normal workflow is:
+                //   1. Extract field metadata with Syncfusion
+                //   2. Remove all fields from PDF
+                //   3. Convert to PDF/A (which would break fields if they were still there)
+                //   4. Re-add fields from metadata
+                //
+                // PROBLEM: If Syncfusion can't read the PDF's form format (PDF 2.0, XFA, etc.):
+                //   - Step 1 extracts 0 fields
+                //   - Step 2 removes 0 fields (but doesn't preserve the actual forms!)
+                //   - Step 3 converts to PDF/A
+                //   - Step 4 re-adds 0 fields
+                //   - Result: Forms are destroyed
+                //
+                // SOLUTION: If we can't read the forms, skip the preservation workflow entirely
+                // and hope that PassportPDF's PDF/A conversion doesn't break them.
+                //
+                // TODO: Find a way to read forms that Syncfusion can't handle (try Aspose first?)
+                if (fieldMetadata.Count == 0)
+                {
+                    _logger.LogError("╔═══════════════════════════════════════════════════════════════════╗");
+                    _logger.LogError("║ 🚨 SYNCFUSION CANNOT READ FORMS IN PASSPORTPDF                  ║");
+                    _logger.LogError("║    Skipping field preservation - just doing PDF/A conversion     ║");
+                    _logger.LogError("║    Forms will be preserved as-is (no manipulation)               ║");
+                    _logger.LogError("╚═══════════════════════════════════════════════════════════════════╝");
+
+                    // Just do PDF/A conversion without touching forms
+                    // This may break the forms, but at least we're not actively destroying them
+                    return await ConvertToPdfAAsync(pdfBytes, fileName);
+                }
+
                 // Step 2: Remove all fields from PDF before conversion
                 byte[] fieldlessPdf;
                 using (var stream = new MemoryStream(pdfBytes))

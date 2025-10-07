@@ -146,22 +146,17 @@ class PDFCompleteRebuilder:
             # Removing the adjustment that was messing them up
             name_lower = field_name.lower()
 
-            # IMPORTANT: Coordinate conversion
-            # Syncfusion/frontend uses top-left origin (Y increases downward)
-            # PyMuPDF uses bottom-left origin (Y increases upward)
-            # We store positions in top-left format, so we need to convert to bottom-left
+            # IMPORTANT: NO coordinate conversion needed!
+            # Syncfusion provides coordinates in PDF's native bottom-left origin (Y=0 at bottom, increases upward)
+            # ConfigurableFieldDetectionService passes these through unchanged
+            # PyMuPDF also uses bottom-left origin
+            # So coordinates are ALREADY in the correct format - no conversion needed!
 
-            # COORDINATE DEBUG: Let's see what coordinates we're actually getting
             page_height = page.rect.height  # ~792 points per page
-            logger.info(f"[COORD DEBUG] Field '{field_name}' page {page_num}: raw_Y={y}, page_height={page_height}")
+            logger.info(f"[COORD DEBUG] Field '{field_name}' page {page_num}: Y={y} (already in PDF bottom-left format), page_height={page_height}")
 
-            # CRITICAL FIX: Convert from top-left origin (C# display coords) to bottom-left origin (PyMuPDF)
-            # C# sends coordinates in top-left origin format (Y=0 at top, increases downward)
-            # PyMuPDF requires bottom-left origin format (Y=0 at bottom, increases upward)
-            # Must convert: PDF_y = page_height - display_y - field_height
-            y_converted = page_height - y - height  # Convert from top-left to bottom-left origin
-
-            logger.info(f"[COORD DEBUG] Field '{field_name}' page {page_num}: using_Y={y_converted} (already in PDF bottom-left format)")
+            # Use coordinates as-is since they're already in PyMuPDF's bottom-left format
+            y_converted = y  # NO CONVERSION - coordinates are already correct!
             
             # Adjust for checkbox/radio button dimensions
             if field_type in ['checkbox', 'radio', 'radiobutton']:
@@ -695,27 +690,27 @@ class PDFCompleteRebuilder:
     def rebuild_pdf(self, input_path: str, field_updates: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Rebuild PDF by removing and re-adding fields while preserving document structure.
-        
+
         Args:
             input_path: Path to input PDF
             field_updates: List of field definitions with properties
-            
+
         Returns:
             Result dictionary with success status and output path
         """
         try:
             logger.info(f"Starting PDF field rebuild for {len(field_updates)} fields")
-            
+
             # Debug: Write field updates to debug file
             with open('/tmp/pdf_rebuild_debug.json', 'w') as f:
                 json.dump(field_updates, f, indent=2)
-            
+
             # Debug: track what happens
             debug_info = {'input_fields': len(field_updates)}
-            
+
             # Step 1: Open the original PDF
             original_doc = fitz.open(input_path)
-            
+
             # Step 1.5: Extract existing field positions BEFORE removing them
             existing_fields = self.extract_existing_fields(original_doc)
             logger.info(f"Found {len(existing_fields)} existing fields in the document")

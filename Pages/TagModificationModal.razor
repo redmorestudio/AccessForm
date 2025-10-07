@@ -48,7 +48,7 @@
                                     {
                                         @foreach (var field in CurrentPageFields)
                                         {
-                                            <div class="field-overlay @(GetFieldSelectionClass(field))"
+                                            <div class="field-overlay @GetFieldClass(field.Type) @(SelectedField == field ? "selected" : "")"
                                                  id="field-@field.OriginalIndex"
                                                  data-field-index="@field.OriginalIndex"
                                                  @onmousedown="e => HandleFieldMouseDown(e, field)"
@@ -512,31 +512,26 @@
 
     .field-overlay {
         position: absolute;
-        border: 2px solid #0d6efd;
-        background-color: rgba(13, 110, 253, 0.1);
+        border-width: 2px;
+        border-style: solid;
         cursor: move;
         box-sizing: border-box;
         user-select: none;
         transition: border-color 0.2s, background-color 0.2s;
         z-index: 10;
+        /* Default colors for unknown types - will be overridden by type-specific classes */
+        border-color: #6c757d;
+        background-color: rgba(108, 117, 125, 0.1);
     }
 
     .field-overlay:hover {
-        border-color: #0a58ca;
-        background-color: rgba(13, 110, 253, 0.2);
+        opacity: 0.8;
     }
 
     .field-overlay.selected {
         border-color: #ff6b6b;
         background-color: rgba(255, 107, 107, 0.15);
         border-width: 3px;
-    }
-
-    .field-overlay.multi-selected {
-        border-color: #28a745;
-        background-color: rgba(40, 167, 69, 0.15);
-        border-width: 3px;
-        border-style: dashed;
     }
 
     .field-overlay.drawing {
@@ -601,6 +596,42 @@
     .selected .resize-handle-se {
         border-color: #ff6b6b;
         background: #fff;
+    }
+
+    /* Field type color coding */
+    .field-checkbox {
+        border-color: #ff6b6b !important;
+        background-color: rgba(255, 107, 107, 0.1) !important;
+    }
+
+    .field-radio {
+        border-color: #fd7e14 !important;
+        background-color: rgba(253, 126, 20, 0.1) !important;
+    }
+
+    .field-text {
+        border-color: #0d6efd !important;
+        background-color: rgba(13, 110, 253, 0.1) !important;
+    }
+
+    .field-dropdown {
+        border-color: #198754 !important;
+        background-color: rgba(25, 135, 84, 0.1) !important;
+    }
+
+    .field-listbox {
+        border-color: #20c997 !important;
+        background-color: rgba(32, 201, 151, 0.1) !important;
+    }
+
+    .field-signature {
+        border-color: #6f42c1 !important;
+        background-color: rgba(111, 66, 193, 0.1) !important;
+    }
+
+    /* Selected state overrides */
+    .field-overlay.selected {
+        border-width: 3px !important;
     }
 </style>
 
@@ -867,33 +898,6 @@
         }
         window.globalDragState.dotNetRef = null;
     };
-
-    // Keyboard shortcuts for multi-select operations
-    window.registerKeyboardHandlers = function(dotNetRef) {
-        window.tagEditorKeyboardHandler = function(e) {
-            // Ctrl/Cmd+A - Select All
-            if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
-                e.preventDefault();
-                dotNetRef.invokeMethodAsync('SelectAllFieldsOnCurrentPage');
-            }
-            // Delete or Backspace - Delete selected fields
-            else if (e.key === 'Delete' || e.key === 'Backspace') {
-                // Only if not in an input field
-                if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-                    e.preventDefault();
-                    dotNetRef.invokeMethodAsync('DeleteSelectedFields');
-                }
-            }
-        };
-        document.addEventListener('keydown', window.tagEditorKeyboardHandler);
-    };
-
-    window.unregisterKeyboardHandlers = function() {
-        if (window.tagEditorKeyboardHandler) {
-            document.removeEventListener('keydown', window.tagEditorKeyboardHandler);
-            window.tagEditorKeyboardHandler = null;
-        }
-    };
 </script>
 
 <!-- Cascade Correction Panel -->
@@ -949,8 +953,6 @@
     
     // Field selection state
     private EditableField SelectedField = null;
-    private HashSet<EditableField> SelectedFields = new HashSet<EditableField>();
-    private Dictionary<EditableField, (float X, float Y)> OriginalFieldPositions = new Dictionary<EditableField, (float, float)>();
 
     // UI state
     private bool IsFieldEditorCollapsed { get; set; } = false;
@@ -1028,11 +1030,21 @@
                     Y = field.Y,
                     Width = field.Width,
                     Height = field.Height,
+                    PageWidth = field.PageWidth,
+                    PageHeight = field.PageHeight,
                     OriginalIndex = i + 1
                 };
                 EditableFields.Add(editableField);
             }
             originalOrder = new List<EditableField>(EditableFields);
+
+            // Debug logging
+            Console.WriteLine($"[DEBUG v4] Loaded {EditableFields.Count} fields into TagModificationModal");
+            if (EditableFields.Count > 0)
+            {
+                var first = EditableFields.First();
+                Console.WriteLine($"[DEBUG v4] First field: {first.Name}, Type={first.Type}, PageW={first.PageWidth}, PageH={first.PageHeight}");
+            }
         }
 
         return Task.CompletedTask;
@@ -1050,10 +1062,6 @@
         {
             // Initialize draggable/resizable window
             await JSRuntime.InvokeVoidAsync("initializeResizableWindow", "tagModificationWindow", "tagModWindowHeader");
-
-            // Register keyboard handlers for multi-select operations
-            await JSRuntime.InvokeVoidAsync("registerKeyboardHandlers", dotNetRef);
-
             windowInitialized = true;
         }
 
@@ -1384,47 +1392,9 @@
                 // So we need to scale coordinates by 150/72 = 2.083
                 ImageScale = 150.0 / 72.0;
                 
-                // Get fields from API response if available
-                if (json.RootElement.TryGetProperty("fields", out var fieldsElement))
-                {
-                    CurrentPageFields.Clear();
-                    foreach (var fieldJson in fieldsElement.EnumerateArray())
-                    {
-                        // Check if this field exists in our editable fields
-                        var fieldName = fieldJson.GetProperty("name").GetString();
-                        var editableField = EditableFields.FirstOrDefault(f => f.Name == fieldName && f.Page == pageNumber);
-                        
-                        if (editableField != null && fieldJson.TryGetProperty("x", out var x))
-                        {
-                            // Update positions from server
-                            editableField.X = (float)x.GetDouble();
-                            editableField.Y = (float)fieldJson.GetProperty("y").GetDouble();
-                            editableField.Width = (float)fieldJson.GetProperty("width").GetDouble();
-                            editableField.Height = (float)fieldJson.GetProperty("height").GetDouble();
-                            
-                            // Apply minimum sizes if fields are too small
-                            // But handle checkboxes differently - they should be square and small
-                            var fieldType = editableField.Type?.ToLower() ?? "text";
-                            if (fieldType == "checkbox" || fieldType == "radio")
-                            {
-                                // Checkboxes should be square, typically 20x20
-                                if (editableField.Width > editableField.Height * 2 || editableField.Width < 15)
-                                {
-                                    editableField.Width = 20;
-                                    editableField.Height = 20;
-                                }
-                            }
-                            else
-                            {
-                                // For text fields, apply minimum sizes
-                                if (editableField.Width < 50) editableField.Width = 150;
-                                if (editableField.Height < 15) editableField.Height = 20;
-                            }
-                            
-                            Console.WriteLine($"Field {fieldName}: X={editableField.X}, Y={editableField.Y}, W={editableField.Width}, H={editableField.Height}");
-                        }
-                    }
-                }
+                // DON'T overwrite the properly extracted field data from PdfPreservationService
+                // The Fields parameter already contains perfect extraction from Syncfusion
+                // with correct types, sizes, and positions
                 
                 // Update fields for current page
                 await JSRuntime.InvokeVoidAsync("console.log", $"[PAGINATION DEBUG 2] Filtering fields for page {pageNumber}");
@@ -1477,15 +1447,22 @@
     
     private string GetFieldClass(string fieldType)
     {
-        return fieldType?.ToLower() switch
+        var cssClass = fieldType?.ToLower() switch
         {
             "checkbox" => "field-checkbox",
-            "date" => "field-date",
+            "radio" => "field-radio",
+            "dropdown" => "field-dropdown",
+            "combobox" => "field-dropdown",
+            "listbox" => "field-listbox",
             "signature" => "field-signature",
+            "date" => "field-date",
             "email" => "field-email",
             "phone" => "field-phone",
             _ => "field-text"
         };
+        Console.WriteLine($"🎨 GetFieldClass: type='{fieldType}' -> class='{cssClass}'");
+        _ = JSRuntime.InvokeVoidAsync("console.log", $"🎨 Field type '{fieldType}' -> CSS class '{cssClass}'");
+        return cssClass;
     }
     
     private async Task SelectField(EditableField field)
@@ -1525,7 +1502,6 @@
 
     public void Dispose()
     {
-        _ = JSRuntime.InvokeVoidAsync("unregisterKeyboardHandlers");
         dotNetRef?.Dispose();
     }
 
@@ -1642,35 +1618,13 @@
     // Convert PDF coordinates to display coordinates for field overlay positioning
     private string GetFieldOverlayStyle(EditableField field)
     {
-        // For landscape PDFs, we get pageHeight=792 but actual dimensions are 792x612
-        // Standard US Letter: 612x792 (portrait) or 792x612 (landscape)
+        // Use actual page dimensions from the field, with fallbacks to US Letter
         float pageHeight = field.PageHeight > 0 ? field.PageHeight : 792.0f;
-        float pageWidth;
+        float pageWidth = field.PageWidth > 0 ? field.PageWidth : 612.0f;
 
-        // The server sends pageHeight=792 even for landscape PDFs
-        // For a landscape US Letter, actual dimensions are 792x612 (width x height)
-        // Since we're getting 792 as pageHeight for a landscape doc, we need to swap
-        if (Math.Abs(pageHeight - 792.0f) < 0.01f)
-        {
-            // This is landscape: 792 wide x 612 tall
-            pageWidth = 792.0f;
-            pageHeight = 612.0f; // The actual height for landscape
-        }
-        else if (Math.Abs(pageHeight - 612.0f) < 0.01f)
-        {
-            // This is portrait: 612 wide x 792 tall
-            pageWidth = 612.0f;
-            pageHeight = 792.0f; // Keep portrait height
-        }
-        else
-        {
-            // Unknown size, assume square
-            pageWidth = pageHeight;
-        }
-
-        // DO NOT flip Y-axis - Syncfusion coordinates are already in top-left origin
+        // Convert from PDF coordinates (bottom-left) to display coordinates (top-left)
         var leftPercent = (field.X / pageWidth) * 100;
-        var topPercent = (field.Y / pageHeight) * 100;
+        var topPercent = ((pageHeight - field.Y - field.Height) / pageHeight) * 100;
 
         var widthPercent = (field.Width / pageWidth) * 100;
         var heightPercent = (field.Height / pageHeight) * 100;
@@ -1681,21 +1635,6 @@
         var styleString = $"left: {leftPercent}%; top: {topPercent}%; width: {widthPercent}%; height: {heightPercent}%;";
         Logger.LogWarning($"🎯 [STYLE-RETURN] '{field.Name}' RETURNING: {styleString}");
         return styleString;
-    }
-
-    private string GetFieldSelectionClass(EditableField field)
-    {
-        if (SelectedFields.Contains(field))
-        {
-            // If multiple fields are selected and this is one of them, show multi-select style
-            if (SelectedFields.Count > 1)
-            {
-                return "multi-selected";
-            }
-            // Single selection
-            return "selected";
-        }
-        return "";
     }
 
     private string GetDrawingRectangleStyle()
@@ -1732,49 +1671,15 @@
 
     private void HandleFieldMouseDown(MouseEventArgs e, EditableField field)
     {
-        // Multi-select: Ctrl/Cmd+Click to add/remove from selection
-        if (e.CtrlKey || e.MetaKey)
-        {
-            if (SelectedFields.Contains(field))
-            {
-                SelectedFields.Remove(field);
-                if (SelectedField == field)
-                {
-                    SelectedField = SelectedFields.FirstOrDefault();
-                }
-            }
-            else
-            {
-                SelectedFields.Add(field);
-                SelectedField = field;
-            }
-            StateHasChanged();
-            return; // Don't start dragging on multi-select click
-        }
-
-        // If clicking a field that's not in selection, clear and select only this one
-        if (!SelectedFields.Contains(field))
-        {
-            SelectedFields.Clear();
-            SelectedFields.Add(field);
-            SelectedField = field;
-        }
-
-        // Start dragging all selected fields
+        // Start dragging (resize functionality disabled for now)
         isDraggingField = true;
         draggedField = field;
         dragStartX = e.ClientX;
         dragStartY = e.ClientY;
-
-        // Store original positions for ALL selected fields
-        OriginalFieldPositions.Clear();
-        foreach (var selectedField in SelectedFields)
-        {
-            OriginalFieldPositions[selectedField] = (selectedField.X, selectedField.Y);
-        }
-
         originalFieldX = field.X;
         originalFieldY = field.Y;
+
+        SelectedField = field;
 
         // Register global mouse move and up handlers via JavaScript
         _ = JSRuntime.InvokeVoidAsync("registerGlobalDragHandlers", dotNetRef);
@@ -1794,22 +1699,15 @@
         }
         else if (isDraggingField && draggedField != null)
         {
-            // Update field position - move ALL selected fields
+            // Update field position
             const float SCALE_FACTOR = 150.0f / 72.0f;
             var deltaX = (float)((clientX - dragStartX) / SCALE_FACTOR);
             var deltaY = (float)((clientY - dragStartY) / SCALE_FACTOR);
 
-            // Move all selected fields by the same delta
-            foreach (var field in SelectedFields)
-            {
-                if (OriginalFieldPositions.TryGetValue(field, out var originalPos))
-                {
-                    field.X = originalPos.X + deltaX;
-                    // Both display and deltaY are in screen coordinates (Y increases downward)
-                    // Since we're moving in screen space, add the delta directly
-                    field.Y = originalPos.Y + deltaY;
-                }
-            }
+            draggedField.X = originalFieldX + deltaX;
+            // Y-axis: PDF uses bottom-left, but mouse movement is in screen space (top-left)
+            // Moving mouse down (positive deltaY) should decrease PDF Y coordinate
+            draggedField.Y = originalFieldY - deltaY;
 
             StateHasChanged();
         }
@@ -1940,40 +1838,7 @@
         // Synchronous wrapper for backwards compatibility
         _ = DeleteFieldAsync(field);
     }
-
-    [JSInvokable]
-    public void DeleteSelectedFields()
-    {
-        if (SelectedFields.Count == 0) return;
-
-        Logger.LogInformation($"Deleting {SelectedFields.Count} selected fields");
-
-        var fieldsToDelete = SelectedFields.ToList();
-        foreach (var field in fieldsToDelete)
-        {
-            EditableFields.Remove(field);
-            CurrentPageFields.Remove(field);
-        }
-
-        SelectedFields.Clear();
-        SelectedField = null;
-
-        StateHasChanged();
-    }
-
-    [JSInvokable]
-    public void SelectAllFieldsOnCurrentPage()
-    {
-        SelectedFields.Clear();
-        foreach (var field in CurrentPageFields)
-        {
-            SelectedFields.Add(field);
-        }
-        SelectedField = SelectedFields.FirstOrDefault();
-        Logger.LogInformation($"Selected all {SelectedFields.Count} fields on page {CurrentPage}");
-        StateHasChanged();
-    }
-
+    
     private void AddNewField()
     {
         var fieldName = $"NewField_{EditableFields.Count + 1}";
@@ -2307,7 +2172,19 @@
     
     private async Task ApplyChanges()
     {
-        await OnApplyChanges.InvokeAsync(EditableFields);
+        Console.WriteLine($"ApplyChanges called with {EditableFields?.Count ?? 0} fields");
+        await JSRuntime.InvokeVoidAsync("console.log", $"ApplyChanges called with {EditableFields?.Count ?? 0} fields");
+
+        if (OnApplyChanges.HasDelegate)
+        {
+            await OnApplyChanges.InvokeAsync(EditableFields);
+            Console.WriteLine("OnApplyChanges invoked successfully");
+        }
+        else
+        {
+            Console.WriteLine("WARNING: OnApplyChanges has no delegate!");
+            await JSRuntime.InvokeVoidAsync("console.error", "OnApplyChanges has no delegate bound!");
+        }
         // Keep modal open to allow continuous editing - user can close manually when done
     }
 
@@ -2424,7 +2301,8 @@
         public float Y { get; set; }
         public float Width { get; set; } = 100;
         public float Height { get; set; } = 20;
-        public float PageHeight { get; set; } = 792; // Default to US Letter, but should be set per page
+        public float PageHeight { get; set; } = 792; // Default to US Letter height
+        public float PageWidth { get; set; } = 612; // Default to US Letter width
         public int OriginalIndex { get; set; }
     }
     

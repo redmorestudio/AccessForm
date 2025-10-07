@@ -499,10 +499,11 @@ namespace WordToPdfConverter.Services
                     }
                 }
             }
-            
+
+            // DISABLED: This was removing legitimate checkboxes that were close together
             // Deduplicate checkboxes that are too close together
-            fields = DeduplicateCheckboxes(fields);
-            
+            // fields = DeduplicateCheckboxes(fields);
+
             // Handle duplicate field names across all field types
             fields = ResolveDuplicateFieldNames(fields);
 
@@ -2343,7 +2344,8 @@ Document:
             }
 
             // Filter 3: Fields that are too narrow (likely artifacts)
-            if (width < MIN_FIELD_WIDTH)
+            // EXCEPTION: Checkboxes are typically ~13.8px wide, so exempt them from width check
+            if (width < MIN_FIELD_WIDTH && field.FieldType?.ToLower() != "checkbox")
             {
                 _logger.LogWarning($"🚫 [FALSE_POSITIVE] Field '{field.FieldName}' is too narrow (width={width:F1}px < {MIN_FIELD_WIDTH}px) - likely an artifact");
                 return true;

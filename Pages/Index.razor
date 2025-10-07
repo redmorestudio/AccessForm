@@ -1313,6 +1313,8 @@
                             Width = (float)field.GetProperty("width").GetDouble(),
                             Height = (float)field.GetProperty("height").GetDouble(),
                             Page = field.GetProperty("page").GetInt32(),
+                            PageWidth = field.TryGetProperty("pageWidth", out var pageWidthElement) ? (float)pageWidthElement.GetDouble() : 612f,
+                            PageHeight = field.TryGetProperty("pageHeight", out var pageHeightElement) ? (float)pageHeightElement.GetDouble() : 792f,
                             Tooltip = field.TryGetProperty("tooltip", out var tooltipElement) ? tooltipElement.GetString() : "",
                             IsRequired = field.TryGetProperty("isRequired", out var requiredElement) && requiredElement.GetBoolean(),
                             OriginalIndex = detectedFields.Count + 1
@@ -1842,15 +1844,15 @@
                     currentTagTreeJson = await response.Content.ReadAsStringAsync();
                     var tagStructure = JsonDocument.Parse(currentTagTreeJson);
                     
-                    // CRITICAL FIX: Always use the correctly detected fields from session storage
-                    // The tag structure extraction applies incorrect Y-coordinate transformations
+                    // Use the fields from PdfPreservationService that were stored in sessionStorage
+                    // These have the correct types, sizes and positions from Syncfusion
                     currentFields.Clear();
 
                     // Get the correctly detected fields from session storage
                     var sessionFieldsJson = await JSRuntime.InvokeAsync<string>("sessionStorage.getItem", "tempDetectedFields");
                     if (!string.IsNullOrEmpty(sessionFieldsJson))
                     {
-                        await JSRuntime.InvokeVoidAsync("console.log", $"Using correctly detected fields from session storage...");
+                        await JSRuntime.InvokeVoidAsync("console.log", $"Using fields from PdfPreservationService via session storage...");
                         var sessionFields = JsonSerializer.Deserialize<List<TagModificationModal.EditableField>>(sessionFieldsJson);
                         foreach (var sessionField in sessionFields)
                         {
@@ -1866,10 +1868,12 @@
                                 Y = sessionField.Y,
                                 Width = sessionField.Width,
                                 Height = sessionField.Height,
+                                PageWidth = sessionField.PageWidth,
+                                PageHeight = sessionField.PageHeight,
                                 OriginalIndex = sessionField.OriginalIndex
                             });
                         }
-                        await JSRuntime.InvokeVoidAsync("console.log", $"Loaded {currentFields.Count} fields with correct coordinates from detection service");
+                        await JSRuntime.InvokeVoidAsync("console.log", $"Loaded {currentFields.Count} fields from PdfPreservationService");
                     }
                     else
                     {
