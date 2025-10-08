@@ -7,24 +7,15 @@ namespace AccessFormServer.Services
     {
         private static readonly Dictionary<string, string> FontReplacements = new()
         {
-            // Problematic fonts → Arial (embeddable and universally available)
-            // Aligned with PDF path font substitution strategy
-            { "Times New Roman", "Arial" },
-            { "Times-Roman", "Arial" },
-            { "TimesNewRoman", "Arial" },
-            { "Times", "Arial" },
-            { "Calibri", "Arial" },
-            { "Calibri Light", "Arial" },
-            { "Courier New", "Arial" },
-            { "Courier", "Arial" },
-            { "Helvetica", "Arial" },
-            { "OpenSans", "Arial" },
-            { "OpenSansRegular", "Arial" },
-            { "OpenSans-Regular", "Arial" },
-            { "Open Sans", "Arial" },
-            { "Symbol", "Arial" },  // Will need symbol → Unicode conversion
-            { "Wingdings", "Arial" }, // Will need symbol → Unicode conversion
-            { "ZapfDingbats", "Arial" } // Will need symbol → Unicode conversion
+            // Problematic fonts → Safe alternatives
+            { "Times New Roman", "Liberation Serif" },
+            { "Arial", "Liberation Sans" },
+            { "Arial Bold", "Liberation Sans" },
+            { "Calibri", "Liberation Sans" },
+            { "Calibri Light", "Liberation Sans" },
+            { "Courier New", "Liberation Mono" },
+            { "Symbol", "DejaVu Sans" },  // Will need symbol → Unicode conversion
+            { "Wingdings", "DejaVu Sans" } // Will need symbol → Unicode conversion
         };
 
         private static readonly Dictionary<string, string> SymbolReplacements = new()

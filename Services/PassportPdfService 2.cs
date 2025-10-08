@@ -84,7 +84,7 @@ namespace AccessFormServer.Services
                 reduceParams.PackDocument = true; // Optimize the document
                 reduceParams.RecompressImages = false; // Don't recompress images
                 reduceParams.EnableCharRepair = true; // Repair character encoding issues
-                reduceParams.PackFonts = false; // DISABLED: Font subsetting causes CIDset incomplete errors - Aspose already handles full embedding
+                reduceParams.PackFonts = true; // Optimize fonts
 
                 // Additional settings to help with table structure issues
                 // These help convert layout tables to proper semantic structures
@@ -419,48 +419,37 @@ namespace AccessFormServer.Services
                             }
 
                             var page = pdfDoc.Pages[metadata.PageIndex];
-                            var pageHeight = page.Size.Height;
-
-                            // CRITICAL FIX: Flip Y coordinate to correct inverted field positions
-                            // PassportPDF conversion changes coordinate system, need to flip Y-axis
-                            var correctedBounds = new RectangleF(
-                                metadata.Bounds.X,
-                                pageHeight - metadata.Bounds.Y - metadata.Bounds.Height, // Flip Y
-                                metadata.Bounds.Width,
-                                metadata.Bounds.Height
-                            );
-
-                            _logger.LogInformation($"[FIELD RE-ADD] Adding field: {metadata.Name} ({metadata.FieldType}) to page {metadata.PageIndex + 1} - Original Y={metadata.Bounds.Y}, Corrected Y={correctedBounds.Y} (PageHeight={pageHeight})");
+                            _logger.LogInformation($"[FIELD RE-ADD] Adding field: {metadata.Name} ({metadata.FieldType}) to page {metadata.PageIndex + 1} (PageIndex={metadata.PageIndex})");
 
                             switch (metadata.FieldType)
                             {
                                 case "checkbox":
                                     var checkbox = new PdfCheckBoxField(page, metadata.Name);
-                                    checkbox.Bounds = correctedBounds;
+                                    checkbox.Bounds = metadata.Bounds;
                                     checkbox.ToolTip = metadata.ToolTip;
                                     checkbox.Required = metadata.Required;
                                     pdfDoc.Form.Fields.Add(checkbox);
                                     break;
-
+                                    
                                 case "radio":
                                     var radio = new PdfRadioButtonListField(page, metadata.Name);
                                     radio.ToolTip = metadata.ToolTip;
                                     radio.Required = metadata.Required;
                                     var radioItem = new PdfRadioButtonListItem("Option");
-                                    radioItem.Bounds = correctedBounds;
+                                    radioItem.Bounds = metadata.Bounds;
                                     radio.Items.Add(radioItem);
                                     pdfDoc.Form.Fields.Add(radio);
                                     break;
-
+                                    
                                 case "signature":
                                     var signature = new PdfSignatureField(page, metadata.Name);
-                                    signature.Bounds = correctedBounds;
+                                    signature.Bounds = metadata.Bounds;
                                     pdfDoc.Form.Fields.Add(signature);
                                     break;
-
+                                    
                                 default: // text
                                     var textField = new PdfTextBoxField(page, metadata.Name);
-                                    textField.Bounds = correctedBounds;
+                                    textField.Bounds = metadata.Bounds;
                                     textField.ToolTip = metadata.ToolTip;
                                     textField.Required = metadata.Required;
                                     pdfDoc.Form.Fields.Add(textField);

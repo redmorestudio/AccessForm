@@ -1954,7 +1954,31 @@
                     Width = f.Width,
                     Height = f.Height
                 }).ToList();
-                
+
+                // INSTRUMENTATION: Write to dedicated debug file
+                var debugPath = "/tmp/coordinate_debug.log";
+                var debugLines = new List<string>();
+                debugLines.Add("═══════════════════════════════════════════════════════════");
+                debugLines.Add($"🟢 [TAG EDITOR → API] SENDING {fieldUpdates.Count} FIELDS TO /api/update-pdf-fields-v4");
+                debugLines.Add($"Timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
+                debugLines.Add("═══════════════════════════════════════════════════════════");
+                var i = 0;
+                foreach (var f in fieldUpdates.Take(10))
+                {
+                    i++;
+                    debugLines.Add($"🟢 [{i}] '{f.OriginalName}' → '{f.NewName}':");
+                    debugLines.Add($"    Type={f.FieldType}, Page={f.PageNumber}");
+                    debugLines.Add($"    X={f.X:F1}, Y={f.Y:F1}, W={f.Width:F1}x{f.Height:F1}");
+                }
+                if (fieldUpdates.Count > 10)
+                {
+                    debugLines.Add($"🟢 ... and {fieldUpdates.Count - 10} more fields");
+                }
+                debugLines.Add("═══════════════════════════════════════════════════════════");
+                debugLines.Add("");
+
+                System.IO.File.AppendAllLines(debugPath, debugLines);
+
                 var fieldsJson = System.Text.Json.JsonSerializer.Serialize(fieldUpdates);
                 formData.Add(new StringContent(fieldsJson), "fieldUpdates");
                 

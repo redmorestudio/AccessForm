@@ -146,17 +146,25 @@ class PDFCompleteRebuilder:
             # Removing the adjustment that was messing them up
             name_lower = field_name.lower()
 
-            # IMPORTANT: NO coordinate conversion needed!
-            # Syncfusion provides coordinates in PDF's native bottom-left origin (Y=0 at bottom, increases upward)
-            # ConfigurableFieldDetectionService passes these through unchanged
-            # PyMuPDF also uses bottom-left origin
-            # So coordinates are ALREADY in the correct format - no conversion needed!
+            # IMPORTANT: COORDINATE SYSTEM ASSUMPTION (MAY BE WRONG!)
+            # This code ASSUMES coordinates are in PDF's native bottom-left origin
+            # BUT extract_existing_fields() CONVERTS them to top-left!
+            # This creates the inversion bug!
 
             page_height = page.rect.height  # ~792 points per page
-            logger.info(f"[COORD DEBUG] Field '{field_name}' page {page_num}: Y={y} (already in PDF bottom-left format), page_height={page_height}")
 
-            # Use coordinates as-is since they're already in PyMuPDF's bottom-left format
-            y_converted = y  # NO CONVERSION - coordinates are already correct!
+            # INSTRUMENTATION
+            debug_path = "/tmp/coordinate_debug.log"
+            with open(debug_path, 'a') as f:
+                f.write(f"🟠 [WIDGET CREATE] Field '{field_name}' page {page_num}:\n")
+                f.write(f"   Input: X={x:.1f}, Y={y:.1f}, W={width:.1f}x{height:.1f}\n")
+                f.write(f"   Page height: {page_height:.1f}\n")
+                f.write(f"   Assuming Y is in PDF bottom-left format...\n")
+                f.write(f"   ⚠️  BUT if Y came from extract_existing_fields(), it's actually TOP-LEFT!\n")
+                f.write("\n")
+
+            # Use coordinates as-is - THIS IS THE BUG if Y is top-left format!
+            y_converted = y  # NO CONVERSION - but should convert if Y is top-left!
             
             # Adjust for checkbox/radio button dimensions
             if field_type in ['checkbox', 'radio', 'radiobutton']:
@@ -503,14 +511,25 @@ class PDFCompleteRebuilder:
         pass
     def extract_existing_fields(self, doc: fitz.Document) -> Dict[str, Dict[str, Any]]:
         """Extract position and properties of existing fields from the document"""
+
+        # INSTRUMENTATION: Write to dedicated debug file
+        debug_path = "/tmp/coordinate_debug.log"
+        debug_lines = []
+        debug_lines.append("═══════════════════════════════════════════════════════════")
+        debug_lines.append("🟡 [PYTHON EXTRACT] EXTRACTING EXISTING FIELDS FROM PDF")
+        debug_lines.append("═══════════════════════════════════════════════════════════")
+
         existing_fields = {}
         unnamed_counter = 1
-        
+
         for page_num, page in enumerate(doc):
             page_height = page.rect.height
+            widget_count = len(list(page.widgets()))
+            debug_lines.append(f"🟡 Page {page_num}: height={page_height:.1f}, widgets={widget_count}")
+
             for widget in page.widgets():
                 field_name = widget.field_name
-                
+
                 # Handle unnamed fields - give them a temporary name based on position
                 if not field_name or field_name.strip() == '':
                     rect = widget.rect
@@ -522,13 +541,23 @@ class PDFCompleteRebuilder:
                         field_name = f"UNNAMED_FIELD_{unnamed_counter}"
                     unnamed_counter += 1
                     logger.warning(f"Found unnamed field at ({rect.x0}, {rect.y0}), assigning name: {field_name}")
-                
+
                 rect = widget.rect
-                # Convert from PyMuPDF bottom-left to top-left for consistency with frontend
-                y_top_left = page_height - rect.y1  # y1 is the bottom of the rect in PyMuPDF
+
+                # COORDINATE TRANSFORMATION DETECTION
+                y_bottom_left_origin = rect.y0  # PDF native: Y=0 at bottom
+                y_top_left = page_height - rect.y1  # Convert to top-left: Y=0 at top
+
+                debug_lines.append(f"🔴 [COORD TRANSFORM] Field '{field_name}':")
+                debug_lines.append(f"   PDF rect: x0={rect.x0:.1f}, y0={rect.y0:.1f}, x1={rect.x1:.1f}, y1={rect.y1:.1f}")
+                debug_lines.append(f"   Bottom-left Y: {y_bottom_left_origin:.1f} (PDF native)")
+                debug_lines.append(f"   → Top-left Y:  {y_top_left:.1f} (after conversion)")
+                debug_lines.append(f"   Δ = {y_top_left - y_bottom_left_origin:+.1f}")
+                debug_lines.append(f"   Formula: Y_top = page_height({page_height:.1f}) - rect.y1({rect.y1:.1f}) = {y_top_left:.1f}")
+
                 existing_fields[field_name] = {
                     'x': rect.x0,
-                    'y': y_top_left,
+                    'y': y_top_left,  # ⚠️ STORING IN TOP-LEFT FORMAT!
                     'width': rect.width,
                     'height': rect.height,
                     'page': page_num,
@@ -540,7 +569,13 @@ class PDFCompleteRebuilder:
                     'was_unnamed': not widget.field_name  # Track if it was originally unnamed
                 }
                 logger.info(f"Found existing field '{field_name}' at ({rect.x0}, {y_top_left}) with size {rect.width}x{rect.height}")
-        
+
+        # Write all debug output to file
+        debug_lines.append("═══════════════════════════════════════════════════════════")
+        debug_lines.append("")
+        with open(debug_path, 'a') as f:
+            f.write('\n'.join(debug_lines) + '\n')
+
         return existing_fields
     
     def get_nearby_text(self, page: fitz.Page, rect: fitz.Rect, max_distance: float = 50) -> str:
@@ -978,11 +1013,22 @@ class PDFCompleteRebuilder:
                     # Field updates should ONLY change name, type, and tooltip
                     # NEVER trust incoming coordinates when we have existing field positions
                     if existing_field:
-                        # Use original existing positions (already in PDF coordinate space)
+                        # Use original existing positions
                         x = existing_field.get('x', 100)
-                        y = existing_field.get('y', 100)  # This is already in PyMuPDF bottom-left format
+                        y_from_extract = existing_field.get('y', 100)  # ⚠️ THIS IS IN TOP-LEFT FORMAT FROM EXTRACT!
                         width = existing_field.get('width', 200)
                         height = existing_field.get('height', 20)
+
+                        # INSTRUMENTATION
+                        debug_path = "/tmp/coordinate_debug.log"
+                        with open(debug_path, 'a') as f:
+                            f.write(f"🟣 [PYTHON REBUILD] Field '{original_name}':\n")
+                            f.write(f"   Existing field data: X={x:.1f}, Y={y_from_extract:.1f} (⚠️ TOP-LEFT format)\n")
+                            f.write(f"   ⚠️  BUG: Code assumes Y is bottom-left, but it's actually top-left!\n")
+                            f.write(f"   This causes fields to be placed inverted!\n")
+                            f.write("\n")
+
+                        y = y_from_extract  # WRONG! Should convert back to bottom-left
                         logger.info(f"Using existing field position for '{original_name}': ({x}, {y}), size: ({width}x{height}) [trusted coordinates]")
                     else:
                         # Field not found in existing fields - this could be a new field

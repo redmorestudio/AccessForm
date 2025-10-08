@@ -125,6 +125,32 @@ namespace WordToPdfConverter.Services
         {
             try
             {
+                // INSTRUMENTATION: Write to dedicated debug file
+                var debugPath = "/tmp/coordinate_debug.log";
+                var debugLines = new List<string>();
+                debugLines.Add("═══════════════════════════════════════════════════════════");
+                debugLines.Add($"🔵 [C# → PYTHON] SENDING {fieldUpdates.Count} FIELDS TO PYTHON SCRIPT");
+                debugLines.Add($"Timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
+                debugLines.Add("═══════════════════════════════════════════════════════════");
+
+                // Log first 10 fields with coordinates for debugging
+                var fieldsToLog = fieldUpdates.Take(10).ToList();
+                for (int i = 0; i < fieldsToLog.Count; i++)
+                {
+                    var update = fieldsToLog[i];
+                    debugLines.Add($"🔵 [{i+1}] '{update.OriginalName}' → '{update.NewName}':");
+                    debugLines.Add($"    Type={update.FieldType}, Page={update.PageNumber}");
+                    debugLines.Add($"    X={update.X:F1}, Y={update.Y:F1}, W={update.Width:F1}x{update.Height:F1}");
+                }
+                if (fieldUpdates.Count > 10)
+                {
+                    debugLines.Add($"🔵 ... and {fieldUpdates.Count - 10} more fields");
+                }
+                debugLines.Add("═══════════════════════════════════════════════════════════");
+                debugLines.Add("");
+
+                File.AppendAllLines(debugPath, debugLines);
+
                 _logger.LogInformation($"Starting complete PDF rebuild with {fieldUpdates.Count} field updates");
 
                 // Save input PDF to temp file
