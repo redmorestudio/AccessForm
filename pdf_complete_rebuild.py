@@ -938,19 +938,36 @@ class PDFCompleteRebuilder:
             # This handles the case where the C# service doesn't have field data (e.g., initial processing)
             if not field_updates:
                 logger.info(f"⚠️  No field updates provided - preserving all {len(existing_fields)} existing fields unchanged")
+
+                # Get page heights for coordinate conversion
+                page_heights = {}
+                for page_idx in range(len(final_doc)):
+                    page_heights[page_idx] = final_doc[page_idx].rect.height
+
                 for field_name, field_data in existing_fields.items():
                     page_num = field_data.get('page', 0)
                     if page_num not in fields_by_page:
                         fields_by_page[page_num] = []
+
+                    # CRITICAL: Existing fields have Y in TOP-LEFT format from extract
+                    # PyMuPDF needs BOTTOM-LEFT format, so convert back
+                    y_top_left = field_data.get('y', 100)
+                    height = field_data.get('height', 20)
+                    page_height = page_heights.get(page_num, 792.0)
+
+                    # Convert: Y_bottom_left = page_height - Y_top_left - height
+                    y_bottom_left = page_height - y_top_left - height
+
+                    logger.info(f"Preserving field '{field_name}': Y_top={y_top_left:.1f} -> Y_bottom={y_bottom_left:.1f} (page_h={page_height:.1f})")
 
                     # Convert existing field data to field definition format
                     field_def = {
                         'name': field_name,
                         'type': field_data.get('type', 'text'),
                         'x': field_data.get('x', 100),
-                        'y': field_data.get('y', 100),  # Already in top-left format from extract
+                        'y': y_bottom_left,  # Now in bottom-left format for PyMuPDF
                         'width': field_data.get('width', 200),
-                        'height': field_data.get('height', 20),
+                        'height': height,
                         'page': page_num,
                         'tooltip': field_data.get('tooltip', field_name),
                         'required': field_data.get('required', False)
