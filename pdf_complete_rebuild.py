@@ -930,10 +930,34 @@ class PDFCompleteRebuilder:
             
             # Group fields by page
             fields_by_page = {}
-            
+
             # Track which fields are being updated
             updated_field_names = set()
-            
+
+            # IMPORTANT FIX: If field_updates is empty, preserve ALL existing fields unchanged
+            # This handles the case where the C# service doesn't have field data (e.g., initial processing)
+            if not field_updates:
+                logger.info(f"⚠️  No field updates provided - preserving all {len(existing_fields)} existing fields unchanged")
+                for field_name, field_data in existing_fields.items():
+                    page_num = field_data.get('page', 0)
+                    if page_num not in fields_by_page:
+                        fields_by_page[page_num] = []
+
+                    # Convert existing field data to field definition format
+                    field_def = {
+                        'name': field_name,
+                        'type': field_data.get('type', 'text'),
+                        'x': field_data.get('x', 100),
+                        'y': field_data.get('y', 100),  # Already in top-left format from extract
+                        'width': field_data.get('width', 200),
+                        'height': field_data.get('height', 20),
+                        'page': page_num,
+                        'tooltip': field_data.get('tooltip', field_name),
+                        'required': field_data.get('required', False)
+                    }
+                    fields_by_page[page_num].append(field_def)
+                    updated_field_names.add(field_name)
+
             for field_info in field_updates:
                 # Parse field update format - handle both camelCase and PascalCase
                 if 'originalName' in field_info or 'OriginalName' in field_info:
