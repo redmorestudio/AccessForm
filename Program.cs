@@ -2918,15 +2918,20 @@ app.MapPost("/api/pdf-page-with-field-boxes", async (HttpRequest request, ILogge
                     // Log received field data
                     logger.LogWarning($"[FIELD-DRAW] Received field '{fieldName}' from {fieldSource}: PDF coords x={x}, y={y}, w={width}, h={height}, pageHeight={pageHeight}");
 
-                    // COORDINATE FIX: Fields from PdfPreservationService are in PDF coordinates (bottom-left origin)
-                    // Need to flip Y-axis AND apply DPI scaling
+                    // COORDINATE FIX: ALL fields arrive here in PDF coordinates (bottom-left origin)
+                    // - Claude Vision fields: converted from top-left to bottom-left in ClaudeVisionFieldDetector.cs:687
+                    // - PDF-Original fields: native Syncfusion bottom-left coordinates
+                    //
+                    // SkiaSharp canvas uses top-left origin (Y=0 at top), so we need to flip Y-axis
+                    // for rendering the field boxes on the canvas.
                     float scaleFactor = 150f / 72f;  // Display DPI / PDF DPI
 
-                    // Convert coordinates - NO FLIP needed, coordinates are already in top-left origin
+                    // Convert from PDF bottom-left to canvas top-left coordinates with scaling
                     float displayX = x * scaleFactor;
-                    float displayY = y * scaleFactor;  // No flip - coordinates are already top-left
-                    float displayWidth = width * scaleFactor;
+                    float scaledPageHeight = pageHeight * scaleFactor;
                     float displayHeight = height * scaleFactor;
+                    float displayY = scaledPageHeight - (y * scaleFactor) - displayHeight;  // FLIP for canvas
+                    float displayWidth = width * scaleFactor;
 
                     logger.LogWarning($"[FIELD-DRAW] Transformed to display: x={displayX}, y={displayY}, w={displayWidth}, h={displayHeight}");
 
@@ -4065,6 +4070,17 @@ app.MapPost("/api/convert-with-config", async (
             logger.LogInformation("Aspose font embedding disabled by user");
         }
 
+        // Log Box 6 fields being sent to frontend
+        var box6FieldsToSend = fields?.Where(f => f.FieldName.Contains("Box 6")).ToList();
+        if (box6FieldsToSend != null && box6FieldsToSend.Any())
+        {
+            logger.LogError($"[API-RESPONSE] 📦 BOX 6 FIELDS BEING SENT TO FRONTEND: {box6FieldsToSend.Count} total");
+            foreach (var box6Field in box6FieldsToSend)
+            {
+                logger.LogError($"  - {box6Field.FieldName} at X={box6Field.X}, Y={box6Field.Y}");
+            }
+        }
+
         // Return response in expected format WITH detected fields for the frontend
         return Results.Ok(new
         {
@@ -4358,6 +4374,130 @@ app.MapPost("/api/fields/load", async (
             var fieldId = 1;
             foreach (PdfLoadedField field in loadedDocument.Form.Fields)
             {
+                // SPECIAL HANDLING FOR RADIO BUTTON LISTS - expand into individual buttons
+                if (field is PdfLoadedRadioButtonListField radioList)
+                {
+                    logger.LogWarning($"[LOAD-FIELDS] RadioButtonList '{field.Name}' has {radioList.Items.Count} items");
+
+                    // Create a separate field for EACH radio button in the list
+                    for (int i = 0; i < radioList.Items.Count; i++)
+                    {
+                        var radioItem = radioList.Items[i];
+                        var radioBounds = radioItem.Bounds;
+
+                        // Get page number for this specific radio button
+                        int radioPageNum = 1;
+                        float radioPageHeight = 792f;
+                        if (radioItem.Page != null)
+                        {
+                            for (int p = 0; p < loadedDocument.PageCount; p++)
+                            {
+                                if (loadedDocument.Pages[p] == radioItem.Page)
+                                {
+                                    radioPageNum = p + 1;
+                                    radioPageHeight = radioItem.Page.Size.Height;
+                                    break;
+                                }
+                            }
+                        }
+
+                        var radioFieldInfo = new
+                        {
+                            ShortId = $"F{fieldId++}",
+                            FieldName = $"{field.Name}_{i}",  // Unique name for each radio button
+                            FieldType = "radio",
+                            PageNumber = radioPageNum,
+                            X = radioBounds.X,
+                            Y = radioBounds.Y,
+                            Width = radioBounds.Width,
+                            Height = radioBounds.Height,
+                            Tooltip = GetFieldTooltip(field),
+                            IsRequired = GetFieldRequired(field),
+                            Source = "PDF",
+                            Confidence = 1.0f,
+                            PageHeight = radioPageHeight,
+                            TabIndex = fieldId - 2
+                        };
+                        fields.Add(radioFieldInfo);
+
+                        logger.LogWarning($"[LOAD-FIELDS] Radio button {i}: '{radioFieldInfo.FieldName}' at ({radioBounds.X:F2}, {radioBounds.Y:F2})");
+                    }
+                    continue;  // Skip the default processing below
+                }
+
+                // SPECIAL HANDLING FOR CHECKBOX FIELDS WITH MULTIPLE ITEMS - expand into individual checkboxes
+                // Radio button groups can be implemented as checkboxes with mutual exclusion in PDFs
+                if (field is PdfLoadedCheckBoxField checkboxField)
+                {
+                    try
+                    {
+                        // Log diagnostic info about the checkbox
+                        var itemsCount = checkboxField.Items?.Count ?? 0;
+                        logger.LogWarning($"[LOAD-FIELDS] CheckBox '{field.Name}' - Items property exists: {checkboxField.Items != null}, Count: {itemsCount}");
+
+                        // Check if this checkbox has multiple items (like radio button groups)
+                        if (checkboxField.Items != null && checkboxField.Items.Count > 1)
+                        {
+                            logger.LogWarning($"[LOAD-FIELDS] ✓ CheckBox '{field.Name}' has {checkboxField.Items.Count} items - EXPANDING");
+
+                            // Create a separate field for EACH checkbox item
+                            for (int i = 0; i < checkboxField.Items.Count; i++)
+                            {
+                                var checkboxItem = checkboxField.Items[i];
+                                var checkboxBounds = checkboxItem.Bounds;
+
+                                // Get page number for this specific checkbox
+                                int checkboxPageNum = 1;
+                                float checkboxPageHeight = 792f;
+                                if (checkboxItem.Page != null)
+                                {
+                                    for (int p = 0; p < loadedDocument.PageCount; p++)
+                                    {
+                                        if (loadedDocument.Pages[p] == checkboxItem.Page)
+                                        {
+                                            checkboxPageNum = p + 1;
+                                            checkboxPageHeight = checkboxItem.Page.Size.Height;
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                var checkboxFieldInfo = new
+                                {
+                                    ShortId = $"F{fieldId++}",
+                                    FieldName = $"{field.Name}_{i}",  // Unique name for each checkbox
+                                    FieldType = "checkbox",
+                                    PageNumber = checkboxPageNum,
+                                    X = checkboxBounds.X,
+                                    Y = checkboxBounds.Y,
+                                    Width = checkboxBounds.Width,
+                                    Height = checkboxBounds.Height,
+                                    Tooltip = GetFieldTooltip(field),
+                                    IsRequired = GetFieldRequired(field),
+                                    Source = "PDF",
+                                    Confidence = 1.0f,
+                                    PageHeight = checkboxPageHeight,
+                                    TabIndex = fieldId - 2
+                                };
+                                fields.Add(checkboxFieldInfo);
+
+                                logger.LogWarning($"[LOAD-FIELDS] Checkbox {i}: '{checkboxFieldInfo.FieldName}' at ({checkboxBounds.X:F2}, {checkboxBounds.Y:F2})");
+                            }
+                            continue;  // Skip the default processing below
+                        }
+                        else
+                        {
+                            logger.LogWarning($"[LOAD-FIELDS] ✗ CheckBox '{field.Name}' NOT expanded (Items null or count <= 1)");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning($"[LOAD-FIELDS] ❌ Failed to expand checkbox '{field.Name}': {ex.Message}");
+                        // Fall through to default handling
+                    }
+                }
+
+                // DEFAULT HANDLING FOR ALL OTHER FIELD TYPES
                 var bounds = GetFieldBounds(field);
                 var pageNum = GetFieldPageNumber(field, loadedDocument);
 
@@ -4372,7 +4512,7 @@ app.MapPost("/api/fields/load", async (
                     {
                         PdfLoadedTextBoxField => "text",
                         PdfLoadedCheckBoxField => "checkbox",
-                        PdfLoadedRadioButtonListField => "radio",
+                        PdfLoadedRadioButtonListField => "radio",  // This won't be reached due to continue above
                         PdfLoadedComboBoxField => "dropdown",
                         PdfLoadedListBoxField => "listbox",
                         PdfLoadedSignatureField => "signature",

@@ -725,6 +725,7 @@
     private string? aiStatus = null;
     private dynamic? currentTagTreeData;
     private string? currentTagTreeFileName;
+    private bool hasInitializedSessionStorage = false;
     
     // Field detection configuration
     private bool useSyncfusion = true;
@@ -848,6 +849,14 @@
     {
         if (firstRender)
         {
+            // Clear sessionStorage on initial page load to prevent stale data
+            if (!hasInitializedSessionStorage)
+            {
+                await JSRuntime.InvokeVoidAsync("sessionStorage.clear");
+                await JSRuntime.InvokeVoidAsync("console.log", "Cleared sessionStorage on page load");
+                hasInitializedSessionStorage = true;
+            }
+
             dotNetHelper = DotNetObjectReference.Create(this);
             await JSRuntime.InvokeVoidAsync("initializeDragDrop", dotNetHelper, "dropZone");
             // Initialize JavaScript AI mode state
@@ -1083,9 +1092,12 @@
 
         await JSRuntime.InvokeVoidAsync("console.log", "ProcessFile: Starting processing");
 
-        // CRITICAL: Clear cached fields to prevent them from being sent to server
+        // CRITICAL: Clear cached fields AND sessionStorage to prevent them from being sent to server
         currentFields.Clear();
-        await JSRuntime.InvokeVoidAsync("console.log", "ProcessFile: Cleared cached fields for clean reset");
+        await JSRuntime.InvokeVoidAsync("sessionStorage.removeItem", "tempDetectedFields");
+        await JSRuntime.InvokeVoidAsync("sessionStorage.removeItem", "tempPdfData");
+        await JSRuntime.InvokeVoidAsync("sessionStorage.removeItem", "tempPdfFileName");
+        await JSRuntime.InvokeVoidAsync("console.log", "ProcessFile: Cleared cached fields and sessionStorage for clean reset");
 
         // Create new cancellation token for this processing session
         processingCancellationTokenSource?.Cancel();

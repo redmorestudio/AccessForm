@@ -1622,9 +1622,10 @@
         float pageHeight = field.PageHeight > 0 ? field.PageHeight : 792.0f;
         float pageWidth = field.PageWidth > 0 ? field.PageWidth : 612.0f;
 
-        // Convert from PDF coordinates (bottom-left) to display coordinates (top-left)
+        // Fields arrive in PDF bottom-left coordinates - use them directly as percentages
+        // The UI expects bottom-left format (Y=0 at bottom) matching the PDF coordinate system
         var leftPercent = (field.X / pageWidth) * 100;
-        var topPercent = ((pageHeight - field.Y - field.Height) / pageHeight) * 100;
+        var topPercent = (field.Y / pageHeight) * 100;  // NO FLIP - already correct format
 
         var widthPercent = (field.Width / pageWidth) * 100;
         var heightPercent = (field.Height / pageHeight) * 100;

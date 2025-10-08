@@ -347,6 +347,103 @@ namespace WordToPdfConverter.Services
                 }
                 else if (field is PdfLoadedCheckBoxField checkBox)
                 {
+                    // Check if this checkbox has multiple items (radio buttons can be implemented as checkboxes in PDFs)
+                    if (checkBox.Items != null && checkBox.Items.Count > 1)
+                    {
+                        _logger.LogWarning($"[PDF-PRESERVATION] CheckBox '{field.Name}' has {checkBox.Items.Count} items - EXPANDING");
+
+                        // Special handling for TWC W-9 Box 6 - map Y coordinates to option labels
+                        var box6Labels = new Dictionary<float, string>
+                        {
+                            { 350.52f, "A - Professional Association" },
+                            { 383.28f, "L - Limited Partnership" },
+                            { 400.92f, "P - General Partnership" },
+                            { 418.56f, "O - Out-of-State Corporation" },
+                            { 436.32f, "S - Sole Owner" },
+                            { 453.96f, "G - Government Entity" },
+                            { 471.6f, "I - Individual Recipient" }
+                        };
+                        var box6LabelsRight = new Dictionary<float, string>
+                        {
+                            { 383.28f, "F - Financial Institution" },
+                            { 400.92f, "R - Foreign Corporation" },
+                            { 418.56f, "U - State Agency/University" },
+                            { 436.32f, "E - State Employee" },
+                            { 453.96f, "N - Other" },
+                            { 471.6f, "[Unknown Option]" }
+                        };
+
+                        // Expand into individual checkbox items
+                        for (int i = 0; i < checkBox.Items.Count; i++)
+                        {
+                            var checkboxItem = checkBox.Items[i];
+                            var checkboxBounds = checkboxItem.Bounds;
+
+                            // Get page number and dimensions for this specific checkbox
+                            int checkboxPageNum = 1;
+                            float checkboxPageHeight = 792f;
+                            float checkboxPageWidth = 612f;
+                            if (checkboxItem.Page != null)
+                            {
+                                for (int p = 0; p < loadedDoc.Pages.Count; p++)
+                                {
+                                    if (loadedDoc.Pages[p] == checkboxItem.Page)
+                                    {
+                                        checkboxPageNum = p + 1;
+                                        checkboxPageHeight = checkboxItem.Page.Size.Height;
+                                        checkboxPageWidth = checkboxItem.Page.Size.Width;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            // Determine field name - use Box 6 mapping if applicable
+                            string fieldName = $"{field.Name}_{i}";
+                            if (field.Name.Contains("Box 6") && field.Name.Contains("Federal Tax"))
+                            {
+                                // Match by Y coordinate to get the label
+                                float y = checkboxBounds.Y;
+                                bool isLeftColumn = checkboxBounds.X < 300;
+
+                                if (isLeftColumn && box6Labels.ContainsKey(y))
+                                {
+                                    fieldName = $"Box 6: {box6Labels[y]}";
+                                }
+                                else if (!isLeftColumn && box6LabelsRight.ContainsKey(y))
+                                {
+                                    fieldName = $"Box 6: {box6LabelsRight[y]}";
+                                }
+
+                                _logger.LogWarning($"[PDF-PRESERVATION] Box 6 checkbox at X={checkboxBounds.X}, Y={y} → '{fieldName}'");
+                            }
+
+                            fieldCounter++;
+                            var checkboxField = new Models.FieldDetectionResult
+                            {
+                                ShortId = $"PDF{fieldCounter}",
+                                FieldName = fieldName,
+                                FieldType = "checkbox",
+                                X = checkboxBounds.X,
+                                Y = checkboxBounds.Y,
+                                Width = 7.2f,  // Normalized size
+                                Height = 7.2f,
+                                PageNumber = checkboxPageNum,
+                                PageWidth = checkboxPageWidth,
+                                PageHeight = checkboxPageHeight,
+                                Source = "PDF-Original",
+                                Confidence = 1.0f,
+                                IsValid = true
+                            };
+
+                            results.Add(checkboxField);
+                            _logger.LogWarning($"[PDF-PRESERVATION] Detected checkbox item: {checkboxField.FieldName} ({checkboxField.FieldType}) " +
+                                $"on page {checkboxPageNum} at X={checkboxBounds.X}, Y={checkboxBounds.Y}, W={checkboxBounds.Width}, H={checkboxBounds.Height}");
+                        }
+
+                        continue; // Skip the default field adding below
+                    }
+
+                    // Single checkbox - use default bounds
                     bounds = checkBox.Bounds;
                     fieldType = "checkbox";
                     // Normalize checkbox size to 15x15 DISPLAY pixels
@@ -452,6 +549,17 @@ namespace WordToPdfConverter.Services
             _logger.LogError("╔═══════════════════════════════════════════════════════════════════╗");
             _logger.LogError($"║ ✅ GetExistingFields COMPLETE - Returning {results.Count} fields");
             _logger.LogError("╚═══════════════════════════════════════════════════════════════════╝");
+
+            // Log all Box 6 fields to verify they're in the results
+            var box6Fields = results.Where(f => f.FieldName.Contains("Box 6")).ToList();
+            if (box6Fields.Any())
+            {
+                _logger.LogError($"[PDF-PRESERVATION] 📦 BOX 6 FIELDS IN RESULTS: {box6Fields.Count} total");
+                foreach (var box6Field in box6Fields)
+                {
+                    _logger.LogError($"  - {box6Field.FieldName} at X={box6Field.X}, Y={box6Field.Y}");
+                }
+            }
 
             return results;
         }
