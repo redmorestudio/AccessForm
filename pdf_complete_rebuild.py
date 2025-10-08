@@ -1056,21 +1056,29 @@ class PDFCompleteRebuilder:
                     if existing_field:
                         # Use original existing positions
                         x = existing_field.get('x', 100)
-                        y_from_extract = existing_field.get('y', 100)  # ⚠️ THIS IS IN TOP-LEFT FORMAT FROM EXTRACT!
+                        y_top_left = existing_field.get('y', 100)  # ⚠️ THIS IS IN TOP-LEFT FORMAT FROM EXTRACT!
                         width = existing_field.get('width', 200)
                         height = existing_field.get('height', 20)
+
+                        # Get page height for coordinate conversion
+                        page_height = 792.0
+                        if page_num >= 1 and page_num <= len(final_doc):
+                            page_height = final_doc[page_num - 1].rect.height
+
+                        # CRITICAL: Convert from top-left to bottom-left for PyMuPDF
+                        # Y_bottom_left = page_height - Y_top_left - height
+                        y = page_height - y_top_left - height
 
                         # INSTRUMENTATION
                         debug_path = "/tmp/coordinate_debug.log"
                         with open(debug_path, 'a') as f:
                             f.write(f"🟣 [PYTHON REBUILD] Field '{original_name}':\n")
-                            f.write(f"   Existing field data: X={x:.1f}, Y={y_from_extract:.1f} (⚠️ TOP-LEFT format)\n")
-                            f.write(f"   ⚠️  BUG: Code assumes Y is bottom-left, but it's actually top-left!\n")
-                            f.write(f"   This causes fields to be placed inverted!\n")
+                            f.write(f"   Existing field: X={x:.1f}, Y_top={y_top_left:.1f}, H={height:.1f}\n")
+                            f.write(f"   Page height: {page_height:.1f}\n")
+                            f.write(f"   ✅ CONVERTED: Y_bottom={y:.1f} (page_h - Y_top - height)\n")
                             f.write("\n")
 
-                        y = y_from_extract  # WRONG! Should convert back to bottom-left
-                        logger.info(f"Using existing field position for '{original_name}': ({x}, {y}), size: ({width}x{height}) [trusted coordinates]")
+                        logger.info(f"Using existing field position for '{original_name}': X={x:.1f}, Y_top={y_top_left:.1f} -> Y_bottom={y:.1f}")
                     else:
                         # Field not found in existing fields - this could be a new field
                         # Check if position was provided in the update
