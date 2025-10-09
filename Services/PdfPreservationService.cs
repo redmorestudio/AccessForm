@@ -352,25 +352,26 @@ namespace WordToPdfConverter.Services
                     {
                         _logger.LogWarning($"[PDF-PRESERVATION] CheckBox '{field.Name}' has {checkBox.Items.Count} items - EXPANDING");
 
-                        // Special handling for TWC W-9 Box 6 - map Y coordinates to option labels
-                        var box6Labels = new Dictionary<float, string>
+                        // Special handling for TWC W-9 Box 6 - map Y coordinates to option labels and button values
+                        var box6Labels = new Dictionary<float, (string label, string buttonValue)>
                         {
-                            { 350.52f, "A - Professional Association" },
-                            { 383.28f, "L - Limited Partnership" },
-                            { 400.92f, "P - General Partnership" },
-                            { 418.56f, "O - Out-of-State Corporation" },
-                            { 436.32f, "S - Sole Owner" },
-                            { 453.96f, "G - Government Entity" },
-                            { 471.6f, "I - Individual Recipient" }
+                            { 350.52f, ("A - Professional Association", "A") },
+                            { 383.28f, ("L - Limited Partnership", "L") },
+                            { 400.92f, ("P - General Partnership", "P") },
+                            { 418.56f, ("O - Out-of-State Corporation", "O") },
+                            { 436.32f, ("S - Sole Owner", "S") },
+                            { 453.96f, ("G - Government Entity", "G") },
+                            { 471.6f, ("I - Individual Recipient", "I") }
                         };
-                        var box6LabelsRight = new Dictionary<float, string>
+                        var box6LabelsRight = new Dictionary<float, (string label, string buttonValue)>
                         {
-                            { 383.28f, "F - Financial Institution" },
-                            { 400.92f, "R - Foreign Corporation" },
-                            { 418.56f, "U - State Agency/University" },
-                            { 436.32f, "E - State Employee" },
-                            { 453.96f, "N - Other" },
-                            { 471.6f, "[Unknown Option]" }
+                            { 350.52f, ("C - Corporation", "C") },
+                            { 383.28f, ("F - Financial Institution", "F") },
+                            { 400.92f, ("R - Foreign Corporation", "R") },
+                            { 418.56f, ("U - State Agency/University", "U") },
+                            { 436.32f, ("E - State Employee", "E") },
+                            { 453.96f, ("N - Other", "N") },
+                            { 471.6f, ("T - Trust/Estate", "T") }
                         };
 
                         // Expand into individual checkbox items
@@ -397,24 +398,36 @@ namespace WordToPdfConverter.Services
                                 }
                             }
 
-                            // Determine field name - use Box 6 mapping if applicable
+                            // Determine field name and button value - use Box 6 mapping if applicable
                             string fieldName = $"{field.Name}_{i}";
+                            string? buttonValue = null;
                             if (field.Name.Contains("Box 6") && field.Name.Contains("Federal Tax"))
                             {
-                                // Match by Y coordinate to get the label
+                                // Match by Y coordinate to get the label and button value
                                 float y = checkboxBounds.Y;
                                 bool isLeftColumn = checkboxBounds.X < 300;
 
-                                if (isLeftColumn && box6Labels.ContainsKey(y))
-                                {
-                                    fieldName = $"Box 6: {box6Labels[y]}";
-                                }
-                                else if (!isLeftColumn && box6LabelsRight.ContainsKey(y))
-                                {
-                                    fieldName = $"Box 6: {box6LabelsRight[y]}";
-                                }
+                                // Use tolerance-based matching for floating point coordinates
+                                const float tolerance = 0.1f;
+                                var labelsToCheck = isLeftColumn ? box6Labels : box6LabelsRight;
 
-                                _logger.LogWarning($"[PDF-PRESERVATION] Box 6 checkbox at X={checkboxBounds.X}, Y={y} → '{fieldName}'");
+                                // Find closest matching Y coordinate within tolerance
+                                var matchingEntry = labelsToCheck
+                                    .Where(kvp => Math.Abs(kvp.Key - y) < tolerance)
+                                    .OrderBy(kvp => Math.Abs(kvp.Key - y))
+                                    .FirstOrDefault();
+
+                                if (matchingEntry.Key != 0 || matchingEntry.Value.label != null)  // Check if we found a match
+                                {
+                                    var (label, value) = matchingEntry.Value;
+                                    fieldName = "Box 6 Federal Tax Classification";  // Same group name for all
+                                    buttonValue = value;  // Different value for each option
+                                    _logger.LogWarning($"[PDF-PRESERVATION] Box 6 {(isLeftColumn ? "left" : "right")} column at Y={y} (matched {matchingEntry.Key}) → label='{label}', value='{value}'");
+                                }
+                                else
+                                {
+                                    _logger.LogWarning($"[PDF-PRESERVATION] Box 6 {(isLeftColumn ? "left" : "right")} column at Y={y} → NO MATCH FOUND");
+                                }
                             }
 
                             fieldCounter++;
@@ -422,7 +435,7 @@ namespace WordToPdfConverter.Services
                             {
                                 ShortId = $"PDF{fieldCounter}",
                                 FieldName = fieldName,
-                                FieldType = "checkbox",
+                                FieldType = buttonValue != null ? "radio" : "checkbox",  // Radio if we have a button value
                                 X = checkboxBounds.X,
                                 Y = checkboxBounds.Y,
                                 Width = 7.2f,  // Normalized size
@@ -432,7 +445,8 @@ namespace WordToPdfConverter.Services
                                 PageHeight = checkboxPageHeight,
                                 Source = "PDF-Original",
                                 Confidence = 1.0f,
-                                IsValid = true
+                                IsValid = true,
+                                ButtonValue = buttonValue  // Set the button value for radio grouping
                             };
 
                             results.Add(checkboxField);

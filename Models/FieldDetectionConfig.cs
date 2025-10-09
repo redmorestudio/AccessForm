@@ -136,6 +136,11 @@ namespace WordToPdfConverter.Models
         public Dictionary<string, object> DebugInfo { get; set; } = new Dictionary<string, object>();
 
         /// <summary>
+        /// For radio button grouping - buttons with same FieldName but different ButtonValue form a mutually exclusive group
+        /// </summary>
+        public string? ButtonValue { get; set; }
+
+        /// <summary>
         /// Track the original coordinate system for debugging
         /// </summary>
         public string OriginalCoordinateSystem { get; set; }

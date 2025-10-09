@@ -326,6 +326,21 @@
                                                    step="1" min="1" max="@TotalPages" />
                                         </div>
                                     </div>
+                                    @if (SelectedField.FieldType == "radio")
+                                    {
+                                        <div class="col-md-6">
+                                            <div class="mb-2">
+                                                <label class="form-label small">
+                                                    Button Value
+                                                    <small class="text-muted d-block">Radio buttons with same name but different values form a group</small>
+                                                </label>
+                                                <input type="text" class="form-control"
+                                                       @bind="SelectedField.ButtonValue"
+                                                       @bind:event="oninput"
+                                                       placeholder="e.g., Yes, No, A, B, C" />
+                                            </div>
+                                        </div>
+                                    }
                                 </div>
                                 <div class="mt-2">
                                     <button class="btn btn-sm btn-success me-2" @onclick="UpdatePdfPreview">
@@ -1032,9 +1047,13 @@
                     Height = field.Height,
                     PageWidth = field.PageWidth,
                     PageHeight = field.PageHeight,
-                    OriginalIndex = i + 1
+                    OriginalIndex = i + 1,
+                    ButtonValue = field.ButtonValue
                 };
                 EditableFields.Add(editableField);
+
+                // DEBUG: Log every field's coordinates to diagnose inversion
+                Logger.LogWarning($"[COORD-DEBUG] Field '{field.Name}': X={field.X:F1}, Y={field.Y:F1}, W={field.Width:F1}, H={field.Height:F1}, Page={field.PageWidth:F1}x{field.PageHeight:F1}");
             }
             originalOrder = new List<EditableField>(EditableFields);
 
@@ -1200,7 +1219,8 @@
                                 Height = field.TryGetProperty("Height", out var height) ? (float)height.GetDouble() : 20,
                                 PageHeight = field.TryGetProperty("PageHeight", out var pageHeight) ? (float)pageHeight.GetDouble() : 792,
                                 OriginalIndex = index++,
-                                IsRequired = false
+                                IsRequired = false,
+                                ButtonValue = field.TryGetProperty("ButtonValue", out var buttonValue) ? buttonValue.GetString() : ""
                             };
                             EditableFields.Add(editableField);
                         }
@@ -1622,19 +1642,18 @@
         float pageHeight = field.PageHeight > 0 ? field.PageHeight : 792.0f;
         float pageWidth = field.PageWidth > 0 ? field.PageWidth : 612.0f;
 
-        // Fields arrive in PDF bottom-left coordinates - use them directly as percentages
-        // The UI expects bottom-left format (Y=0 at bottom) matching the PDF coordinate system
+        // IMPORTANT: Syncfusion returns Y coordinates in TOP-LEFT format (not PDF standard bottom-left!)
+        // So we can use Y directly without conversion
         var leftPercent = (field.X / pageWidth) * 100;
-        var topPercent = (field.Y / pageHeight) * 100;  // NO FLIP - already correct format
+        var topPercent = (field.Y / pageHeight) * 100;
 
         var widthPercent = (field.Width / pageWidth) * 100;
         var heightPercent = (field.Height / pageHeight) * 100;
 
-        // Server-side debug logging
-        Logger.LogInformation($"[FIELD-COORD] '{field.Name}': PDF({field.X:F1},{field.Y:F1},{field.Width:F1}x{field.Height:F1}) PageSize({pageWidth}x{pageHeight}) -> Display({leftPercent:F1}%,{topPercent:F1}%,{widthPercent:F1}%x{heightPercent:F1}%)");
+        // Debug logging
+        Logger.LogWarning($"[DISPLAY-DIRECT] '{field.Name}': Y={field.Y:F1} -> topPercent={topPercent:F1}%");
 
         var styleString = $"left: {leftPercent}%; top: {topPercent}%; width: {widthPercent}%; height: {heightPercent}%;";
-        Logger.LogWarning($"🎯 [STYLE-RETURN] '{field.Name}' RETURNING: {styleString}");
         return styleString;
     }
 
@@ -1700,15 +1719,19 @@
         }
         else if (isDraggingField && draggedField != null)
         {
-            // Update field position
-            const float SCALE_FACTOR = 150.0f / 72.0f;
-            var deltaX = (float)((clientX - dragStartX) / SCALE_FACTOR);
-            var deltaY = (float)((clientY - dragStartY) / SCALE_FACTOR);
+            // Mouse coordinates come in as viewport pixels via clientX/clientY
+            // PDF coordinates are in points (72 DPI)
+            // Image is rendered at 150 DPI
+            var deltaX = (float)(clientX - dragStartX);
+            var deltaY = (float)(clientY - dragStartY);
 
-            draggedField.X = originalFieldX + deltaX;
+            // Convert pixel delta to PDF points: pixels / (150 DPI / 72 DPI) = points
+            const float DPI_SCALE = 150.0f / 72.0f;
+
+            draggedField.X = originalFieldX + (deltaX / DPI_SCALE);
             // Y-axis: PDF uses bottom-left, but mouse movement is in screen space (top-left)
             // Moving mouse down (positive deltaY) should decrease PDF Y coordinate
-            draggedField.Y = originalFieldY - deltaY;
+            draggedField.Y = originalFieldY - (deltaY / DPI_SCALE);
 
             StateHasChanged();
         }
@@ -1860,13 +1883,10 @@
         
         EditableFields.Add(newField);
         SelectedField = newField;
-        
-        // If field boxes are shown, refresh to show the new field
-        if (ShowFieldBoxes)
-        {
-            _ = LoadPageWithFieldBoxes(CurrentPage);
-        }
-        
+
+        // Don't reload page image - the overlay divs will update via StateHasChanged()
+        // LoadPageWithFieldBoxes would bake fields into the image, creating ghost duplicates
+
         StateHasChanged();
     }
     
@@ -2064,7 +2084,8 @@
                             Width = (float)field.GetProperty("width").GetDouble(),
                             Height = (float)field.GetProperty("height").GetDouble(),
                             Tooltip = field.TryGetProperty("tooltip", out var tt) ? tt.GetString() : "",
-                            IsRequired = field.TryGetProperty("isRequired", out var req) ? req.GetBoolean() : false
+                            IsRequired = field.TryGetProperty("isRequired", out var req) ? req.GetBoolean() : false,
+                            ButtonValue = field.TryGetProperty("buttonValue", out var bv) ? bv.GetString() : ""
                         };
                         
                         // If we have a visual position for a similar field, use that instead
@@ -2141,7 +2162,8 @@
                     Y = f.Y,
                     Width = f.Width,
                     Height = f.Height,
-                    OriginalIndex = f.OriginalIndex
+                    OriginalIndex = f.OriginalIndex,
+                    ButtonValue = f.ButtonValue
                 }));
                 
                 ValidationMessages.Add($"Reset to {EditableFields.Count} original fields");
@@ -2275,7 +2297,8 @@
                     Y = (float)fieldData.GetProperty("y").GetDouble(),
                     Width = (float)fieldData.GetProperty("width").GetDouble(),
                     Height = (float)fieldData.GetProperty("height").GetDouble(),
-                    Page = fieldData.GetProperty("page").GetInt32()
+                    Page = fieldData.GetProperty("page").GetInt32(),
+                    ButtonValue = fieldData.TryGetProperty("buttonValue", out var bv) ? bv.GetString() : ""
                 });
             }
 
@@ -2295,6 +2318,7 @@
         public string Name { get; set; }
         public string OriginalName { get; set; } // Track the original name for updates
         public string Type { get; set; }
+        public string FieldType => Type; // Alias for UI compatibility
         public string Tooltip { get; set; }
         public bool IsRequired { get; set; }
         public int Page { get; set; }
@@ -2305,6 +2329,7 @@
         public float PageHeight { get; set; } = 792; // Default to US Letter height
         public float PageWidth { get; set; } = 612; // Default to US Letter width
         public int OriginalIndex { get; set; }
+        public string ButtonValue { get; set; } // For radio button grouping
     }
     
     public class FieldTypeOption

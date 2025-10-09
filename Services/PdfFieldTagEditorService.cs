@@ -48,6 +48,7 @@ namespace WordToPdfConverter.Services
             public float? Width { get; set; }
             public float? Height { get; set; }
             public int? PageNumber { get; set; }
+            public string? ButtonValue { get; set; }  // For radio button grouping - buttons with same NewName but different ButtonValue form a group
         }
 
         public class EditResult

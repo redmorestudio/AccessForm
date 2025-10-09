@@ -218,6 +218,14 @@ class PDFCompleteRebuilder:
             widget.field_type = widget_type
             widget.field_name = field_name
             widget.rect = rect
+
+            # For radio buttons, set the button value for grouping
+            # Radio buttons with same field_name but different button_value form a mutually exclusive group
+            if widget_type == fitz.PDF_WIDGET_TYPE_RADIOBUTTON:
+                button_value = field_info.get('button_value', 'Yes')  # Default to 'Yes' if not specified
+                widget.button_caption = button_value  # This sets the export value for the radio button
+                logger.info(f"Radio button '{field_name}' with value '{button_value}'")
+
             page.add_widget(widget)
             
             # Set common properties
