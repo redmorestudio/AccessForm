@@ -330,10 +330,7 @@
                                     {
                                         <div class="col-md-6">
                                             <div class="mb-2">
-                                                <label class="form-label small">
-                                                    Button Value
-                                                    <small class="text-muted d-block">Radio buttons with same name but different values form a group</small>
-                                                </label>
+                                                <label class="form-label small">Button Value</label>
                                                 <input type="text" class="form-control"
                                                        @bind="SelectedField.ButtonValue"
                                                        @bind:event="oninput"
@@ -342,6 +339,25 @@
                                         </div>
                                     }
                                 </div>
+                                @if (SelectedField.FieldType == "radio")
+                                {
+                                    <div class="row">
+                                        <div class="col-md-12">
+                                            <div class="mb-2 p-3 bg-light border rounded">
+                                                <label class="form-label small fw-bold">
+                                                    Add New Button to Group
+                                                    <small class="text-muted d-block fw-normal">Creates another radio button in the same group</small>
+                                                </label>
+                                                <div class="d-flex gap-2 mt-2">
+                                                    <input type="text" class="form-control" @bind="newButtonValue" placeholder="Enter value for new button..." />
+                                                    <button class="btn btn-primary" @onclick="AddRadioButtonToGroup" title="Add another button to this group">
+                                                        <i class="fas fa-plus"></i> Add to Group
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
                                 <div class="mt-2">
                                     <button class="btn btn-sm btn-success me-2" @onclick="UpdatePdfPreview">
                                         <i class="fas fa-sync"></i> Update Field Preview
@@ -1729,9 +1745,9 @@
             const float DPI_SCALE = 150.0f / 72.0f;
 
             draggedField.X = originalFieldX + (deltaX / DPI_SCALE);
-            // Y-axis: PDF uses bottom-left, but mouse movement is in screen space (top-left)
-            // Moving mouse down (positive deltaY) should decrease PDF Y coordinate
-            draggedField.Y = originalFieldY - (deltaY / DPI_SCALE);
+            // Y-axis: Syncfusion uses top-left coordinates (NOT PDF standard bottom-left)
+            // Moving mouse down (positive deltaY) should increase Y coordinate
+            draggedField.Y = originalFieldY + (deltaY / DPI_SCALE);
 
             StateHasChanged();
         }
@@ -1880,12 +1896,60 @@
             Height = 20,
             OriginalIndex = EditableFields.Count + 1
         };
-        
+
         EditableFields.Add(newField);
         SelectedField = newField;
 
         // Don't reload page image - the overlay divs will update via StateHasChanged()
         // LoadPageWithFieldBoxes would bake fields into the image, creating ghost duplicates
+
+        StateHasChanged();
+    }
+
+    private string newButtonValue = "";
+
+    private void AddRadioButtonToGroup()
+    {
+        if (SelectedField == null || SelectedField.FieldType != "radio")
+            return;
+
+        // Use the value from newButtonValue input
+        if (string.IsNullOrWhiteSpace(newButtonValue))
+        {
+            Logger.LogWarning("Cannot add radio button to group - no button value specified");
+            return;
+        }
+
+        // Find current field's position in the list
+        int currentIndex = EditableFields.IndexOf(SelectedField);
+
+        // Create new radio button positioned next to the current one (horizontal spacing of ~30 pixels)
+        var newField = new EditableField
+        {
+            Name = SelectedField.Name, // Same group name
+            OriginalName = SelectedField.OriginalName,
+            Type = "radio",
+            Tooltip = SelectedField.Tooltip, // Copy tooltip base
+            IsRequired = SelectedField.IsRequired,
+            Page = SelectedField.Page, // Same page
+            X = SelectedField.X + SelectedField.Width + 30, // Position to the right with spacing
+            Y = SelectedField.Y, // Same Y position
+            Width = SelectedField.Width, // Same size
+            Height = SelectedField.Height, // Same size
+            PageWidth = SelectedField.PageWidth,
+            PageHeight = SelectedField.PageHeight,
+            OriginalIndex = EditableFields.Count + 1,
+            ButtonValue = newButtonValue // Use the input value
+        };
+
+        // Insert right after current field in the list
+        EditableFields.Insert(currentIndex + 1, newField);
+
+        // Select the new field
+        SelectedField = newField;
+
+        // Clear the input for next button
+        newButtonValue = "";
 
         StateHasChanged();
     }

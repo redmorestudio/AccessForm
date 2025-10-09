@@ -1992,10 +1992,10 @@
                 System.IO.File.AppendAllLines(debugPath, debugLines);
 
                 var fieldsJson = System.Text.Json.JsonSerializer.Serialize(fieldUpdates);
-                formData.Add(new StringContent(fieldsJson), "fieldUpdates");
+                formData.Add(new StringContent(fieldsJson), "fields");  // V2 expects "fields" parameter
                 
-                // Call the V4 API that does complete PDF rebuild to eliminate ghost fields
-                var response = await httpClient.PostAsync("/api/update-pdf-fields-v4", formData);
+                // Call the V2 API that just updates fields without destroying PDF content
+                var response = await httpClient.PostAsync("/api/update-pdf-fields-v2", formData);
                 
                 if (response.IsSuccessStatusCode)
                 {
