@@ -281,13 +281,14 @@ namespace WordToPdfConverter.Services
                 var tempInputPath = Path.Combine(Path.GetTempPath(), $"input_{Guid.NewGuid()}.pdf");
                 await File.WriteAllBytesAsync(tempInputPath, pdfBytes);
 
-                // Prepare field updates JSON - INCLUDE COORDINATES
+                // Prepare field updates JSON - INCLUDE COORDINATES AND BUTTON VALUE
                 var updates = fieldUpdates.Select(u => new
                 {
                     originalName = u.OriginalName,
                     newName = u.NewName,
                     fieldType = u.FieldType,
                     tooltip = u.Tooltip,
+                    buttonValue = u.ButtonValue,  // For radio button grouping
                     X = u.X,
                     Y = u.Y,
                     Width = u.Width,

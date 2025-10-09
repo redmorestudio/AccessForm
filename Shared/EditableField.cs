@@ -13,6 +13,9 @@ namespace WordToPdfConverter.Shared
         public float Width { get; set; } = 100;
         public float Height { get; set; } = 20;
         public int OriginalIndex { get; set; }
+        public float PageWidth { get; set; } = 612f; // US Letter width
+        public float PageHeight { get; set; } = 792f; // US Letter height
+        public string ButtonValue { get; set; } // For radio button grouping - buttons with same Name but different ButtonValue form a group
     }
 
     public class FieldTypeOption
