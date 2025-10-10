@@ -122,15 +122,15 @@ namespace WordToPdfConverter.Services
                 var violationsFound = result.TryGetProperty("violations_found", out var vf) ? vf.GetInt32() : 0;
                 var violationsFixed = result.TryGetProperty("violations_fixed", out var vx) ? vx.GetInt32() : 0;
 
-                if (violationsFound == 0)
+                if (violationsFixed == 0)
                 {
-                    _logger.LogInformation("✅ No artifact violations found - PDF is clean");
+                    _logger.LogInformation("✅ No violations to fix - PDF is clean");
                     CleanupTempFile(tempInputPath);
                     return new FixResult
                     {
                         Success = true,
                         FixedPdf = pdfBytes, // Return original
-                        ViolationsFound = 0,
+                        ViolationsFound = violationsFound,
                         ViolationsFixed = 0
                     };
                 }

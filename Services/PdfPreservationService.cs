@@ -364,9 +364,32 @@ namespace WordToPdfConverter.Services
             CountArtifacts(pdfAfterPassport, "AFTER PassportPDF");
 
             // Step 6: Fix artifacts created by PassportPDF
-            // TODO: Need to implement proper artifact handling - PassportPDF marks text as artifacts
-            // For now, return as-is - the 20 artifact errors are a known issue
-            var finalPdfBytes = pdfAfterPassport;
+            // PassportPDF and accessibility services may add new whitespace - clean it up
+            _logger.LogInformation("[PDF-PRESERVATION] Step 3: Final artifact cleanup after PassportPDF...");
+            stepStartTime = DateTime.UtcNow;
+            var finalArtifactFixResult = await _artifactViolationFixService.FixArtifactViolationsAsync(pdfAfterPassport);
+
+            report.Steps.Add(new Models.ProcessingStep
+            {
+                Name = "Post-PassportPDF Artifact Fix",
+                Success = finalArtifactFixResult.Success,
+                DurationMs = (long)(DateTime.UtcNow - stepStartTime).TotalMilliseconds,
+                Details = finalArtifactFixResult.ViolationsFixed > 0
+                    ? $"Fixed {finalArtifactFixResult.ViolationsFixed} final violations"
+                    : "No violations found"
+            });
+
+            byte[] finalPdfBytes;
+            if (finalArtifactFixResult.Success && finalArtifactFixResult.FixedPdf != null && finalArtifactFixResult.ViolationsFixed > 0)
+            {
+                _logger.LogWarning($"[PDF-PRESERVATION] ✅ Final cleanup: Fixed {finalArtifactFixResult.ViolationsFixed} violations after PassportPDF");
+                finalPdfBytes = finalArtifactFixResult.FixedPdf;
+            }
+            else
+            {
+                _logger.LogInformation("[PDF-PRESERVATION] ✅ No final violations found after PassportPDF");
+                finalPdfBytes = pdfAfterPassport;
+            }
 
             // Finalize processing report
             report.ProcessingEndTime = DateTime.UtcNow;

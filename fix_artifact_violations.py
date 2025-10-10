@@ -174,15 +174,16 @@ def fix_artifact_violations(input_pdf_path, output_pdf_path=None):
 
                     # Find all text operations that are OUTSIDE of any BDC...EMC blocks
 
-                    # Pattern: whitespace-only text followed by Tj
+                    # Pattern: whitespace-only text followed by Tj, TJ, ', or "
                     # This includes: ( ) Tj, (  ) Tj, (\n) Tj, (\40) Tj (octal space), etc.
+                    # Also handles: [( )] TJ (array form)
                     # Match parentheses containing only:
                     #  - literal spaces and whitespace
                     #  - backslash followed by octal codes (40, 11, 12, 15 - octal)
                     #  - backslash followed by n, r, t
                     # Note: In the PDF content stream, \40 appears as literal backslash-40
                     # In raw string: \\ matches one backslash
-                    whitespace_pattern = r'\((\\(40|11|12|15|n|r|t)|\s)*\)\s*Tj'
+                    whitespace_pattern = r'(\[)?\((\\(40|11|12|15|n|r|t)|\s)*\)(\])?\s*T[Jj]|(\[)?\((\\(40|11|12|15|n|r|t)|\s)*\)(\])?\s*[\'"]'
 
                     # Find all matches
                     matches = list(re.finditer(whitespace_pattern, content_str))

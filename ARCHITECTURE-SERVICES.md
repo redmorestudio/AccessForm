@@ -850,76 +850,90 @@ EnsureMetadata(loadedPdf.DocumentInformation, fileName);
 ### ArtifactViolationFixService
 
 **Location**: `Services/ArtifactViolationFixService.cs`
-**Purpose**: Fixes "Real content tagged as artifact" PDF/UA violations
-**Dependencies**: iText7
+**Purpose**: Fixes PDF/UA violations using Python/PyMuPDF script
+**Dependencies**: Python3, PyMuPDF (fitz), `fix_artifact_violations.py`
+
+**Implementation**: **PYTHON-BASED** - Uses external Python script for content stream manipulation.
 
 **Key Methods**:
 
 #### `FixArtifactViolationsAsync(byte[] pdfBytes)`
-Scans and fixes artifact tagging violations.
+Executes Python script to fix violations in PDF content streams.
 
-**Returns**: `ArtifactFixResult` with:
+**Returns**: `FixResult` with:
 - `Success` - bool
-- `ViolationsFound` - int count
-- `ViolationsFixed` - int count
+- `ViolationsFound` - int (tagged content inside artifacts)
+- `ViolationsFixed` - int (total fixes including whitespace cleanup)
 - `FixedPdf` - byte[] (if fixes applied)
 - `ErrorMessage` - string (if failed)
 
-**Processing**:
+**Processing Flow**:
 ```csharp
-using var reader = new PdfReader(new MemoryStream(pdfBytes));
-using var writer = new PdfWriter(outputStream);
-using var pdfDoc = new iText.Kernel.Pdf.PdfDocument(reader, writer);
-
-var structTree = pdfDoc.GetStructTreeRoot();
-if (structTree == null) return new ArtifactFixResult { Success = false };
-
-// Recursively scan structure tree
-int violationsFound = 0;
-int violationsFixed = 0;
-
-void ScanElement(IStructureNode node)
-{
-    if (node is PdfStructElem elem)
-    {
-        // Check if this is an Artifact tag
-        var role = elem.GetRole();
-        if (role?.GetValue() == "Artifact")
-        {
-            // Check if artifact contains actual content
-            var content = GetElementContent(elem);
-            if (!string.IsNullOrWhiteSpace(content))
-            {
-                violationsFound++;
-
-                // Fix: Change role from Artifact to appropriate tag
-                if (content.Length > 50)
-                    elem.SetRole(PdfName.P);  // Paragraph
-                else
-                    elem.SetRole(PdfName.Span);  // Span
-
-                violationsFixed++;
-            }
-        }
-
-        // Recurse into children
-        foreach (var child in elem.GetKids())
-            ScanElement(child);
-    }
-}
-
-ScanElement(structTree);
+1. Save PDF to temp file
+2. Execute: python3 fix_artifact_violations.py input.pdf
+3. Parse JSON output
+4. **CRITICAL**: Check violationsFixed (not violationsFound) to determine if fixes were made
+5. Read fixed PDF from output path
+6. Return fixed bytes
 ```
 
-**Example Violation**:
-```xml
-<!-- BEFORE (VIOLATION) -->
-<Artifact>
-  <P>This is actual form content</P>
-</Artifact>
+**Important Bug Fix (2025-01-10)**:
+```csharp
+// BEFORE (BUG):
+if (violationsFound == 0)
+    return new FixResult { FixedPdf = pdfBytes };  // Returns original!
 
-<!-- AFTER (FIXED) -->
-<P>This is actual form content</P>
+// AFTER (FIXED):
+if (violationsFixed == 0)
+    return new FixResult { FixedPdf = pdfBytes };  // Correct check
+```
+
+**Reason**: Python script reports:
+- `violations_found`: Count of tagged content inside `/Artifact BMC...EMC` blocks
+- `violations_fixed`: Total fixes (includes whitespace cleanup which doesn't count as "violations found")
+
+**Python Script** (`fix_artifact_violations.py`):
+
+**Three-Pass Processing**:
+
+1. **Artifact Unwrapping** (Lines 64-168):
+   - Finds `/Artifact BMC...EMC` blocks containing `/MCID` (tagged content)
+   - Removes artifact wrapper, preserving tagged content
+
+2. **Whitespace Cleanup** (Lines 170-207):
+   - Pattern: `\((\\(40|11|12|15|n|r|t)|\s)*\)\s*Tj`
+   - Matches: `(\40) Tj` (octal space), `( ) Tj`, `(\n) Tj`, etc.
+   - Checks if outside all marked content (depth = 0)
+   - Deletes untagged whitespace entirely
+
+3. **Content Stream Update**:
+   - Uses `doc.update_stream(xref, new_stream)` to apply changes
+   - Saves with compression: `garbage=4, deflate=True, clean=True`
+
+**Example Fixes**:
+
+**Fix Type 1: Unwrap Tagged Content from Artifacts**
+```pdf
+# BEFORE (VIOLATION)
+/Artifact BMC
+  /P <</MCID 5>> BDC
+    BT (Hello) Tj ET
+  EMC
+EMC
+
+# AFTER (FIXED)
+/P <</MCID 5>> BDC
+  BT (Hello) Tj ET
+EMC
+```
+
+**Fix Type 2: Remove Untagged Whitespace**
+```pdf
+# BEFORE (VIOLATION)
+(\040) Tj  # Space outside any marked content
+
+# AFTER (FIXED)
+# [deleted]
 ```
 
 ---
