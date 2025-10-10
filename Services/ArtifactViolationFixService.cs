@@ -499,24 +499,24 @@ namespace WordToPdfConverter.Services
         }
 
         /// <summary>
-        /// Ultimate nuclear fix - removes ALL untagged text operations.
-        /// This is the most aggressive option for stubborn PAC violations.
+        /// Fix text operations that appear after EMC markers or in problematic locations.
+        /// This targets the specific pattern where text appears outside proper tagging.
         /// </summary>
-        public async Task<FixResult> FixUntaggedUltimateAsync(byte[] pdfBytes)
+        public async Task<FixResult> FixTextAfterEmcAsync(byte[] pdfBytes)
         {
             try
             {
-                _logger.LogInformation("Running ULTIMATE untagged text removal (nuclear option)...");
+                _logger.LogInformation("Fixing text after EMC and artifact violations...");
 
                 // Save PDF to temp file
-                var tempInputPath = Path.Combine(Path.GetTempPath(), $"ultimate_fix_input_{Guid.NewGuid()}.pdf");
+                var tempInputPath = Path.Combine(Path.GetTempPath(), $"emc_fix_input_{Guid.NewGuid()}.pdf");
                 await File.WriteAllBytesAsync(tempInputPath, pdfBytes);
 
-                var scriptPath = Path.Combine(Directory.GetCurrentDirectory(), "fix_untagged_ultimate.py");
+                var scriptPath = Path.Combine(Directory.GetCurrentDirectory(), "fix_text_after_emc.py");
 
                 if (!File.Exists(scriptPath))
                 {
-                    _logger.LogWarning($"Ultimate fix script not found at: {scriptPath}");
+                    _logger.LogWarning($"EMC fix script not found at: {scriptPath}");
                     CleanupTempFile(tempInputPath);
                     // Return original PDF if script not found
                     return new FixResult
@@ -528,7 +528,7 @@ namespace WordToPdfConverter.Services
                     };
                 }
 
-                _logger.LogDebug($"Running ultimate fix script: {scriptPath}");
+                _logger.LogDebug($"Running EMC fix script: {scriptPath}");
 
                 var process = new Process
                 {
@@ -551,7 +551,7 @@ namespace WordToPdfConverter.Services
 
                 if (!string.IsNullOrEmpty(error))
                 {
-                    _logger.LogDebug($"Ultimate fix stderr: {error}");
+                    _logger.LogDebug($"EMC fix stderr: {error}");
                 }
 
                 // Parse the JSON output
@@ -562,7 +562,7 @@ namespace WordToPdfConverter.Services
                 }
                 catch (JsonException jsonEx)
                 {
-                    _logger.LogError($"Failed to parse ultimate fix output: {jsonEx.Message}\nOutput: {output}");
+                    _logger.LogError($"Failed to parse EMC fix output: {jsonEx.Message}\nOutput: {output}");
                     CleanupTempFile(tempInputPath);
                     return new FixResult
                     {
@@ -584,9 +584,9 @@ namespace WordToPdfConverter.Services
                 }
 
                 // Get metrics
-                var btBlocks = result.RootElement.TryGetProperty("bt_blocks_removed", out var btProp) ? btProp.GetInt32() : 0;
-                var textOps = result.RootElement.TryGetProperty("text_ops_removed", out var textProp) ? textProp.GetInt32() : 0;
-                var totalOps = result.RootElement.TryGetProperty("total_operations", out var totalProp) ? totalProp.GetInt32() : 0;
+                var afterEmcFixed = result.RootElement.TryGetProperty("after_emc_fixed", out var afterProp) ? afterProp.GetInt32() : 0;
+                var artifactFixed = result.RootElement.TryGetProperty("artifact_fixed", out var artifactProp) ? artifactProp.GetInt32() : 0;
+                var totalFixed = afterEmcFixed + artifactFixed;
 
                 // Get output path
                 if (!result.RootElement.TryGetProperty("output_path", out var outputPath))
@@ -613,7 +613,7 @@ namespace WordToPdfConverter.Services
                 // Read the fixed PDF
                 var fixedPdfBytes = await File.ReadAllBytesAsync(outputFile);
 
-                _logger.LogInformation($"✅ Ultimate fix: {btBlocks} BT blocks, {textOps} text operations removed");
+                _logger.LogInformation($"✅ EMC fix: {afterEmcFixed} after-EMC, {artifactFixed} artifact violations fixed");
 
                 // Cleanup
                 CleanupTempFile(tempInputPath);
@@ -623,13 +623,13 @@ namespace WordToPdfConverter.Services
                 {
                     Success = true,
                     FixedPdf = fixedPdfBytes,
-                    ViolationsFound = totalOps,
-                    ViolationsFixed = totalOps
+                    ViolationsFound = totalFixed,
+                    ViolationsFixed = totalFixed
                 };
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to run ultimate untagged fix");
+                _logger.LogError(ex, "Failed to run EMC fix");
                 return new FixResult
                 {
                     Success = false,
@@ -677,14 +677,14 @@ namespace WordToPdfConverter.Services
                 totalFixed += aggressiveResult.ViolationsFixed;
             }
 
-            // 4. Finally run ultimate fix as nuclear option
-            _logger.LogInformation("[4/4] Running ULTIMATE untagged removal (nuclear option)...");
-            var ultimateResult = await FixUntaggedUltimateAsync(currentPdf);
-            if (ultimateResult.Success && ultimateResult.FixedPdf != null)
+            // 4. Finally run EMC fix for text outside proper tagging
+            _logger.LogInformation("[4/4] Running EMC/Artifact fix for text outside proper tagging...");
+            var emcResult = await FixTextAfterEmcAsync(currentPdf);
+            if (emcResult.Success && emcResult.FixedPdf != null)
             {
-                currentPdf = ultimateResult.FixedPdf;
-                totalFound += ultimateResult.ViolationsFound;
-                totalFixed += ultimateResult.ViolationsFixed;
+                currentPdf = emcResult.FixedPdf;
+                totalFound += emcResult.ViolationsFound;
+                totalFixed += emcResult.ViolationsFixed;
             }
 
             _logger.LogInformation($"✅ All fixes complete: {totalFixed} violations fixed");
