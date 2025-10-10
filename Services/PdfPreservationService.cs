@@ -20,6 +20,7 @@ namespace WordToPdfConverter.Services
         private readonly ArtifactRemovalService _artifactRemovalService;
         private readonly ArtifactViolationFixService _artifactViolationFixService;
         private readonly TaggedWhitespaceFixService _taggedWhitespaceFixService;
+        private readonly OrphanedWhitespaceAdoptionService _orphanedWhitespaceAdoptionService;
 
         public PdfPreservationService(
             ILogger<PdfPreservationService> logger,
@@ -29,7 +30,8 @@ namespace WordToPdfConverter.Services
             PassportPdfService passportPdfService,
             ArtifactRemovalService artifactRemovalService,
             ArtifactViolationFixService artifactViolationFixService,
-            TaggedWhitespaceFixService taggedWhitespaceFixService)
+            TaggedWhitespaceFixService taggedWhitespaceFixService,
+            OrphanedWhitespaceAdoptionService orphanedWhitespaceAdoptionService)
         {
             _logger = logger;
             _accessibilityService = accessibilityService;
@@ -39,6 +41,7 @@ namespace WordToPdfConverter.Services
             _artifactRemovalService = artifactRemovalService;
             _artifactViolationFixService = artifactViolationFixService;
             _taggedWhitespaceFixService = taggedWhitespaceFixService;
+            _orphanedWhitespaceAdoptionService = orphanedWhitespaceAdoptionService;
         }
 
         /// <summary>
@@ -60,9 +63,41 @@ namespace WordToPdfConverter.Services
             // Capture input statistics
             report.Input.FileSizeBytes = pdfBytes.Length;
 
-            // Step 0: Fix any artifact violations (tagged content inside artifacts) in source PDF
-            _logger.LogInformation("[PDF-PRESERVATION] Step 0: Checking for artifact violations in source PDF...");
+            // Step 0: Adopt orphaned whitespace into adjacent content tags
+            _logger.LogInformation("[PDF-PRESERVATION] Step 0: Adopting orphaned whitespace into adjacent content...");
             var stepStartTime = DateTime.UtcNow;
+            var adoptionResult = await _orphanedWhitespaceAdoptionService.AdoptOrphanedWhitespaceAsync(pdfBytes);
+
+            report.Steps.Add(new Models.ProcessingStep
+            {
+                Name = "Orphaned Whitespace Adoption",
+                Success = adoptionResult.Success,
+                DurationMs = (long)(DateTime.UtcNow - stepStartTime).TotalMilliseconds,
+                Details = adoptionResult.OrphansAdopted > 0
+                    ? $"Adopted {adoptionResult.OrphansAdopted} orphaned whitespace elements"
+                    : "No orphaned whitespace found"
+            });
+
+            if (adoptionResult.Success && adoptionResult.FixedPdf != null)
+            {
+                if (adoptionResult.OrphansAdopted > 0)
+                {
+                    _logger.LogWarning($"[PDF-PRESERVATION] ✅ Adopted {adoptionResult.OrphansAdopted} orphaned whitespace elements");
+                    pdfBytes = adoptionResult.FixedPdf; // Use the fixed version
+                }
+                else
+                {
+                    _logger.LogInformation("[PDF-PRESERVATION] ✅ No orphaned whitespace found");
+                }
+            }
+            else
+            {
+                _logger.LogWarning($"[PDF-PRESERVATION] ⚠️  Whitespace adoption failed: {adoptionResult.ErrorMessage}, continuing with original PDF");
+            }
+
+            // Step 1: Fix any artifact violations (tagged content inside artifacts) in source PDF
+            _logger.LogInformation("[PDF-PRESERVATION] Step 1: Checking for artifact violations in source PDF...");
+            stepStartTime = DateTime.UtcNow;
             var artifactFixResult = await _artifactViolationFixService.FixArtifactViolationsAsync(pdfBytes);
 
             // Record in report
@@ -95,8 +130,8 @@ namespace WordToPdfConverter.Services
                 _logger.LogWarning($"[PDF-PRESERVATION] ⚠️  Artifact fix failed: {artifactFixResult.ErrorMessage}, continuing with original PDF");
             }
 
-            // Step 0b: Fix tagged whitespace violations
-            _logger.LogInformation("[PDF-PRESERVATION] Step 0b: Checking for tagged whitespace violations...");
+            // Step 2: Fix tagged whitespace violations
+            _logger.LogInformation("[PDF-PRESERVATION] Step 2: Checking for tagged whitespace violations...");
             stepStartTime = DateTime.UtcNow;
             var whitespaceFixResult = await _taggedWhitespaceFixService.FixTaggedWhitespaceAsync(pdfBytes);
 
