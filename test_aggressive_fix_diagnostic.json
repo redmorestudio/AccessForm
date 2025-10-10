@@ -1,0 +1,1615 @@
+{
+  "total_untagged": 100,
+  "by_page": {
+    "1": [
+      {
+        "key": "1:1:0003",
+        "page": 1,
+        "position": 1,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:2:0003",
+        "page": 1,
+        "position": 2,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:3:0003",
+        "page": 1,
+        "position": 3,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:5:0003",
+        "page": 1,
+        "position": 5,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:7:0003",
+        "page": 1,
+        "position": 7,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:8:0003",
+        "page": 1,
+        "position": 8,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:11:0003",
+        "page": 1,
+        "position": 11,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:12:0003",
+        "page": 1,
+        "position": 12,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:16:0003",
+        "page": 1,
+        "position": 16,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:19:0003",
+        "page": 1,
+        "position": 19,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:21:0003",
+        "page": 1,
+        "position": 21,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:23:0003",
+        "page": 1,
+        "position": 23,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:29:0003",
+        "page": 1,
+        "position": 29,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:30:0003",
+        "page": 1,
+        "position": 30,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:38:0003",
+        "page": 1,
+        "position": 38,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:39:0003",
+        "page": 1,
+        "position": 39,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:40:00030003",
+        "page": 1,
+        "position": 40,
+        "raw": "<00030003>",
+        "decoded": "00030003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:41:00030003",
+        "page": 1,
+        "position": 41,
+        "raw": "<00030003>",
+        "decoded": "00030003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:42:[SPACE]",
+        "page": 1,
+        "position": 42,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:44:0003",
+        "page": 1,
+        "position": 44,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:45:0003",
+        "page": 1,
+        "position": 45,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:45:[SPACE]",
+        "page": 1,
+        "position": 45,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:46:0372",
+        "page": 1,
+        "position": 46,
+        "raw": "<0372>",
+        "decoded": "0372",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:52:03f00003",
+        "page": 1,
+        "position": 52,
+        "raw": "<03f00003>",
+        "decoded": "03f00003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:53:N",
+        "page": 1,
+        "position": 53,
+        "raw": "(N)",
+        "decoded": "N",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:58:: ",
+        "page": 1,
+        "position": 58,
+        "raw": "(: )",
+        "decoded": ": ",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:62:[SPACE]",
+        "page": 1,
+        "position": 62,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:64:[SPACE]",
+        "page": 1,
+        "position": 64,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:68:-",
+        "page": 1,
+        "position": 68,
+        "raw": "(-)",
+        "decoded": "-",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:68:of",
+        "page": 1,
+        "position": 68,
+        "raw": "(of)",
+        "decoded": "of",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:72:-",
+        "page": 1,
+        "position": 72,
+        "raw": "(-)",
+        "decoded": "-",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:75:[SPACE]",
+        "page": 1,
+        "position": 75,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:78:[SPACE]",
+        "page": 1,
+        "position": 78,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:81:[SPACE]",
+        "page": 1,
+        "position": 81,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:83:0003",
+        "page": 1,
+        "position": 83,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:85:0003",
+        "page": 1,
+        "position": 85,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:86:[SPACE]",
+        "page": 1,
+        "position": 86,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:87: T",
+        "page": 1,
+        "position": 87,
+        "raw": "( T)",
+        "decoded": " T",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:87:ax",
+        "page": 1,
+        "position": 87,
+        "raw": "(ax)",
+        "decoded": "ax",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:88:[SPACE]",
+        "page": 1,
+        "position": 88,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:89:Classification",
+        "page": 1,
+        "position": 89,
+        "raw": "(Classification)",
+        "decoded": "Classification",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:89:/ ",
+        "page": 1,
+        "position": 89,
+        "raw": "(/ )",
+        "decoded": "/ ",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:89:[SPACE]",
+        "page": 1,
+        "position": 89,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:92:0003",
+        "page": 1,
+        "position": 92,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:94:[SPACE]",
+        "page": 1,
+        "position": 94,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:96:0003",
+        "page": 1,
+        "position": 96,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:98:[SPACE]",
+        "page": 1,
+        "position": 98,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:100:0003",
+        "page": 1,
+        "position": 100,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:102:[SPACE]",
+        "page": 1,
+        "position": 102,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:104:0003",
+        "page": 1,
+        "position": 104,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:106:[SPACE]",
+        "page": 1,
+        "position": 106,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:109:0003",
+        "page": 1,
+        "position": 109,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:111:[SPACE]",
+        "page": 1,
+        "position": 111,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:112:s",
+        "page": 1,
+        "position": 112,
+        "raw": "(s)",
+        "decoded": "s",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:112:ee ",
+        "page": 1,
+        "position": 112,
+        "raw": "(ee )",
+        "decoded": "ee ",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:113:[SPACE]",
+        "page": 1,
+        "position": 113,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:122::",
+        "page": 1,
+        "position": 122,
+        "raw": "(:)",
+        "decoded": ":",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:124:18",
+        "page": 1,
+        "position": 124,
+        "raw": "(18)",
+        "decoded": "18",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:125:[SPACE]",
+        "page": 1,
+        "position": 125,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:127:[SPACE]",
+        "page": 1,
+        "position": 127,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "1:15507:[SPACE] [SPACE] [SPA",
+        "page": 1,
+        "position": 15507,
+        "raw": "[36 25 590 756]/MCID 52>>BDC 1 scn BT .005 Tc -.001 Tw/TT0 1 Tf 12 0 0 12 327.6 489.24 Tm[( )-3220.0",
+        "decoded": "[SPACE] [SPACE] [SPACE] [SPACE]",
+        "method": "pattern_tj_array"
+      }
+    ],
+    "2": [
+      {
+        "key": "2:1:0003",
+        "page": 2,
+        "position": 1,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:2:0003",
+        "page": 2,
+        "position": 2,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:3:0003",
+        "page": 2,
+        "position": 3,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:7:0003",
+        "page": 2,
+        "position": 7,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:8:0003",
+        "page": 2,
+        "position": 8,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:13:0003",
+        "page": 2,
+        "position": 13,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:14:0003",
+        "page": 2,
+        "position": 14,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:15:0003",
+        "page": 2,
+        "position": 15,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:17:0003",
+        "page": 2,
+        "position": 17,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:19:0003",
+        "page": 2,
+        "position": 19,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:21:0003",
+        "page": 2,
+        "position": 21,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:23:0003",
+        "page": 2,
+        "position": 23,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:25:0003",
+        "page": 2,
+        "position": 25,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:33:[SPACE]",
+        "page": 2,
+        "position": 33,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:35:[SPACE]",
+        "page": 2,
+        "position": 35,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:37:[SPACE]",
+        "page": 2,
+        "position": 37,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:39:[SPACE]",
+        "page": 2,
+        "position": 39,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:41:[SPACE]",
+        "page": 2,
+        "position": 41,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:43:[SPACE]",
+        "page": 2,
+        "position": 43,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:48:0003",
+        "page": 2,
+        "position": 48,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:50:0003",
+        "page": 2,
+        "position": 50,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:52:[SPACE]",
+        "page": 2,
+        "position": 52,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:54:[SPACE]",
+        "page": 2,
+        "position": 54,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:59:0003",
+        "page": 2,
+        "position": 59,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:64:0003",
+        "page": 2,
+        "position": 64,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:65:0003",
+        "page": 2,
+        "position": 65,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:65:0074",
+        "page": 2,
+        "position": 65,
+        "raw": "<0074>",
+        "decoded": "0074",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:65:0372",
+        "page": 2,
+        "position": 65,
+        "raw": "<0372>",
+        "decoded": "0372",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:66:0003",
+        "page": 2,
+        "position": 66,
+        "raw": "<0003>",
+        "decoded": "0003",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:71:[SPACE]",
+        "page": 2,
+        "position": 71,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:71: R",
+        "page": 2,
+        "position": 71,
+        "raw": "( R)",
+        "decoded": " R",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:71:e",
+        "page": 2,
+        "position": 71,
+        "raw": "(e)",
+        "decoded": "e",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:71:qui",
+        "page": 2,
+        "position": 71,
+        "raw": "(qui)",
+        "decoded": "qui",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:71:r",
+        "page": 2,
+        "position": 71,
+        "raw": "(r)",
+        "decoded": "r",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:72:6",
+        "page": 2,
+        "position": 72,
+        "raw": "(6)",
+        "decoded": "6",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:72:/1",
+        "page": 2,
+        "position": 72,
+        "raw": "(/1)",
+        "decoded": "/1",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:73:[SPACE]",
+        "page": 2,
+        "position": 73,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:75:[SPACE]",
+        "page": 2,
+        "position": 75,
+        "raw": "( )",
+        "decoded": "[SPACE]",
+        "method": "bt_block_analysis"
+      },
+      {
+        "key": "2:5149:\u0018 \u015d \u018c \u011e\u0110 \u019a \u0003 \u0018 \u011e\u0189 \u017d ",
+        "page": 2,
+        "position": 5149,
+        "raw": "[27 25 590 751]/MCID 8>>BDC /H2<<>>BDC /ClipSpan BMC 0 scn BT -.003 Tc .007 Tw/C2_0 1 Tf 0 Tr 12 0 0",
+        "decoded": "\u0018 \u015d \u018c \u011e\u0110 \u019a \u0003 \u0018 \u011e\u0189 \u017d \u0190 \u015d \u019a \u0003 / \u0176 \u0128 \u017d \u018c \u0175\u0102 \u019a \u015d \u017d \u0176 \u0003 \u037e Z\u011e\u0190 \u0189 \u017d \u0176 \u0190 \u011e\u0003 Z\u011e\u018b \u01b5 \u015d \u018c \u011e\u011a \u037f",
+        "method": "pattern_tj_array"
+      }
+    ]
+  },
+  "by_type": {
+    "bt_block_analysis": 98,
+    "pattern_tj_array": 2
+  },
+  "details": [
+    {
+      "key": "1:1:0003",
+      "page": 1,
+      "position": 1,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:2:0003",
+      "page": 1,
+      "position": 2,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:3:0003",
+      "page": 1,
+      "position": 3,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:5:0003",
+      "page": 1,
+      "position": 5,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:7:0003",
+      "page": 1,
+      "position": 7,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:8:0003",
+      "page": 1,
+      "position": 8,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:11:0003",
+      "page": 1,
+      "position": 11,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:12:0003",
+      "page": 1,
+      "position": 12,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:16:0003",
+      "page": 1,
+      "position": 16,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:19:0003",
+      "page": 1,
+      "position": 19,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:21:0003",
+      "page": 1,
+      "position": 21,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:23:0003",
+      "page": 1,
+      "position": 23,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:29:0003",
+      "page": 1,
+      "position": 29,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:30:0003",
+      "page": 1,
+      "position": 30,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:38:0003",
+      "page": 1,
+      "position": 38,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:39:0003",
+      "page": 1,
+      "position": 39,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:40:00030003",
+      "page": 1,
+      "position": 40,
+      "raw": "<00030003>",
+      "decoded": "00030003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:41:00030003",
+      "page": 1,
+      "position": 41,
+      "raw": "<00030003>",
+      "decoded": "00030003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:42:[SPACE]",
+      "page": 1,
+      "position": 42,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:44:0003",
+      "page": 1,
+      "position": 44,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:45:0003",
+      "page": 1,
+      "position": 45,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:45:[SPACE]",
+      "page": 1,
+      "position": 45,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:46:0372",
+      "page": 1,
+      "position": 46,
+      "raw": "<0372>",
+      "decoded": "0372",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:52:03f00003",
+      "page": 1,
+      "position": 52,
+      "raw": "<03f00003>",
+      "decoded": "03f00003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:53:N",
+      "page": 1,
+      "position": 53,
+      "raw": "(N)",
+      "decoded": "N",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:58:: ",
+      "page": 1,
+      "position": 58,
+      "raw": "(: )",
+      "decoded": ": ",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:62:[SPACE]",
+      "page": 1,
+      "position": 62,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:64:[SPACE]",
+      "page": 1,
+      "position": 64,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:68:-",
+      "page": 1,
+      "position": 68,
+      "raw": "(-)",
+      "decoded": "-",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:68:of",
+      "page": 1,
+      "position": 68,
+      "raw": "(of)",
+      "decoded": "of",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:72:-",
+      "page": 1,
+      "position": 72,
+      "raw": "(-)",
+      "decoded": "-",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:75:[SPACE]",
+      "page": 1,
+      "position": 75,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:78:[SPACE]",
+      "page": 1,
+      "position": 78,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:81:[SPACE]",
+      "page": 1,
+      "position": 81,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:83:0003",
+      "page": 1,
+      "position": 83,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:85:0003",
+      "page": 1,
+      "position": 85,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:86:[SPACE]",
+      "page": 1,
+      "position": 86,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:87: T",
+      "page": 1,
+      "position": 87,
+      "raw": "( T)",
+      "decoded": " T",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:87:ax",
+      "page": 1,
+      "position": 87,
+      "raw": "(ax)",
+      "decoded": "ax",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:88:[SPACE]",
+      "page": 1,
+      "position": 88,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:89:Classification",
+      "page": 1,
+      "position": 89,
+      "raw": "(Classification)",
+      "decoded": "Classification",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:89:/ ",
+      "page": 1,
+      "position": 89,
+      "raw": "(/ )",
+      "decoded": "/ ",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:89:[SPACE]",
+      "page": 1,
+      "position": 89,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:92:0003",
+      "page": 1,
+      "position": 92,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:94:[SPACE]",
+      "page": 1,
+      "position": 94,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:96:0003",
+      "page": 1,
+      "position": 96,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:98:[SPACE]",
+      "page": 1,
+      "position": 98,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:100:0003",
+      "page": 1,
+      "position": 100,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:102:[SPACE]",
+      "page": 1,
+      "position": 102,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:104:0003",
+      "page": 1,
+      "position": 104,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:106:[SPACE]",
+      "page": 1,
+      "position": 106,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:109:0003",
+      "page": 1,
+      "position": 109,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:111:[SPACE]",
+      "page": 1,
+      "position": 111,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:112:s",
+      "page": 1,
+      "position": 112,
+      "raw": "(s)",
+      "decoded": "s",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:112:ee ",
+      "page": 1,
+      "position": 112,
+      "raw": "(ee )",
+      "decoded": "ee ",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:113:[SPACE]",
+      "page": 1,
+      "position": 113,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:122::",
+      "page": 1,
+      "position": 122,
+      "raw": "(:)",
+      "decoded": ":",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:124:18",
+      "page": 1,
+      "position": 124,
+      "raw": "(18)",
+      "decoded": "18",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:125:[SPACE]",
+      "page": 1,
+      "position": 125,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:127:[SPACE]",
+      "page": 1,
+      "position": 127,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "1:15507:[SPACE] [SPACE] [SPA",
+      "page": 1,
+      "position": 15507,
+      "raw": "[36 25 590 756]/MCID 52>>BDC 1 scn BT .005 Tc -.001 Tw/TT0 1 Tf 12 0 0 12 327.6 489.24 Tm[( )-3220.0",
+      "decoded": "[SPACE] [SPACE] [SPACE] [SPACE]",
+      "method": "pattern_tj_array"
+    },
+    {
+      "key": "2:1:0003",
+      "page": 2,
+      "position": 1,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:2:0003",
+      "page": 2,
+      "position": 2,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:3:0003",
+      "page": 2,
+      "position": 3,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:7:0003",
+      "page": 2,
+      "position": 7,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:8:0003",
+      "page": 2,
+      "position": 8,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:13:0003",
+      "page": 2,
+      "position": 13,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:14:0003",
+      "page": 2,
+      "position": 14,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:15:0003",
+      "page": 2,
+      "position": 15,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:17:0003",
+      "page": 2,
+      "position": 17,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:19:0003",
+      "page": 2,
+      "position": 19,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:21:0003",
+      "page": 2,
+      "position": 21,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:23:0003",
+      "page": 2,
+      "position": 23,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:25:0003",
+      "page": 2,
+      "position": 25,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:33:[SPACE]",
+      "page": 2,
+      "position": 33,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:35:[SPACE]",
+      "page": 2,
+      "position": 35,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:37:[SPACE]",
+      "page": 2,
+      "position": 37,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:39:[SPACE]",
+      "page": 2,
+      "position": 39,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:41:[SPACE]",
+      "page": 2,
+      "position": 41,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:43:[SPACE]",
+      "page": 2,
+      "position": 43,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:48:0003",
+      "page": 2,
+      "position": 48,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:50:0003",
+      "page": 2,
+      "position": 50,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:52:[SPACE]",
+      "page": 2,
+      "position": 52,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:54:[SPACE]",
+      "page": 2,
+      "position": 54,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:59:0003",
+      "page": 2,
+      "position": 59,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:64:0003",
+      "page": 2,
+      "position": 64,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:65:0003",
+      "page": 2,
+      "position": 65,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:65:0074",
+      "page": 2,
+      "position": 65,
+      "raw": "<0074>",
+      "decoded": "0074",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:65:0372",
+      "page": 2,
+      "position": 65,
+      "raw": "<0372>",
+      "decoded": "0372",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:66:0003",
+      "page": 2,
+      "position": 66,
+      "raw": "<0003>",
+      "decoded": "0003",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:71:[SPACE]",
+      "page": 2,
+      "position": 71,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:71: R",
+      "page": 2,
+      "position": 71,
+      "raw": "( R)",
+      "decoded": " R",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:71:e",
+      "page": 2,
+      "position": 71,
+      "raw": "(e)",
+      "decoded": "e",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:71:qui",
+      "page": 2,
+      "position": 71,
+      "raw": "(qui)",
+      "decoded": "qui",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:71:r",
+      "page": 2,
+      "position": 71,
+      "raw": "(r)",
+      "decoded": "r",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:72:6",
+      "page": 2,
+      "position": 72,
+      "raw": "(6)",
+      "decoded": "6",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:72:/1",
+      "page": 2,
+      "position": 72,
+      "raw": "(/1)",
+      "decoded": "/1",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:73:[SPACE]",
+      "page": 2,
+      "position": 73,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:75:[SPACE]",
+      "page": 2,
+      "position": 75,
+      "raw": "( )",
+      "decoded": "[SPACE]",
+      "method": "bt_block_analysis"
+    },
+    {
+      "key": "2:5149:\u0018 \u015d \u018c \u011e\u0110 \u019a \u0003 \u0018 \u011e\u0189 \u017d ",
+      "page": 2,
+      "position": 5149,
+      "raw": "[27 25 590 751]/MCID 8>>BDC /H2<<>>BDC /ClipSpan BMC 0 scn BT -.003 Tc .007 Tw/C2_0 1 Tf 0 Tr 12 0 0",
+      "decoded": "\u0018 \u015d \u018c \u011e\u0110 \u019a \u0003 \u0018 \u011e\u0189 \u017d \u0190 \u015d \u019a \u0003 / \u0176 \u0128 \u017d \u018c \u0175\u0102 \u019a \u015d \u017d \u0176 \u0003 \u037e Z\u011e\u0190 \u0189 \u017d \u0176 \u0190 \u011e\u0003 Z\u011e\u018b \u01b5 \u015d \u018c \u011e\u011a \u037f",
+      "method": "pattern_tj_array"
+    }
+  ]
+}

@@ -639,6 +639,186 @@ namespace WordToPdfConverter.Services
         }
 
         /// <summary>
+        /// Fix violations introduced by PassportPDF processing.
+        /// PassportPDF uses \r (carriage return) as line separators and creates specific patterns.
+        /// </summary>
+        public async Task<FixResult> FixPassportPdfViolationsAsync(byte[] pdfBytes)
+        {
+            try
+            {
+                _logger.LogInformation("Fixing PassportPDF-specific violations...");
+
+                // Create temp file for input
+                var tempInputPath = Path.GetTempFileName();
+                await File.WriteAllBytesAsync(tempInputPath, pdfBytes);
+
+                // Run the PassportPDF violations fix script
+                var scriptPath = Path.Combine(AppContext.BaseDirectory, "fix_passportpdf_violations.py");
+
+                if (!File.Exists(scriptPath))
+                {
+                    CleanupTempFile(tempInputPath);
+                    return new FixResult
+                    {
+                        Success = false,
+                        ErrorMessage = "PassportPDF fix script not found"
+                    };
+                }
+
+                var processInfo = new ProcessStartInfo
+                {
+                    FileName = "python3",
+                    Arguments = $"\"{scriptPath}\" \"{tempInputPath}\"",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var process = Process.Start(processInfo);
+                if (process == null)
+                {
+                    CleanupTempFile(tempInputPath);
+                    return new FixResult
+                    {
+                        Success = false,
+                        ErrorMessage = "Failed to start PassportPDF fix script"
+                    };
+                }
+
+                // Wait for completion with timeout
+                try
+                {
+                    await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
+                }
+                catch (TimeoutException)
+                {
+                    process.Kill();
+                    CleanupTempFile(tempInputPath);
+                    return new FixResult
+                    {
+                        Success = false,
+                        ErrorMessage = "PassportPDF fix script timed out"
+                    };
+                }
+
+                if (!process.HasExited)
+                {
+                    process.Kill();
+                    CleanupTempFile(tempInputPath);
+                    return new FixResult
+                    {
+                        Success = false,
+                        ErrorMessage = "PassportPDF fix script timed out"
+                    };
+                }
+
+                var output = await process.StandardOutput.ReadToEndAsync();
+                var error = await process.StandardError.ReadToEndAsync();
+
+                if (!string.IsNullOrWhiteSpace(error))
+                {
+                    _logger.LogWarning($"PassportPDF script stderr: {error}");
+                }
+
+                if (process.ExitCode != 0)
+                {
+                    _logger.LogWarning($"PassportPDF fix script failed with exit code {process.ExitCode}");
+                    _logger.LogWarning($"Output: {output}");
+                    _logger.LogWarning($"Error: {error}");
+                    CleanupTempFile(tempInputPath);
+                    return new FixResult
+                    {
+                        Success = false,
+                        ErrorMessage = $"Script failed: {output}"
+                    };
+                }
+
+                // Parse JSON output
+                JsonElement result;
+                try
+                {
+                    result = JsonSerializer.Deserialize<JsonElement>(output);
+                }
+                catch (Exception parseEx)
+                {
+                    _logger.LogError($"Failed to parse PassportPDF script output as JSON: {parseEx.Message}");
+                    _logger.LogError($"Raw output: {output}");
+                    CleanupTempFile(tempInputPath);
+                    return new FixResult
+                    {
+                        Success = false,
+                        ErrorMessage = $"Failed to parse script output: {parseEx.Message}"
+                    };
+                }
+
+                if (!result.TryGetProperty("success", out var success) || !success.GetBoolean())
+                {
+                    CleanupTempFile(tempInputPath);
+                    var errorMsg = result.TryGetProperty("error", out var err) ? err.GetString() : "Unknown error";
+                    return new FixResult
+                    {
+                        Success = false,
+                        ErrorMessage = errorMsg
+                    };
+                }
+
+                // Get the output path from the result
+                if (!result.TryGetProperty("output_path", out var outputPath))
+                {
+                    CleanupTempFile(tempInputPath);
+                    return new FixResult
+                    {
+                        Success = false,
+                        ErrorMessage = "No output path in script result"
+                    };
+                }
+
+                var outputFile = outputPath.GetString();
+                if (string.IsNullOrEmpty(outputFile) || !File.Exists(outputFile))
+                {
+                    CleanupTempFile(tempInputPath);
+                    return new FixResult
+                    {
+                        Success = false,
+                        ErrorMessage = "Output file not found"
+                    };
+                }
+
+                // Read the fixed PDF
+                var fixedPdfBytes = await File.ReadAllBytesAsync(outputFile);
+
+                // Get counts
+                var etxFixed = result.TryGetProperty("etx_fixed", out var etx) ? etx.GetInt32() : 0;
+                var transparencyFixed = result.TryGetProperty("transparency_fixed", out var trans) ? trans.GetInt32() : 0;
+                var totalFixed = result.TryGetProperty("total_fixed", out var total) ? total.GetInt32() : 0;
+
+                _logger.LogInformation($"✅ PassportPDF fix: {etxFixed} ETX, {transparencyFixed} transparency blocks (total: {totalFixed})");
+
+                // Cleanup
+                CleanupTempFile(tempInputPath);
+                CleanupTempFile(outputFile);
+
+                return new FixResult
+                {
+                    Success = true,
+                    FixedPdf = fixedPdfBytes,
+                    ViolationsFound = totalFixed,
+                    ViolationsFixed = totalFixed
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to run PassportPDF fix");
+                return new FixResult
+                {
+                    Success = false,
+                    ErrorMessage = $"Exception: {ex.Message}"
+                };
+            }
+        }
+
+        /// <summary>
         /// Run ALL fixes in sequence for maximum PAC compliance.
         /// </summary>
         public async Task<FixResult> FixAllViolationsAsync(byte[] pdfBytes)
@@ -677,14 +857,37 @@ namespace WordToPdfConverter.Services
                 totalFixed += aggressiveResult.ViolationsFixed;
             }
 
-            // 4. Finally run EMC fix for text outside proper tagging
-            _logger.LogInformation("[4/4] Running EMC/Artifact fix for text outside proper tagging...");
+            // 4. Run EMC fix for text outside proper tagging
+            _logger.LogInformation("[4/5] Running EMC/Artifact fix for text outside proper tagging...");
             var emcResult = await FixTextAfterEmcAsync(currentPdf);
             if (emcResult.Success && emcResult.FixedPdf != null)
             {
                 currentPdf = emcResult.FixedPdf;
                 totalFound += emcResult.ViolationsFound;
                 totalFixed += emcResult.ViolationsFixed;
+            }
+
+            // 5. Run PassportPDF-specific fix (only if PassportPDF has already run)
+            // Note: This is primarily for post-PassportPDF cleanup
+            _logger.LogInformation("[5/5] Attempting PassportPDF-specific fixes...");
+            try
+            {
+                var passportResult = await FixPassportPdfViolationsAsync(currentPdf);
+                if (passportResult.Success && passportResult.FixedPdf != null)
+                {
+                    currentPdf = passportResult.FixedPdf;
+                    totalFound += passportResult.ViolationsFound;
+                    totalFixed += passportResult.ViolationsFixed;
+                    _logger.LogInformation($"PassportPDF fix succeeded: {passportResult.ViolationsFixed} violations fixed");
+                }
+                else
+                {
+                    _logger.LogDebug("PassportPDF fix did not find violations or failed");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug($"PassportPDF fix skipped: {ex.Message}");
             }
 
             _logger.LogInformation($"✅ All fixes complete: {totalFixed} violations fixed");
