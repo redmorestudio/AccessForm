@@ -114,6 +114,9 @@ builder.Services.AddScoped(sp =>
 
 // Add PassportPDF services
 builder.Services.AddScoped<PassportPdfService>();
+builder.Services.AddScoped<ArtifactRemovalService>();
+builder.Services.AddScoped<ArtifactViolationFixService>();
+builder.Services.AddScoped<TaggedWhitespaceFixService>();
 
 // Add PDF/UA compliance service
 builder.Services.AddScoped<PdfUAComplianceService>();
