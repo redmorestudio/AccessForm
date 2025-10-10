@@ -64,6 +64,7 @@ builder.Services.AddScoped<WordToPdfConverter.Services.WordFormFieldAnalyzer>();
 builder.Services.AddScoped<WordToPdfConverter.Services.FieldSizeOptimizer>();
 builder.Services.AddScoped<AccessFormServer.Services.EnhancedPdfService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.WordToPdfWithFieldsService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.WordDocumentPreprocessor>();
 builder.Services.AddScoped<WordToPdfConverter.Services.ConfigurableFieldDetectionService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.ClaudeVisionFieldDetector>();
 builder.Services.AddScoped<WordToPdfConverter.Services.UnifiedCoordinateService>();

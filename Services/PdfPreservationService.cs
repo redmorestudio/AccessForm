@@ -95,10 +95,10 @@ namespace WordToPdfConverter.Services
                 _logger.LogWarning($"[PDF-PRESERVATION] ⚠️  Whitespace adoption failed: {adoptionResult.ErrorMessage}, continuing with original PDF");
             }
 
-            // Step 1: Fix any artifact violations (tagged content inside artifacts) in source PDF
-            _logger.LogInformation("[PDF-PRESERVATION] Step 1: Checking for artifact violations in source PDF...");
+            // Step 1: Fix ALL accessibility violations (artifacts, control chars, whitespace) in source PDF
+            _logger.LogInformation("[PDF-PRESERVATION] Step 1: Running comprehensive accessibility fixes on source PDF...");
             stepStartTime = DateTime.UtcNow;
-            var artifactFixResult = await _artifactViolationFixService.FixArtifactViolationsAsync(pdfBytes);
+            var artifactFixResult = await _artifactViolationFixService.FixAllViolationsAsync(pdfBytes);
 
             // Record in report
             report.Issues.ArtifactViolations.Found = artifactFixResult.ViolationsFound;
@@ -363,11 +363,11 @@ namespace WordToPdfConverter.Services
             // ARTIFACT TRACE: After PassportPDF
             CountArtifacts(pdfAfterPassport, "AFTER PassportPDF");
 
-            // Step 6: Fix artifacts created by PassportPDF
-            // PassportPDF and accessibility services may add new whitespace - clean it up
-            _logger.LogInformation("[PDF-PRESERVATION] Step 3: Final artifact cleanup after PassportPDF...");
+            // Step 6: Fix ALL accessibility violations created by PassportPDF
+            // PassportPDF and accessibility services may add new whitespace - aggressively clean it up
+            _logger.LogInformation("[PDF-PRESERVATION] Step 3: Final comprehensive accessibility fixes after PassportPDF...");
             stepStartTime = DateTime.UtcNow;
-            var finalArtifactFixResult = await _artifactViolationFixService.FixArtifactViolationsAsync(pdfAfterPassport);
+            var finalArtifactFixResult = await _artifactViolationFixService.FixAllViolationsAsync(pdfAfterPassport);
 
             report.Steps.Add(new Models.ProcessingStep
             {

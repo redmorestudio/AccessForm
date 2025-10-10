@@ -40,6 +40,7 @@ namespace WordToPdfConverter.Services
         private readonly MultiStageValidationService _multiStageValidation;
         private readonly Microsoft.Extensions.Configuration.IConfiguration _configuration;
         private readonly HttpClient _httpClient;
+        private readonly WordDocumentPreprocessor _wordPreprocessor;
         private int _fieldCounter = 0;
 
         public ConfigurableFieldDetectionService(
@@ -54,6 +55,7 @@ namespace WordToPdfConverter.Services
             NLPLabelGenerator nlpGenerator,
             Microsoft.Extensions.Configuration.IConfiguration configuration,
             HttpClient httpClient,
+            WordDocumentPreprocessor wordPreprocessor = null,
             LlamaGroqService groqService = null,
             MultiStageValidationService multiStageValidation = null)
         {
@@ -68,6 +70,7 @@ namespace WordToPdfConverter.Services
             _nlpGenerator = nlpGenerator;
             _configuration = configuration;
             _httpClient = httpClient;
+            _wordPreprocessor = wordPreprocessor;
             _groqService = groqService;
             _multiStageValidation = multiStageValidation;
 
@@ -353,7 +356,23 @@ namespace WordToPdfConverter.Services
         {
             var fields = new List<FieldDetectionResult>();
             byte[] pdfBytes;
-            
+
+            // Pre-process Word document to clean up whitespace issues
+            if (_wordPreprocessor != null)
+            {
+                try
+                {
+                    _logger.LogInformation("[PREPROCESSOR] Cleaning Word document to prevent untagged whitespace");
+                    wordBytes = _wordPreprocessor.PreprocessForAccessibility(wordBytes, fileName);
+                    _logger.LogInformation("[PREPROCESSOR] Word document cleaned successfully");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning($"[PREPROCESSOR] Failed to preprocess Word document: {ex.Message}");
+                    // Continue with original if preprocessing fails
+                }
+            }
+
             // Try with AutoTag first
             try
             {
