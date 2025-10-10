@@ -499,6 +499,146 @@ namespace WordToPdfConverter.Services
         }
 
         /// <summary>
+        /// Ultimate nuclear fix - removes ALL untagged text operations.
+        /// This is the most aggressive option for stubborn PAC violations.
+        /// </summary>
+        public async Task<FixResult> FixUntaggedUltimateAsync(byte[] pdfBytes)
+        {
+            try
+            {
+                _logger.LogInformation("Running ULTIMATE untagged text removal (nuclear option)...");
+
+                // Save PDF to temp file
+                var tempInputPath = Path.Combine(Path.GetTempPath(), $"ultimate_fix_input_{Guid.NewGuid()}.pdf");
+                await File.WriteAllBytesAsync(tempInputPath, pdfBytes);
+
+                var scriptPath = Path.Combine(Directory.GetCurrentDirectory(), "fix_untagged_ultimate.py");
+
+                if (!File.Exists(scriptPath))
+                {
+                    _logger.LogWarning($"Ultimate fix script not found at: {scriptPath}");
+                    CleanupTempFile(tempInputPath);
+                    // Return original PDF if script not found
+                    return new FixResult
+                    {
+                        Success = true,
+                        FixedPdf = pdfBytes,
+                        ViolationsFound = 0,
+                        ViolationsFixed = 0
+                    };
+                }
+
+                _logger.LogDebug($"Running ultimate fix script: {scriptPath}");
+
+                var process = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = "python3",
+                        Arguments = $"\"{scriptPath}\" \"{tempInputPath}\"",
+                        WorkingDirectory = Directory.GetCurrentDirectory(),
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }
+                };
+
+                process.Start();
+                var output = await process.StandardOutput.ReadToEndAsync();
+                var error = await process.StandardError.ReadToEndAsync();
+                await process.WaitForExitAsync();
+
+                if (!string.IsNullOrEmpty(error))
+                {
+                    _logger.LogDebug($"Ultimate fix stderr: {error}");
+                }
+
+                // Parse the JSON output
+                JsonDocument result;
+                try
+                {
+                    result = JsonDocument.Parse(output);
+                }
+                catch (JsonException jsonEx)
+                {
+                    _logger.LogError($"Failed to parse ultimate fix output: {jsonEx.Message}\nOutput: {output}");
+                    CleanupTempFile(tempInputPath);
+                    return new FixResult
+                    {
+                        Success = false,
+                        ErrorMessage = "Failed to parse script output"
+                    };
+                }
+
+                // Check success
+                if (!result.RootElement.TryGetProperty("success", out var success) || !success.GetBoolean())
+                {
+                    var errorMsg = result.RootElement.TryGetProperty("error", out var err) ? err.GetString() : "Unknown error";
+                    CleanupTempFile(tempInputPath);
+                    return new FixResult
+                    {
+                        Success = false,
+                        ErrorMessage = errorMsg
+                    };
+                }
+
+                // Get metrics
+                var btBlocks = result.RootElement.TryGetProperty("bt_blocks_removed", out var btProp) ? btProp.GetInt32() : 0;
+                var textOps = result.RootElement.TryGetProperty("text_ops_removed", out var textProp) ? textProp.GetInt32() : 0;
+                var totalOps = result.RootElement.TryGetProperty("total_operations", out var totalProp) ? totalProp.GetInt32() : 0;
+
+                // Get output path
+                if (!result.RootElement.TryGetProperty("output_path", out var outputPath))
+                {
+                    CleanupTempFile(tempInputPath);
+                    return new FixResult
+                    {
+                        Success = false,
+                        ErrorMessage = "No output path in script result"
+                    };
+                }
+
+                var outputFile = outputPath.GetString();
+                if (string.IsNullOrEmpty(outputFile) || !File.Exists(outputFile))
+                {
+                    CleanupTempFile(tempInputPath);
+                    return new FixResult
+                    {
+                        Success = false,
+                        ErrorMessage = "Output file not found"
+                    };
+                }
+
+                // Read the fixed PDF
+                var fixedPdfBytes = await File.ReadAllBytesAsync(outputFile);
+
+                _logger.LogInformation($"✅ Ultimate fix: {btBlocks} BT blocks, {textOps} text operations removed");
+
+                // Cleanup
+                CleanupTempFile(tempInputPath);
+                CleanupTempFile(outputFile);
+
+                return new FixResult
+                {
+                    Success = true,
+                    FixedPdf = fixedPdfBytes,
+                    ViolationsFound = totalOps,
+                    ViolationsFixed = totalOps
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to run ultimate untagged fix");
+                return new FixResult
+                {
+                    Success = false,
+                    ErrorMessage = $"Exception: {ex.Message}"
+                };
+            }
+        }
+
+        /// <summary>
         /// Run ALL fixes in sequence for maximum PAC compliance.
         /// </summary>
         public async Task<FixResult> FixAllViolationsAsync(byte[] pdfBytes)
@@ -508,7 +648,7 @@ namespace WordToPdfConverter.Services
             var currentPdf = pdfBytes;
 
             // 1. First run artifact fix
-            _logger.LogInformation("[1/3] Running artifact violation fix...");
+            _logger.LogInformation("[1/4] Running artifact violation fix...");
             var artifactResult = await FixArtifactViolationsAsync(currentPdf, true);
             if (artifactResult.Success && artifactResult.FixedPdf != null)
             {
@@ -518,7 +658,7 @@ namespace WordToPdfConverter.Services
             }
 
             // 2. Then run control character fix
-            _logger.LogInformation("[2/3] Running control character fix...");
+            _logger.LogInformation("[2/4] Running control character fix...");
             var controlResult = await FixControlCharactersAsync(currentPdf);
             if (controlResult.Success && controlResult.FixedPdf != null)
             {
@@ -527,14 +667,24 @@ namespace WordToPdfConverter.Services
                 totalFixed += controlResult.ViolationsFixed;
             }
 
-            // 3. Finally run aggressive whitespace fix for any remaining issues
-            _logger.LogInformation("[3/3] Running aggressive whitespace fix for PAC compliance...");
+            // 3. Run aggressive whitespace fix for any remaining issues
+            _logger.LogInformation("[3/4] Running aggressive whitespace fix for PAC compliance...");
             var aggressiveResult = await FixAggressiveWhitespaceAsync(currentPdf);
             if (aggressiveResult.Success && aggressiveResult.FixedPdf != null)
             {
                 currentPdf = aggressiveResult.FixedPdf;
                 totalFound += aggressiveResult.ViolationsFound;
                 totalFixed += aggressiveResult.ViolationsFixed;
+            }
+
+            // 4. Finally run ultimate fix as nuclear option
+            _logger.LogInformation("[4/4] Running ULTIMATE untagged removal (nuclear option)...");
+            var ultimateResult = await FixUntaggedUltimateAsync(currentPdf);
+            if (ultimateResult.Success && ultimateResult.FixedPdf != null)
+            {
+                currentPdf = ultimateResult.FixedPdf;
+                totalFound += ultimateResult.ViolationsFound;
+                totalFixed += ultimateResult.ViolationsFixed;
             }
 
             _logger.LogInformation($"✅ All fixes complete: {totalFixed} violations fixed");
