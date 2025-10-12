@@ -449,12 +449,26 @@ def fix_artifact_violations(input_pdf_path, output_pdf_path=None, verbose=False)
                         bt_start = bt_match.start()
                         bt_end = bt_match.end()
 
-                        # Check if this BT block contains a color command
-                        # Look for 'rg' (RGB), 'g' (gray), or 'k' (CMYK) commands
+                        # Check if this BT block contains a color command OR look for inherited color
+                        # Look for 'rg' (RGB), 'g' (gray) commands inside the BT block
                         text_color_match = re.search(r'([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+rg', bt_content)
                         text_gray_match = re.search(r'([\d.]+)\s+g\s', bt_content)
 
-                        if text_color_match or text_gray_match:
+                        # Also check for inherited color from before the BT block
+                        inherited_color_match = None
+                        inherited_gray_match = None
+                        if not text_color_match and not text_gray_match:
+                            # Look backward for the most recent color command before BT
+                            lookback_for_inherited = content_str[max(0, bt_start - 200):bt_start]
+                            inherited_matches = list(re.finditer(r'([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+rg', lookback_for_inherited))
+                            if inherited_matches:
+                                inherited_color_match = inherited_matches[-1]
+                            else:
+                                inherited_gray_matches = list(re.finditer(r'([\d.]+)\s+g\s', lookback_for_inherited))
+                                if inherited_gray_matches:
+                                    inherited_gray_match = inherited_gray_matches[-1]
+
+                        if text_color_match or text_gray_match or inherited_color_match or inherited_gray_match:
                             # Look backward from BT to find recent fill color in artifact block
                             lookback = content_str[max(0, bt_start - 500):bt_start]
 
@@ -468,12 +482,19 @@ def fix_artifact_violations(input_pdf_path, output_pdf_path=None, verbose=False)
                                 fill_g = float(last_fill.group(2))
                                 fill_b = float(last_fill.group(3))
 
-                                # Compare with text color
+                                # Compare with text color (either explicit or inherited)
+                                text_r = text_g = text_b = None
+
                                 if text_color_match:
                                     text_r = float(text_color_match.group(1))
                                     text_g = float(text_color_match.group(2))
                                     text_b = float(text_color_match.group(3))
+                                elif inherited_color_match:
+                                    text_r = float(inherited_color_match.group(1))
+                                    text_g = float(inherited_color_match.group(2))
+                                    text_b = float(inherited_color_match.group(3))
 
+                                if text_r is not None:
                                     # Check if colors are very similar (poor contrast)
                                     # Allow small tolerance for rounding
                                     color_diff = abs(fill_r - text_r) + abs(fill_g - text_g) + abs(fill_b - text_b)
@@ -481,6 +502,9 @@ def fix_artifact_violations(input_pdf_path, output_pdf_path=None, verbose=False)
                                     if color_diff < 0.15:  # Very similar colors
                                         # Check if text is just whitespace
                                         text_content = re.search(r'\[(.*?)\]\s*TJ', bt_content)
+                                        if not text_content:
+                                            text_content = re.search(r'\((.*?)\)\s*Tj', bt_content)
+
                                         if text_content:
                                             text = text_content.group(1)
                                             # If it's just space or empty, remove the whole BT block

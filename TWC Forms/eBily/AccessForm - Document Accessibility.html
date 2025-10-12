@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<!-- saved from url=(0022)http://127.0.0.1:5000/ -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AccessForm - Document Accessibility</title>
+    <!--<base href="/">--><base href=".">
+    <link href="./AccessForm - Document Accessibility_files/bootstrap.min.css" rel="stylesheet">
+    <script src="./AccessForm - Document Accessibility_files/bootstrap.bundle.min.js"></script>    <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=&#39;http://www.w3.org/2000/svg&#39; viewBox=&#39;0 0 16 16&#39;&gt;&lt;text y=&#39;14&#39; font-size=&#39;16&#39;&gt;%E2%99%BF&lt;/text&gt;&lt;/svg&gt;">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    
+<!--!--><!--!--><!--!--><!--!--><!--!--><!--!--><link href="./AccessForm - Document Accessibility_files/bootstrap.min.css" rel="stylesheet">
+
+<div class="page"><main><!--!--><!--!--><!--!--><!--!-->
+
+<div class="container mt-5"><div class="row"><div class="col-md-10 offset-md-1"><!--!--><h1 class="text-center mb-2" style="color: white !important;">AccessForm Document Accessibility</h1>
+            <!--!--><p class="text-center mb-3" style="color: rgba(255, 255, 255, 0.9) !important;">Drop any Word or PDF document to make it accessible</p>
+            
+            
+            <div class="card mb-4" style="background-color: rgba(255, 255, 255, 0.95);"><div class="card-body"><!--!--><h5 class="card-title mb-3">🔍 Field Detection Options</h5>
+                        
+                        
+                        <div class="row mb-3"><div class="col-md-6"><!--!--><h6>Detection Services:</h6>
+
+                                
+                                <div class="form-check mb-3 p-2" style="background-color: rgba(40, 167, 69, 0.1); border-left: 3px solid #28a745;"><input class="form-check-input" type="checkbox" id="enableAllAI"><!--!-->
+                                    <!--!--><label class="form-check-label" for="enableAllAI"><strong>🚀 Enable All AI Features</strong>
+                                        <small class="d-block text-muted">Quick toggle for production mode</small></label></div><!--!-->
+
+                                
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="useSyncfusion" disabled=""><!--!-->
+                                    <label class="form-check-label" for="useSyncfusion" style="opacity: 0.6;"><!--!--><strong>Syncfusion</strong> <!--!--><small class="text-muted">(Coordinate detection)</small></label></div><!--!-->
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="useGoogle" disabled=""><!--!-->
+                                    <label class="form-check-label" for="useGoogle" style="opacity: 0.6;"><!--!--><strong>Google Document AI</strong> <!--!--><small class="text-muted">(Structured analysis)</small></label></div><!--!-->
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="useClaudeVision" disabled=""><!--!-->
+                                    <label class="form-check-label" for="useClaudeVision" style="opacity: 0.6;"><!--!--><strong>Claude Vision</strong> <!--!--><small class="text-muted">(Visual field labeling)</small></label></div><!--!-->
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="useClaudeValidation" disabled=""><!--!-->
+                                    <label class="form-check-label" for="useClaudeValidation" style="opacity: 0.6;"><!--!--><strong>Claude Validation</strong> <!--!--><small class="text-muted">(Fix bounding boxes)</small></label></div><!--!-->
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="useGroqValidation" disabled=""><!--!-->
+                                    <label class="form-check-label" for="useGroqValidation" style="opacity: 0.6;"><!--!--><strong>Groq Label Validation</strong> <!--!--><small class="text-muted">(DEPRECATED - use Multi-Stage)</small></label></div><!--!-->
+                                <div class="form-check p-2" style="background-color: rgba(40, 123, 255, 0.1); border-left: 3px solid #287bff;"><input class="form-check-input" type="checkbox" id="useMultiStageValidation" disabled=""><!--!-->
+                                    <label class="form-check-label" for="useMultiStageValidation" style="opacity: 0.6;"><!--!--><strong>🎯 Multi-Stage Validation</strong> <!--!--><small class="text-muted">(Claude + GPT-5 Consensus)</small></label></div><!--!-->
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="useSignatureDetection" disabled=""><!--!-->
+                                    <label class="form-check-label" for="useSignatureDetection" style="opacity: 0.6;"><!--!--><strong>Signature Auto-Detection</strong> <!--!--><small class="text-muted">(Find X markers)</small></label></div></div></div><!--!-->
+                        
+                        
+                        <div class="row"><div class="col-12"><!--!--><h6>Debug Options:</h6>
+                                <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="debugMode"><!--!-->
+                                    <!--!--><label class="form-check-label" for="debugMode">
+                                        Debug Mode
+                                    </label></div><!--!-->
+                                <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="showFieldIds"><!--!-->
+                                    <!--!--><label class="form-check-label" for="showFieldIds">
+                                        Show Field IDs
+                                    </label></div></div></div><!--!-->
+                        
+                        
+                        <div class="mt-3"><!--!--><strong>Quick Presets:</strong>
+                            <div class="btn-group btn-group-sm ms-2" role="group"><button type="button" class="btn btn-outline-primary"><!--!-->
+                                    ⚡ Fast (Syncfusion only)
+                                </button><!--!-->
+                                <button type="button" class="btn btn-outline-primary"><!--!-->
+                                    🎯 Accurate (Syncfusion + Claude)
+                                </button><!--!-->
+                                <button type="button" class="btn btn-outline-primary"><!--!-->
+                                    🔬 Comprehensive (All services)
+                                </button></div></div></div></div><!--!-->
+            
+            
+            <div class="card mb-4" style="background-color: rgba(255, 255, 255, 0.95);"><div class="card-body"><!--!--><h5 class="card-title mb-3">♿ Accessibility Services</h5>
+                    
+                    <div class="row"><div class="col-md-6"><!--!--><h6>Auto-tagging Services:</h6>
+                            <div class="form-check"><input class="form-check-input" type="checkbox" id="useAsposeAutotag"><!--!-->
+                                <!--!--><label class="form-check-label" for="useAsposeAutotag"><strong>Aspose Auto-tag</strong>
+                                    <small class="text-muted">(Local processing, no credits)</small></label></div></div><!--!-->
+                        
+                        <div class="col-md-6"><!--!--><h6>Font &amp; Optimization:</h6>
+                            <div class="form-check"><input class="form-check-input" type="checkbox" id="useAsposeFontEmbed"><!--!-->
+                                <!--!--><label class="form-check-label" for="useAsposeFontEmbed"><strong>Aspose Font Embedding</strong>
+                                    <small class="text-muted">(Recommended for compliance)</small></label></div></div></div><!--!-->
+                    
+                    <!--!--><div class="alert alert-info mt-3 mb-0"><small><strong>Note:</strong> Aspose Auto-tag provides local PDF/UA compliance processing without API costs.
+                        </small></div></div></div><!--!-->
+            
+            
+            <div id="dropZone" class="drop-zone"><div class="drop-zone-content"><!--!--><div class="drop-icon mb-3"><svg width="64" height="64" fill="currentColor" viewBox="0 0 16 16"><path d="M4.406 1.342A5.53 5.53 0 0 1 8 0c2.69 0 4.923 2 5.166 4.579C14.758 4.804 16 6.137 16 7.773 16 9.569 14.502 11 12.687 11H10a.5.5 0 0 1 0-1h2.688C13.979 10 15 8.988 15 7.773c0-1.216-1.02-2.228-2.313-2.228h-.5v-.5C12.188 2.825 10.328 1 8 1a4.53 4.53 0 0 0-2.941 1.1c-.757.652-1.153 1.438-1.153 2.055v.448l-.445.049C2.064 4.805 1 5.952 1 7.318 1 8.785 2.23 10 3.781 10H6a.5.5 0 0 1 0 1H3.781C1.708 11 0 9.366 0 7.318c0-1.763 1.266-3.223 2.942-3.593.143-.863.698-1.723 1.464-2.383z"></path>
+                                <path d="M7.646 4.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 5.707V14.5a.5.5 0 0 1-1 0V5.707L5.354 7.854a.5.5 0 1 1-.708-.708l3-3z"></path></svg></div>
+                        <!--!--><h4 class="mb-3">Drop Your Document Here</h4>
+                        <!--!--><p class="text-muted mb-3">Supports Word (.docx) and PDF (.pdf) files</p>
+                        <!--!--><p class="text-muted">or</p>
+                        <button class="btn btn-primary"><!--!-->
+                            Browse Files
+                        </button><!--!-->
+                        <div class="mt-3"><button class="btn btn-success"><!--!-->
+                                🎆 Browse Files (PassportPDF)
+                            </button><!--!-->
+                            <!--!--><small class="d-block text-muted mt-1">Uses PassportPDF for full PDF/UA compliance</small></div><!--!-->
+                        <!--!--><input id="fileInput" class="d-none" accept=".docx,.pdf" type="file" _bl_282343cb-7b5c-49af-8eb5-07e82d90ac16=""></div></div><div class="row mt-5"><div class="col-md-4 mb-3"><div class="info-card ai-mode"><!--!--><div class="info-icon">🤖</div>
+                        <h5>AI-Powered Detection</h5><!--!-->
+                        <p class="small text-muted">Azure Form Recognizer and Llama AI for advanced field detection</p></div></div><!--!-->
+                <!--!--><div class="col-md-4 mb-3"><div class="info-card"><div class="info-icon">♿</div>
+                        <h5>Full Compliance</h5>
+                        <p class="small text-muted">WCAG 2.1 AA and Section 508 compliant with detailed reporting</p></div></div>
+                <div class="col-md-4 mb-3"><div class="info-card ai-mode"><!--!--><div class="info-icon">⚡</div>
+                        <h5>Intelligent Analysis</h5><!--!-->
+                        <p class="small text-muted">AI analyzes form structure and suggests optimal accessibility improvements</p></div></div></div></div></div></div><!--!-->
+
+
+<div class="modal fade" id="tagTreeModal" tabindex="-1" aria-labelledby="tagTreeModalLabel" aria-hidden="true"><div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content"><!--!--><div class="modal-header bg-primary text-white"><h5 class="modal-title" id="tagTreeModalLabel"><i class="bi bi-diagram-3"></i> PDF Tag Structure Viewer
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button></div>
+            <div class="modal-body" id="tagTreeModalBody"></div>
+            <div class="modal-footer"><!--!--><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary"><!--!--><i class="bi bi-download"></i> Export as JSON
+                </button></div></div></div></div><!--!-->
+
+
+<!--!--><style>
+    .drop-zone {
+        border: 3px dashed #dee2e6;
+        border-radius: 20px;
+        padding: 60px 40px;
+        text-align: center;
+        transition: all 0.3s ease;
+        background: white !important;
+        min-height: 400px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    }
+    
+    .drop-zone-active {
+        border-color: #4a90e2;
+        background: white !important;
+        transform: scale(1.02);
+        box-shadow: 0 8px 25px rgba(74, 144, 226, 0.15);
+    }
+    
+    .drop-zone.processing {
+        background: white !important;
+        border-color: #4a90e2;
+    }
+    
+    .drop-zone.has-file {
+        border-color: #28a745;
+        background: white !important;
+    }
+    
+    .drop-zone-content {
+        max-width: 400px;
+        margin: 0 auto;
+    }
+    
+    .drop-icon {
+        color: #6c757d;
+        opacity: 0.5;
+    }
+    
+    .file-selected {
+        animation: fadeIn 0.3s ease;
+    }
+    
+    .file-icon svg {
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+    }
+    
+    .results-section {
+        animation: slideUp 0.5s ease;
+    }
+    
+    .info-card {
+        text-align: center;
+        padding: 30px 20px;
+        background: white !important;
+        border-radius: 15px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        height: 100%;
+        color: #212529 !important;
+    }
+    
+    .info-card h5 {
+        color: #212529 !important;
+    }
+    
+    .info-card p {
+        color: #6c757d !important;
+    }
+    
+    .info-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+    }
+    
+    /* Remove AI mode gradient - all cards are white */
+    .info-card.ai-mode {
+        background: white !important;
+        color: #212529 !important;
+    }
+    
+    .info-card.ai-mode .text-muted {
+        color: #6c757d !important;
+    }
+    
+    .info-card.ai-mode h5 {
+        color: #212529 !important;
+    }
+    
+    .info-card.ai-mode p {
+        color: #6c757d !important;
+    }
+    
+    /* Ensure white text on colored backgrounds */
+    .bg-secondary, .bg-success, .bg-info, .bg-primary {
+        color: white !important;
+    }
+    
+    .bg-secondary *, .bg-success *, .bg-info *, .bg-primary * {
+        color: white !important;
+    }
+    
+    /* All buttons use light royal blue */
+    .btn-secondary, .btn-info, .btn-primary, .btn-success, .btn-outline-secondary, .btn-outline-info {
+        background-color: #4a90e2 !important;
+        border-color: #4a90e2 !important;
+        color: white !important;
+    }
+    
+    .btn-secondary:hover, .btn-info:hover, .btn-primary:hover, .btn-success:hover,
+    .btn-outline-secondary:hover, .btn-outline-info:hover {
+        background-color: #357abd !important;
+        border-color: #357abd !important;
+        color: white !important;
+    }
+    
+    .form-check-input:checked {
+        background-color: #4a90e2;
+        border-color: #4a90e2;
+    }
+    
+    .form-check-input:focus {
+        border-color: #4a90e2;
+        box-shadow: 0 0 0 0.25rem rgba(74, 144, 226, 0.25);
+    }
+    
+    .alert-info {
+        background: linear-gradient(135deg, #e3f2fd 0%, #f3f9ff 100%);
+        border: 1px solid #90caf9;
+        color: #1976d2;
+    }
+    
+    .info-icon {
+        font-size: 48px;
+        margin-bottom: 15px;
+    }
+    
+    .improvements-list {
+        background: #f8f9fa;
+        padding: 10px;
+        border-radius: 8px;
+    }
+    
+    /* Ensure proper text contrast */
+    .card-body p, .card-body strong {
+        color: #212529;
+    }
+    
+    .text-muted {
+        color: #6c757d !important;
+    }
+    
+    /* Override text-muted on dark backgrounds */
+    .bg-secondary .text-muted, 
+    .bg-success .text-muted, 
+    .bg-info .text-muted, 
+    .bg-primary .text-muted,
+    .bg-warning .text-muted {
+        color: rgba(255, 255, 255, 0.85) !important;
+    }
+    
+    .improvements-list ul {
+        margin-bottom: 0;
+        padding-left: 20px;
+    }
+    
+    .btn {
+        border-radius: 8px;
+        padding: 10px 20px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+    
+    .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .card {
+        border-radius: 15px;
+        overflow: hidden;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        background: white;
+    }
+    
+    .card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+    }
+    
+    .card-header {
+        border-radius: 0 !important;
+    }
+    
+    .badge {
+        padding: 6px 12px;
+        border-radius: 6px;
+    }
+    
+    /* Ensure badge text contrast */
+    .badge.bg-success {
+        background-color: #198754 !important;
+        color: white !important;
+    }
+    
+    .badge.bg-secondary {
+        background-color: #6c757d !important;
+        color: white !important;
+    }
+    
+    .badge.bg-info {
+        background-color: #0dcaf0 !important;
+        color: #000 !important;
+    }
+    
+    .badge.bg-warning {
+        background-color: #ffc107 !important;
+        color: #000 !important;
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    
+    @keyframes slideUp {
+        from { 
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to { 
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .animate-in {
+        animation: slideUp 0.5s ease;
+    }
+    
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+        .drop-zone {
+            padding: 40px 20px;
+            min-height: 300px;
+        }
+        
+        .info-card {
+            margin-bottom: 20px;
+        }
+    }
+</style>
+
+
+<!--!--><div class="tag-modification-window hide" id="tagModificationWindow" style="position: fixed; left: 20px; top: 50px; width: 1200px; height: calc(100vh - 100px); z-index: 1040;"><div class="window-container" style="display: flex; flex-direction: column; height: 100%; background: white; border: 2px solid #dee2e6; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);"><div class="window-header" id="tagModWindowHeader" style="background: linear-gradient(to right, #0d6efd, #0a58ca); color: white; padding: 12px 15px; cursor: move; border-radius: 6px 6px 0 0; display: flex; justify-content: space-between; align-items: center;"><!--!--><h5 class="mb-0" style="font-weight: 600;"><i class="fas fa-tags me-2"></i>
+                Tag Structure &amp; Field Editor
+            </h5>
+            <button type="button" class="btn-close btn-close-white"></button></div><!--!-->
+        <div class="window-body" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;"><div class="content-area" style="flex: 1; overflow: hidden; padding: 15px;"><div class="row h-100" style="overflow: hidden;"><div class="col-md-6 d-flex flex-column" style="overflow: hidden; height: 100%;"><h5>PDF Preview - Page 1</h5><!--!-->
+                        <div class="pdf-preview-controls mb-2"><button class="btn btn-sm btn-secondary" disabled=""><!--!--><i class="fas fa-chevron-left"></i> Previous
+                            </button><!--!-->
+                            <span class="mx-2">Page 1 of 1</span><!--!-->
+                            <button class="btn btn-sm btn-secondary" disabled=""><!--!-->
+                                Next <i class="fas fa-chevron-right"></i></button></div><!--!-->
+                        <div class="pdf-preview-panel" id="pdfPreviewPanel" _bl_9f13696f-050b-4fa4-bb65-fdc2144da7c3=""><div class="pdf-page-container" id="pdfPageContainer" style="position: relative; display: inline-block;"><!--!--><div class="text-center p-5"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></div></div></div></div><!--!-->
+                    <div class="col-md-6 d-flex flex-column" style="overflow: hidden; height: 100%;"><div class="d-flex justify-content-between align-items-center mb-2"><h5>Form Fields (0 fields)</h5><!--!-->
+                            <div class="btn-group btn-group-sm"><button class="btn btn-outline-secondary active"><!--!--><i class="fas fa-sort-numeric-down"></i> Original Order
+                                </button><!--!-->
+                                <button class="btn btn-outline-secondary "><!--!--><i class="fas fa-sort-alpha-down"></i> Name
+                                </button><!--!-->
+                                <button class="btn btn-outline-secondary "><!--!--><i class="fas fa-tags"></i> Type
+                                </button><!--!-->
+                                <button class="btn btn-outline-secondary "><!--!--><i class="fas fa-file"></i> Page
+                                </button></div></div><!--!-->
+                        <div class="mb-2"><button class="btn btn-sm btn-primary"><!--!--><i class="fas fa-sync-alt"></i> Show Field Boxes
+                            </button><button class="btn btn-sm btn-warning ms-2"><!--!--><i class="fas fa-plus"></i> Add Field (Manual)
+                            </button><!--!-->
+                            <button class="btn btn-sm btn-info ms-2"><!--!--><i class="fas fa-stream"></i> Cascade Correction
+                            </button><!--!-->
+                            <button class="btn btn-sm btn-success ms-2" title="Reload fields from PDF"><!--!--><i class="fas fa-redo"></i> Refresh Fields
+                            </button></div><div class="fields-panel" id="fieldsPanel"><table class="table table-sm table-hover"><thead class="table-light sticky-top"><tr><!--!--><th style="width: 30px">#</th>
+                                        <th class="sortable-header"><!--!-->
+                                            Field Name 
+</th><!--!-->
+                                        <th class="sortable-header" style="width: 120px"><!--!-->
+                                            Type
+</th><!--!-->
+                                        <!--!--><th style="width: 80px">Width</th>
+                                        <!--!--><th style="width: 80px">Height</th>
+                                        <!--!--><th>Tooltip</th>
+                                        <th class="sortable-header" style="width: 60px"><!--!-->
+                                            Page
+</th><!--!-->
+                                        <!--!--><th style="width: 60px">Actions</th></tr></thead><!--!-->
+                                <tbody></tbody></table></div><div class="bulk-operations mt-3"><!--!--><h5>Bulk Operations</h5>
+                    <div class="d-flex flex-wrap gap-2 mb-2"><button class="btn btn-warning"><!--!--><i class="fas fa-undo"></i> Reset to Original Fields
+                        </button><!--!-->
+                        <button class="btn btn-secondary"><!--!--><i class="fas fa-magic"></i> Auto-Generate Tooltips
+                        </button><!--!-->
+                        <button class="btn btn-secondary"><!--!--><i class="fas fa-check-circle"></i> Validate Fields
+                        </button><!--!-->
+                        <button class="btn btn-secondary"><!--!--><i class="fas fa-cogs"></i> Optimize Field Types
+                        </button></div></div></div></div></div><!--!-->
+            <div class="window-footer" style="padding: 15px; background: #f8f9fa; border-top: 1px solid #dee2e6; border-radius: 0 0 6px 6px;"><div class="d-flex justify-content-between w-100"><span class="text-muted">0 fields total</span><!--!-->
+                    <div><button type="button" class="btn btn-secondary">Cancel</button><!--!-->
+                        <button type="button" class="btn btn-primary"><!--!-->Apply Changes &amp; Continue</button></div></div></div></div><!--!-->
+        
+        <div class="resize-handle resize-e" style="position: absolute; right: 0; top: 0; width: 5px; height: 100%; cursor: ew-resize;"></div>
+        <div class="resize-handle resize-s" style="position: absolute; left: 0; bottom: 0; width: 100%; height: 5px; cursor: ns-resize;"></div>
+        <div class="resize-handle resize-se" style="position: absolute; right: 0; bottom: 0; width: 15px; height: 15px; cursor: nwse-resize;"></div></div></div><!--!-->
+
+<!--!--><style>
+    .tag-modification-window.hide {
+        display: none !important;
+    }
+
+    .tag-modification-window.show {
+        display: block;
+    }
+
+    .pdf-preview-panel {
+        flex: 1;
+        min-height: 0;
+        height: 100%;
+        overflow-y: auto;
+        overflow-x: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        background: #f5f5f5;
+        position: relative;
+    }
+    
+    .pdf-page-container {
+        position: relative;
+        display: inline-block;
+        margin: 10px;
+    }
+    
+    .pdf-page-image {
+        max-width: 100%;
+        height: auto;
+        border: 1px solid #ccc;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        position: relative;
+        z-index: 1;
+    }
+    
+    
+    .fields-panel {
+        flex: 1;
+        min-height: 0;
+        height: 100%;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        background: white;
+    }
+    
+    .sortable-header {
+        cursor: pointer;
+        user-select: none;
+        position: relative;
+    }
+    
+    .sortable-header:hover {
+        background: #e9ecef;
+    }
+    
+    .expanded-editor {
+        animation: slideDown 0.3s ease-out;
+    }
+    
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .table-hover tbody tr:hover {
+        background-color: rgba(0, 123, 255, 0.05);
+    }
+
+    .table-primary {
+        background-color: rgba(13, 110, 253, 0.25) !important;
+        border-left: 3px solid #0d6efd !important;
+    }
+
+    .table-primary:hover {
+        background-color: rgba(13, 110, 253, 0.35) !important;
+    }
+    
+    .bulk-operations {
+        border-top: 1px solid #dee2e6;
+        padding-top: 15px;
+    }
+    
+    .pdf-preview-controls {
+        text-align: center;
+        padding: 10px;
+        background: white;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .pdf-page-image {
+        cursor: crosshair;
+        user-select: none;
+    }
+
+    .field-overlay {
+        position: absolute;
+        border-width: 2px;
+        border-style: solid;
+        cursor: move;
+        box-sizing: border-box;
+        user-select: none;
+        transition: border-color 0.2s, background-color 0.2s;
+        z-index: 10;
+        /* Default colors for unknown types - will be overridden by type-specific classes */
+        border-color: #6c757d;
+        background-color: rgba(108, 117, 125, 0.1);
+    }
+
+    .field-overlay:hover {
+        opacity: 0.8;
+    }
+
+    .field-overlay.selected {
+        border-color: #ff6b6b;
+        background-color: rgba(255, 107, 107, 0.15);
+        border-width: 3px;
+    }
+
+    .field-overlay.drawing {
+        border-color: #28a745;
+        background-color: rgba(40, 167, 69, 0.1);
+        border-style: dashed;
+    }
+
+    .field-label {
+        position: absolute;
+        top: -20px;
+        left: 0;
+        background: rgba(13, 110, 253, 0.9);
+        color: white;
+        padding: 2px 6px;
+        font-size: 11px;
+        border-radius: 3px;
+        white-space: nowrap;
+        pointer-events: none;
+    }
+
+    .selected .field-label {
+        background: rgba(255, 107, 107, 0.9);
+    }
+
+    .resize-handle-nw, .resize-handle-ne, .resize-handle-sw, .resize-handle-se {
+        position: absolute;
+        width: 8px;
+        height: 8px;
+        background: white;
+        border: 2px solid #0d6efd;
+        box-sizing: border-box;
+    }
+
+    .resize-handle-nw {
+        top: -4px;
+        left: -4px;
+        cursor: nwse-resize;
+    }
+
+    .resize-handle-ne {
+        top: -4px;
+        right: -4px;
+        cursor: nesw-resize;
+    }
+
+    .resize-handle-sw {
+        bottom: -4px;
+        left: -4px;
+        cursor: nesw-resize;
+    }
+
+    .resize-handle-se {
+        bottom: -4px;
+        right: -4px;
+        cursor: nwse-resize;
+    }
+
+    .selected .resize-handle-nw,
+    .selected .resize-handle-ne,
+    .selected .resize-handle-sw,
+    .selected .resize-handle-se {
+        border-color: #ff6b6b;
+        background: #fff;
+    }
+
+    /* Field type color coding */
+    .field-checkbox {
+        border-color: #ff6b6b !important;
+        background-color: rgba(255, 107, 107, 0.1) !important;
+    }
+
+    .field-radio {
+        border-color: #fd7e14 !important;
+        background-color: rgba(253, 126, 20, 0.1) !important;
+    }
+
+    .field-text {
+        border-color: #0d6efd !important;
+        background-color: rgba(13, 110, 253, 0.1) !important;
+    }
+
+    .field-dropdown {
+        border-color: #198754 !important;
+        background-color: rgba(25, 135, 84, 0.1) !important;
+    }
+
+    .field-listbox {
+        border-color: #20c997 !important;
+        background-color: rgba(32, 201, 151, 0.1) !important;
+    }
+
+    .field-signature {
+        border-color: #6f42c1 !important;
+        background-color: rgba(111, 66, 193, 0.1) !important;
+    }
+
+    /* Selected state overrides */
+    .field-overlay.selected {
+        border-width: 3px !important;
+    }
+</style>
+
+<!--!--><script>
+    window.fieldClickHandler = window.fieldClickHandler || {
+        currentFieldMap: [],
+
+        setupFieldClickDetection: function(fieldMapJson) {
+            try {
+                this.currentFieldMap = JSON.parse(fieldMapJson);
+                console.log('Field click detection setup with', this.currentFieldMap.length, 'fields');
+            } catch (e) {
+                console.error('Failed to parse field map:', e);
+                this.currentFieldMap = [];
+            }
+        }
+    };
+
+    window.setupFieldClickDetection = function(fieldMapJson) {
+        window.fieldClickHandler.setupFieldClickDetection(fieldMapJson);
+    };
+
+    window.handleFieldClick = function(x, y, dotNetHelper) {
+        const fieldMap = window.fieldClickHandler.currentFieldMap;
+        console.log(`=== CLICK DEBUG ===`);
+        console.log(`Click coordinates: (${x}, ${y})`);
+        console.log(`Available fields: ${fieldMap.length}`);
+
+        // Debug: Log all field bounds for comparison
+        fieldMap.forEach((field, index) => {
+            const bounds = field.bounds;
+            console.log(`Field ${index + 1} "${field.name}": x=${bounds.x}-${bounds.x + bounds.width}, y=${bounds.y}-${bounds.y + bounds.height} (w=${bounds.width}, h=${bounds.height})`);
+        });
+
+        // Find the field that contains the click coordinates
+        for (let field of fieldMap) {
+            const bounds = field.bounds;
+            const isWithinX = x >= bounds.x && x <= bounds.x + bounds.width;
+            const isWithinY = y >= bounds.y && y <= bounds.y + bounds.height;
+
+            console.log(`Testing field "${field.name}": X in bounds? ${isWithinX} (${x} >= ${bounds.x} && ${x} <= ${bounds.x + bounds.width}), Y in bounds? ${isWithinY} (${y} >= ${bounds.y} && ${y} <= ${bounds.y + bounds.height})`);
+
+            if (isWithinX && isWithinY) {
+                console.log(`✓ MATCH! Clicked on field: ${field.name}`);
+                // Call back to Blazor to select the field
+                dotNetHelper.invokeMethodAsync('SelectFieldByName', field.name);
+                return;
+            }
+        }
+
+        console.log('✗ No field found at click coordinates');
+        console.log(`=== END CLICK DEBUG ===`);
+    };
+
+    window.handleFieldRightClick = function(x, y, dotNetHelper) {
+        const fieldMap = window.fieldClickHandler.currentFieldMap;
+        console.log(`Checking field right-click at (${x}, ${y}) against ${fieldMap.length} fields`);
+
+        // Find the field that contains the right-click coordinates
+        for (let field of fieldMap) {
+            const bounds = field.bounds;
+            if (x >= bounds.x && x <= bounds.x + bounds.width &&
+                y >= bounds.y && y <= bounds.y + bounds.height) {
+                console.log(`Right-clicked on field: ${field.name}`);
+
+                // Show context menu for this field
+                showFieldContextMenu(field, x, y, dotNetHelper);
+                return;
+            }
+        }
+
+        console.log('No field found at right-click coordinates');
+    };
+
+    window.showFieldContextMenu = function(field, x, y, dotNetHelper) {
+        // Remove any existing context menu
+        const existingMenu = document.getElementById('field-context-menu');
+        if (existingMenu) {
+            existingMenu.remove();
+        }
+
+        // Create context menu
+        const menu = document.createElement('div');
+        menu.id = 'field-context-menu';
+        menu.className = 'field-context-menu';
+        menu.style.position = 'fixed';
+        menu.style.left = `${x + window.scrollX}px`;
+        menu.style.top = `${y + window.scrollY}px`;
+        menu.style.zIndex = '10000';
+        menu.style.backgroundColor = '#fff';
+        menu.style.border = '1px solid #ccc';
+        menu.style.borderRadius = '4px';
+        menu.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+        menu.style.padding = '5px 0';
+        menu.style.minWidth = '120px';
+
+        // Add menu items
+        const deleteItem = document.createElement('div');
+        deleteItem.className = 'context-menu-item';
+        deleteItem.innerHTML = `<i class="fas fa-trash text-danger"></i> Delete "${field.name}"`;
+        deleteItem.style.padding = '8px 12px';
+        deleteItem.style.cursor = 'pointer';
+        deleteItem.style.borderBottom = '1px solid #eee';
+
+        deleteItem.addEventListener('mouseover', function() {
+            this.style.backgroundColor = '#f8f9fa';
+        });
+
+        deleteItem.addEventListener('mouseout', function() {
+            this.style.backgroundColor = '';
+        });
+
+        deleteItem.addEventListener('click', function() {
+            console.log(`Deleting field: ${field.name}`);
+            dotNetHelper.invokeMethodAsync('DeleteFieldByName', field.name);
+            menu.remove();
+        });
+
+        const selectItem = document.createElement('div');
+        selectItem.className = 'context-menu-item';
+        selectItem.innerHTML = `<i class="fas fa-crosshairs text-primary"></i> Select Field`;
+        selectItem.style.padding = '8px 12px';
+        selectItem.style.cursor = 'pointer';
+
+        selectItem.addEventListener('mouseover', function() {
+            this.style.backgroundColor = '#f8f9fa';
+        });
+
+        selectItem.addEventListener('mouseout', function() {
+            this.style.backgroundColor = '';
+        });
+
+        selectItem.addEventListener('click', function() {
+            console.log(`Selecting field: ${field.name}`);
+            dotNetHelper.invokeMethodAsync('SelectFieldByName', field.name);
+            menu.remove();
+        });
+
+        menu.appendChild(selectItem);
+        menu.appendChild(deleteItem);
+        document.body.appendChild(menu);
+
+        // Remove menu when clicking elsewhere
+        setTimeout(() => {
+            document.addEventListener('click', function closeMenu(e) {
+                if (!menu.contains(e.target)) {
+                    menu.remove();
+                    document.removeEventListener('click', closeMenu);
+                }
+            });
+        }, 100);
+    };
+
+    window.showFieldDeletedMessage = function(fieldName) {
+        console.log(`Field "${fieldName}" has been deleted`);
+        // Simple notification - could be enhanced with toast notifications
+        const message = `Field "${fieldName}" deleted. Changes will be applied when you save.`;
+        if (window.console) {
+            console.info(message);
+        }
+        // Could add a temporary toast notification here
+    };
+
+    window.scrollFieldIntoView = function(fieldIndex) {
+        // Scroll the fields panel to show the selected field row
+        const fieldsPanel = document.getElementById('fieldsPanel');
+        if (!fieldsPanel) {
+            console.log('scrollFieldIntoView: fieldsPanel not found');
+            return;
+        }
+
+        const rows = fieldsPanel.querySelectorAll('tbody tr');
+        if (rows && rows[fieldIndex - 1]) {
+            const targetRow = rows[fieldIndex - 1];
+
+            // Use scrollIntoView for more reliable scrolling
+            targetRow.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center',
+                inline: 'nearest'
+            });
+
+            console.log(`scrollFieldIntoView: Scrolled to field ${fieldIndex}`);
+        } else {
+            console.log(`scrollFieldIntoView: Row ${fieldIndex - 1} not found (total rows: ${rows.length})`);
+        }
+    };
+
+    window.scrollPreviewToField = function(fieldY) {
+        // Scroll the preview panel to show the field at position Y
+        const previewPanel = document.getElementById('pdfPreviewPanel');
+        if (!previewPanel) {
+            console.log('scrollPreviewToField: previewPanel not found');
+            return;
+        }
+
+        // Get the image element inside the preview panel
+        const pageImage = previewPanel.querySelector('.pdf-page-image');
+        if (!pageImage) {
+            console.log('scrollPreviewToField: page image not found');
+            return;
+        }
+
+        // Convert PDF Y coordinate (bottom-left origin) to display Y (top-left origin)
+        // PDF coordinates are 72 DPI, display is 150 DPI
+        const scale = 150 / 72;
+        const pageHeight = 792; // US Letter height in points (PDF coordinates)
+
+        // IMPORTANT: Invert Y coordinate for display
+        // In PDF: Y=82 means near bottom (82 points from bottom)
+        // In Display: Need to convert to distance from top
+        const displayY = (pageHeight - fieldY) * scale;
+
+        // Center the field in the viewport
+        const panelHeight = previewPanel.clientHeight;
+        const scrollPosition = Math.max(0, displayY - panelHeight / 2);
+
+        previewPanel.scrollTo({ top: scrollPosition, behavior: 'smooth' });
+        console.log(`scrollPreviewToField: PDF Y=${fieldY} (${fieldY < 100 ? 'BOTTOM' : fieldY > 700 ? 'TOP' : 'MIDDLE'} of page) -> Display Y=${displayY}, scroll=${scrollPosition}`);
+    };
+
+    // Global drag and drop handlers
+    window.globalDragState = {
+        dotNetRef: null,
+        mouseMoveHandler: null,
+        mouseUpHandler: null
+    };
+
+    window.registerGlobalDragHandlers = function(dotNetRef) {
+        window.globalDragState.dotNetRef = dotNetRef;
+
+        // Remove existing handlers if any
+        if (window.globalDragState.mouseMoveHandler) {
+            document.removeEventListener('mousemove', window.globalDragState.mouseMoveHandler);
+        }
+        if (window.globalDragState.mouseUpHandler) {
+            document.removeEventListener('mouseup', window.globalDragState.mouseUpHandler);
+        }
+
+        // Create new handlers
+        window.globalDragState.mouseMoveHandler = function(e) {
+            e.preventDefault();
+            dotNetRef.invokeMethodAsync('HandleGlobalMouseMove', e.clientX, e.clientY);
+        };
+
+        window.globalDragState.mouseUpHandler = function(e) {
+            e.preventDefault();
+            dotNetRef.invokeMethodAsync('HandleGlobalMouseUp', e.clientX, e.clientY);
+        };
+
+        // Register handlers
+        document.addEventListener('mousemove', window.globalDragState.mouseMoveHandler);
+        document.addEventListener('mouseup', window.globalDragState.mouseUpHandler);
+    };
+
+    window.unregisterGlobalDragHandlers = function() {
+        if (window.globalDragState.mouseMoveHandler) {
+            document.removeEventListener('mousemove', window.globalDragState.mouseMoveHandler);
+            window.globalDragState.mouseMoveHandler = null;
+        }
+        if (window.globalDragState.mouseUpHandler) {
+            document.removeEventListener('mouseup', window.globalDragState.mouseUpHandler);
+            window.globalDragState.mouseUpHandler = null;
+        }
+        window.globalDragState.dotNetRef = null;
+    };
+</script></main></div>
+
+    
+    <script src="./AccessForm - Document Accessibility_files/init.js"></script>
+    <script src="./AccessForm - Document Accessibility_files/accessform.js"></script>
+    <script src="./AccessForm - Document Accessibility_files/blazor-interop.js"></script>
+    <script src="./AccessForm - Document Accessibility_files/ai-mode.js"></script>
+    <script src="./AccessForm - Document Accessibility_files/resizableWindow.js"></script>
+    <script src="./AccessForm - Document Accessibility_files/blazor.server.js" autostart="false"></script>
+    <script>
+        Blazor.start({
+            reconnectionOptions: {
+                maxRetries: 10,
+                retryIntervalMilliseconds: 2000
+            }
+        });
+    </script>
+
+
+</body></html>
