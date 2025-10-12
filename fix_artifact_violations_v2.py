@@ -90,6 +90,7 @@ def fix_artifact_violations(input_pdf_path, output_pdf_path=None, verbose=False)
         bt_blocks_marked = 0
         path_blocks_marked_total = 0
         sweep_fixes_total = 0
+        poor_contrast_removed_total = 0
 
         for page_num in range(len(doc)):
             page = doc[page_num]
@@ -431,6 +432,67 @@ def fix_artifact_violations(input_pdf_path, output_pdf_path=None, verbose=False)
                     if sweep_fixes > 0:
                         print(f"Pass 5: Unwrapped {sweep_fixes} tagged objects from artifacts", file=sys.stderr)
 
+                    # PASS 6: Remove text with poor contrast (text color same as background)
+                    # This catches text that has the same color as a recent fill operation
+                    poor_contrast_removed = 0
+
+                    # Find all color operations followed by text operations
+                    # Look for patterns like: "0.851 0.882 0.949 rg" followed by "BT ... (text) ... Tm [(...)] TJ"
+                    # where the text has similar color values in a 'rg' or 'g' command near the text
+
+                    # Strategy: Find BT...ET blocks, check for color commands inside, and compare
+                    # with recent fill colors (from 'rg' or 'g' commands in artifact blocks)
+
+                    bt_pattern = r'BT\s+(.*?)\s+ET'
+                    for bt_match in re.finditer(bt_pattern, content_str, re.DOTALL):
+                        bt_content = bt_match.group(1)
+                        bt_start = bt_match.start()
+                        bt_end = bt_match.end()
+
+                        # Check if this BT block contains a color command
+                        # Look for 'rg' (RGB), 'g' (gray), or 'k' (CMYK) commands
+                        text_color_match = re.search(r'([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+rg', bt_content)
+                        text_gray_match = re.search(r'([\d.]+)\s+g\s', bt_content)
+
+                        if text_color_match or text_gray_match:
+                            # Look backward from BT to find recent fill color in artifact block
+                            lookback = content_str[max(0, bt_start - 500):bt_start]
+
+                            # Find most recent 'rg' (fill color) command, preferably in an artifact block
+                            fill_color_matches = list(re.finditer(r'([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+rg', lookback))
+
+                            if fill_color_matches:
+                                # Get the most recent fill color
+                                last_fill = fill_color_matches[-1]
+                                fill_r = float(last_fill.group(1))
+                                fill_g = float(last_fill.group(2))
+                                fill_b = float(last_fill.group(3))
+
+                                # Compare with text color
+                                if text_color_match:
+                                    text_r = float(text_color_match.group(1))
+                                    text_g = float(text_color_match.group(2))
+                                    text_b = float(text_color_match.group(3))
+
+                                    # Check if colors are very similar (poor contrast)
+                                    # Allow small tolerance for rounding
+                                    color_diff = abs(fill_r - text_r) + abs(fill_g - text_g) + abs(fill_b - text_b)
+
+                                    if color_diff < 0.15:  # Very similar colors
+                                        # Check if text is just whitespace
+                                        text_content = re.search(r'\[(.*?)\]\s*TJ', bt_content)
+                                        if text_content:
+                                            text = text_content.group(1)
+                                            # If it's just space or empty, remove the whole BT block
+                                            if not text.strip() or text.strip() in ['()', '( )', '(  )']:
+                                                content_str = content_str[:bt_start] + content_str[bt_end:]
+                                                modified = True
+                                                poor_contrast_removed += 1
+                                                break  # Re-scan after modification
+
+                    if poor_contrast_removed > 0:
+                        print(f"Pass 6: Removed {poor_contrast_removed} poor contrast text blocks", file=sys.stderr)
+
                     # Update stream if modified
                     if modified:
                         if verbose:
@@ -438,12 +500,14 @@ def fix_artifact_violations(input_pdf_path, output_pdf_path=None, verbose=False)
                                   f"removed {whitespace_removed} whitespace, "
                                   f"marked {bt_blocks_marked} BT blocks, "
                                   f"marked {path_blocks_marked} path blocks, "
-                                  f"unwrapped {sweep_fixes} tagged from artifacts", file=sys.stderr)
+                                  f"unwrapped {sweep_fixes} tagged from artifacts, "
+                                  f"removed {poor_contrast_removed} poor contrast text", file=sys.stderr)
                         new_stream = content_str.encode('latin-1', errors='ignore')
                         doc.update_stream(xref, new_stream)
-                        total_fixed += violations_found + whitespace_removed + bt_blocks_marked + path_blocks_marked + sweep_fixes
+                        total_fixed += violations_found + whitespace_removed + bt_blocks_marked + path_blocks_marked + sweep_fixes + poor_contrast_removed
                         path_blocks_marked_total += path_blocks_marked
                         sweep_fixes_total += sweep_fixes
+                        poor_contrast_removed_total += poor_contrast_removed
 
             except Exception as page_error:
                 print(f"Warning: Error processing page {page_num + 1}: {page_error}", file=sys.stderr)
@@ -464,6 +528,7 @@ def fix_artifact_violations(input_pdf_path, output_pdf_path=None, verbose=False)
             "bt_blocks_handled": bt_blocks_marked,
             "path_blocks_marked": path_blocks_marked_total,
             "tagged_unwrapped_from_artifacts": sweep_fixes_total,
+            "poor_contrast_removed": poor_contrast_removed_total,
             "message": f"Fixed {total_fixed} total violations"
         }
 
