@@ -267,7 +267,8 @@ def fix_artifact_violations(input_pdf_path, output_pdf_path=None, verbose=False)
 
                     # Pattern: Match PDF operators (word boundaries or after whitespace/numbers)
                     # Single letters must be standalone, multi-letter can use word boundaries
-                    path_paint_ops = r'(?:^|\s)(?:re|cm|RG|rg|SC|sc|SCN|scn|[mlchvyqQwJjMGgKkSsfFBbWn])(?:\s|$)'
+                    # Match path/paint operators, including f*, B*, b* with optional * modifier
+                    path_paint_ops = r'(?:^|\s)(?:re|cm|RG|rg|SC|sc|SCN|scn|[fBb]\*?|[mlchvyqQwJjMGgKkSsFWn])(?:\s|$)'
 
                     path_blocks_marked = 0
 
@@ -281,37 +282,88 @@ def fix_artifact_violations(input_pdf_path, output_pdf_path=None, verbose=False)
                             match_pos = match.start()
                             depth = calculate_depth_at_position(content_str, match_pos)
 
-                            if depth == 0:  # Untagged
-                                # Find the extent of this graphics block
-                                # Look backward to find start (previous EMC, BDC, BMC, or start of content)
+                            if depth == 0:  # Untagged - gather consecutive graphics lines
+                                # First, scan BACKWARD to find any preceding untagged graphics
                                 block_start = match_pos
-                                for i in range(match_pos - 1, -1, -1):
-                                    if content_str[i:i+3] in ['EMC', 'BDC', 'BMC']:
-                                        block_start = i + 3
-                                        break
-                                    if i == 0:
+                                scan_pos_back = match_pos
+
+                                while True:
+                                    # Find start of current line
+                                    prev_newline = content_str.rfind('\n', 0, scan_pos_back - 1)
+                                    if prev_newline == -1:
                                         block_start = 0
                                         break
 
-                                # Look forward to find end (next BT, next BDC/BMC, or significant text)
-                                block_end = match_pos + len(match.group(0))
-                                for i in range(block_end, min(block_end + 500, len(content_str))):
-                                    if content_str[i:i+2] in ['BT', 'BD', 'BM']:
-                                        block_end = i
-                                        break
-                                    # Stop at next operator that's definitely not graphics
-                                    if content_str[i:i+2] == 'Tj' or content_str[i:i+2] == 'TJ':
-                                        block_end = i
+                                    prev_line_start = prev_newline + 1
+
+                                    # Look for graphics operator on previous line
+                                    prev_line = content_str[prev_line_start:scan_pos_back]
+                                    prev_match = re.search(path_paint_ops, prev_line)
+                                    if not prev_match:
+                                        # No graphics on previous line, stop
+                                        block_start = prev_line_start if scan_pos_back != match_pos else content_str.rfind('\n', 0, match_pos) + 1
+                                        if block_start < 0:
+                                            block_start = 0
                                         break
 
-                                # Check if this block is already marked
+                                    # Check depth of previous graphics op
+                                    prev_op_pos = prev_line_start + prev_match.start()
+                                    prev_depth = calculate_depth_at_position(content_str, prev_op_pos)
+
+                                    if prev_depth > 0:
+                                        # Hit tagged content, stop
+                                        block_start = prev_line_start if scan_pos_back != match_pos else content_str.rfind('\n', 0, match_pos) + 1
+                                        if block_start < 0:
+                                            block_start = 0
+                                        break
+
+                                    # Continue gathering backward
+                                    block_start = prev_line_start
+                                    scan_pos_back = prev_line_start
+
+                                # Now scan forward from the match
+                                scan_pos = match_pos
+                                block_end = scan_pos
+
+                                while True:
+                                    # Find end of current line
+                                    next_newline = content_str.find('\n', scan_pos)
+                                    if next_newline == -1:
+                                        block_end = len(content_str)
+                                        break
+
+                                    block_end = next_newline
+
+                                    # Check if next line has graphics ops
+                                    next_line_start = next_newline + 1
+                                    if next_line_start >= len(content_str):
+                                        break
+
+                                    # Look for graphics operator on next line
+                                    next_match = re.search(path_paint_ops, content_str[next_line_start:next_line_start+200])
+                                    if not next_match:
+                                        break  # No more graphics
+
+                                    # Check depth of next graphics op
+                                    next_op_pos = next_line_start + next_match.start()
+                                    next_depth = calculate_depth_at_position(content_str, next_op_pos)
+
+                                    if next_depth > 0:
+                                        break  # Hit tagged content, stop here
+
+                                    # Continue gathering
+                                    scan_pos = next_op_pos
+
+                                # Get the block
                                 block_content = content_str[block_start:block_end]
+
+                                # Skip if already wrapped
                                 if '/Artifact BMC' not in block_content and 'BDC' not in block_content:
-                                    # Wrap it - ensure proper spacing
+                                    # Wrap the consecutive graphics block
                                     content_str = (content_str[:block_start] +
                                                  '/Artifact BMC\n' +
                                                  block_content +
-                                                 '\nEMC\n' +  # Add newline after EMC
+                                                 '\nEMC\n' +
                                                  content_str[block_end:])
                                     modified = True
                                     path_blocks_marked += 1
