@@ -1,0 +1,459 @@
+#!/usr/bin/env python3
+"""
+Enhanced version of fix_artifact_violations.py with improved depth tracking and patterns.
+Fixes PDF/UA violations by properly handling untagged text content.
+
+Usage: python3 fix_artifact_violations_v2.py <input_pdf> [output_pdf] [--verbose]
+"""
+
+import sys
+import json
+import tempfile
+import os
+import re
+
+try:
+    import fitz  # PyMuPDF
+except ImportError:
+    print(json.dumps({
+        "success": False,
+        "error": "PyMuPDF not installed. Run: pip install PyMuPDF"
+    }))
+    sys.exit(1)
+
+
+def calculate_depth_at_position(text, position):
+    """Calculate the marked content depth at a specific position using proper stack tracking."""
+    depth = 0
+
+    # Find all markers up to this position
+    marker_pattern = r'(BDC|BMC|EMC)'
+    for m in re.finditer(marker_pattern, text[:position]):
+        marker_type = m.group(0)
+        if marker_type in ['BDC', 'BMC']:
+            depth += 1
+        elif marker_type == 'EMC':
+            depth = max(0, depth - 1)  # Never go negative
+
+    return depth
+
+
+def decode_pdf_string(pdf_string):
+    """Decode PDF string with escape sequences."""
+    result = pdf_string
+    result = result.replace('\\n', '\n')
+    result = result.replace('\\r', '\r')
+    result = result.replace('\\t', '\t')
+    result = result.replace('\\(', '(')
+    result = result.replace('\\)', ')')
+    result = result.replace('\\\\', '\\')
+
+    # Handle octal sequences
+    def octal_replace(match):
+        octal = match.group(1)
+        try:
+            char_code = int(octal, 8)
+            return chr(char_code)
+        except:
+            return match.group(0)
+
+    result = re.sub(r'\\(\d{1,3})', octal_replace, result)
+    return result
+
+
+def is_whitespace_only(text):
+    """Check if text contains only whitespace."""
+    decoded = decode_pdf_string(text)
+    return not decoded.strip()
+
+
+def fix_artifact_violations(input_pdf_path, output_pdf_path=None, verbose=False):
+    """
+    Remove artifact markers from tagged content and handle untagged content.
+
+    Five main passes:
+    1. Unwrap tagged content from /Artifact BMC...EMC blocks
+    2. Remove or mark untagged whitespace as artifacts
+    3. Mark untagged BT...ET text blocks as artifacts
+    4. Mark untagged path/graphics operations as artifacts (comprehensive)
+    5. Final sweep: unwrap any remaining tagged content from artifacts
+    """
+    if output_pdf_path is None:
+        output_pdf_path = tempfile.mktemp(suffix='.pdf')
+
+    try:
+        doc = fitz.open(input_pdf_path)
+
+        total_fixed = 0
+        violations_found = 0
+        whitespace_removed = 0
+        bt_blocks_marked = 0
+        path_blocks_marked_total = 0
+        sweep_fixes_total = 0
+
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+
+            try:
+                # Get content stream(s)
+                xrefs = page.get_contents()
+                if isinstance(xrefs, list):
+                    xref_list = xrefs
+                else:
+                    xref_list = [xrefs]
+
+                # Process each content stream
+                for xref in xref_list:
+                    stream = doc.xref_stream(xref)
+                    if not stream:
+                        continue
+
+                    content_str = stream.decode('latin-1', errors='ignore')
+                    original_content = content_str
+                    modified = False
+
+                    # PASS 1: Find and fix all /Artifact BMC blocks with tagged content
+                    while True:
+                        artifact_pos = content_str.find('/Artifact BMC')
+                        if artifact_pos == -1:
+                            break
+
+                        # Find matching EMC
+                        bmc_end = artifact_pos + len('/Artifact BMC')
+                        nesting_level = 1
+                        search_pos = bmc_end
+                        matching_emc = -1
+
+                        while search_pos < len(content_str):
+                            next_bmc = content_str.find('BMC', search_pos)
+                            next_bdc = content_str.find('BDC', search_pos)
+                            next_emc = content_str.find('EMC', search_pos)
+
+                            earliest_pos = len(content_str)
+                            earliest = None
+
+                            if next_bmc != -1 and next_bmc < earliest_pos:
+                                earliest = 'BMC'
+                                earliest_pos = next_bmc
+                            if next_bdc != -1 and next_bdc < earliest_pos:
+                                earliest = 'BDC'
+                                earliest_pos = next_bdc
+                            if next_emc != -1 and next_emc < earliest_pos:
+                                earliest = 'EMC'
+                                earliest_pos = next_emc
+
+                            if earliest is None:
+                                break
+
+                            if earliest in ['BMC', 'BDC']:
+                                nesting_level += 1
+                                search_pos = earliest_pos + 3
+                            elif earliest == 'EMC':
+                                nesting_level -= 1
+                                if nesting_level == 0:
+                                    matching_emc = earliest_pos
+                                    break
+                                search_pos = earliest_pos + 3
+
+                        if matching_emc == -1:
+                            content_str = content_str[:artifact_pos] + '###PROCESSED###' + content_str[artifact_pos + 13:]
+                            continue
+
+                        between = content_str[bmc_end:matching_emc]
+
+                        # Check if this artifact contains tagged content
+                        if '/MCID' in between:
+                            violations_found += 1
+
+                            # Check if it's whitespace-only
+                            text_strings = re.findall(r'\(([^)]*)\)', between)
+                            is_whitespace = all(is_whitespace_only(text) for text in text_strings) if text_strings else False
+
+                            # Always preserve tagged content, just remove artifact wrapper
+                            fixed_content = content_str[:artifact_pos] + between + content_str[matching_emc + 3:]
+                            content_str = fixed_content
+                            modified = True
+                            total_fixed += 1
+                        else:
+                            content_str = content_str[:artifact_pos] + '###PROCESSED###' + content_str[artifact_pos + 13:]
+
+                    # Restore markers
+                    content_str = content_str.replace('###PROCESSED###', '/Artifact BMC')
+
+                    # PASS 2: Remove untagged whitespace with improved patterns
+                    patterns = [
+                        # Simple whitespace with Tj
+                        r'\((\\(?:40|11|12|15|n|r|t)|\s)*\)\s*Tj',
+                        # Whitespace in TJ arrays
+                        r'\[\s*\((\\(?:40|11|12|15|n|r|t)|\s)*\)\s*(?:-?\d+\s*)?\]\s*TJ',
+                        # Multiple whitespace in TJ arrays
+                        r'\[(?:\s*\((\\(?:40|11|12|15|n|r|t)|\s)*\)\s*-?\d+\s*)*\]\s*TJ',
+                        # Hex-encoded spaces (space, nbsp, tab, lf, cr)
+                        r'<(?:0020|00A0|0009|000A|000D|2000|2001|2002|2003|2004|2005|2006|2007|2008|2009|200A|200B|202F|205F|3000)>\s*Tj',
+                        # Whitespace with ' or " operators
+                        r'\((\\(?:40|11|12|15|n|r|t)|\s)*\)\s*[\'\"]',
+                        # Empty text
+                        r'\(\)\s*(?:Tj|TJ|[\'\"])',
+                        # Single space variations
+                        r'\(\s\)\s*Tj',
+                        r'\(\\40\)\s*Tj',
+                    ]
+
+                    # Track removed items for logging
+                    removed_items = []
+
+                    for pattern in patterns:
+                        matches = list(re.finditer(pattern, content_str))
+
+                        for match in reversed(matches):
+                            match_pos = match.start()
+                            depth = calculate_depth_at_position(content_str, match_pos)
+
+                            if depth == 0:  # Untagged
+                                removed_text = match.group(0)[:50]
+                                removed_items.append(removed_text)
+                                content_str = content_str[:match.start()] + content_str[match.end():]
+                                modified = True
+                                whitespace_removed += 1
+
+                    # PASS 3: Handle untagged BT...ET blocks
+                    bt_pattern = r'BT(.*?)ET'
+                    bt_matches = list(re.finditer(bt_pattern, content_str, re.DOTALL))
+
+                    for bt_match in reversed(bt_matches):
+                        bt_start = bt_match.start()
+
+                        # Check if BT is inside marked content
+                        bt_depth = calculate_depth_at_position(content_str, bt_start)
+                        if bt_depth > 0:
+                            continue  # This BT is already inside marked content
+
+                        block_content = bt_match.group(1)
+
+                        # Check if block contains marked content
+                        has_marked = 'BDC' in block_content or 'BMC' in block_content
+
+                        if not has_marked:
+                            # Entire block is untagged
+                            text_ops = re.findall(r'\([^)]*\)\s*(?:Tj|TJ|[\'\"])', block_content)
+
+                            # Check if it's whitespace-only
+                            is_whitespace = True
+                            for op in text_ops:
+                                text_match = re.search(r'\(([^)]*)\)', op)
+                                if text_match and not is_whitespace_only(text_match.group(1)):
+                                    is_whitespace = False
+                                    break
+
+                            if is_whitespace and text_ops:
+                                # Option 1: Remove completely if whitespace-only
+                                content_str = content_str[:bt_match.start()] + content_str[bt_match.end():]
+                                modified = True
+                                bt_blocks_marked += 1
+                            elif not is_whitespace and text_ops:
+                                # Option 2: Mark as artifact if it has content
+                                # This preserves reading order but marks as non-semantic
+                                new_block = f'/Artifact BMC\n{bt_match.group(0)}\nEMC'
+                                content_str = content_str[:bt_match.start()] + new_block + content_str[bt_match.end():]
+                                modified = True
+                                bt_blocks_marked += 1
+
+                    # PASS 4: Wrap untagged path/graphics operations in artifacts
+                    # Path construction: m (move), l (line), c (curve), re (rectangle), h (closepath), v, y
+                    # Paint operations: S (stroke), s (close+stroke), f/F (fill), f* (even-odd fill), B/B*/b/b* (fill+stroke)
+                    # Clipping: W/W* (clip), n (no-op path end)
+                    # Graphics state: q (save), Q (restore), cm (matrix), w (linewidth), J/j (linecap/join), M (miterlimit)
+                    # Color: RG/rg (RGB), K/k (CMYK), SC/sc/SCN/scn (color), G/g (gray)
+
+                    # Pattern: Match PDF operators (word boundaries or after whitespace/numbers)
+                    # Single letters must be standalone, multi-letter can use word boundaries
+                    path_paint_ops = r'(?:^|\s)(?:re|cm|RG|rg|SC|sc|SCN|scn|[mlchvyqQwJjMGgKkSsfFBbWn])(?:\s|$)'
+
+                    path_blocks_marked = 0
+
+                    # Iteratively find and wrap untagged graphics blocks
+                    max_iterations = 50  # Safety limit
+                    for iteration in range(max_iterations):
+                        found_untagged = False
+
+                        # Find all path/paint operations
+                        for match in re.finditer(path_paint_ops, content_str):
+                            match_pos = match.start()
+                            depth = calculate_depth_at_position(content_str, match_pos)
+
+                            if depth == 0:  # Untagged
+                                # Find the extent of this graphics block
+                                # Look backward to find start (previous EMC, BDC, BMC, or start of content)
+                                block_start = match_pos
+                                for i in range(match_pos - 1, -1, -1):
+                                    if content_str[i:i+3] in ['EMC', 'BDC', 'BMC']:
+                                        block_start = i + 3
+                                        break
+                                    if i == 0:
+                                        block_start = 0
+                                        break
+
+                                # Look forward to find end (next BT, next BDC/BMC, or significant text)
+                                block_end = match_pos + len(match.group(0))
+                                for i in range(block_end, min(block_end + 500, len(content_str))):
+                                    if content_str[i:i+2] in ['BT', 'BD', 'BM']:
+                                        block_end = i
+                                        break
+                                    # Stop at next operator that's definitely not graphics
+                                    if content_str[i:i+2] == 'Tj' or content_str[i:i+2] == 'TJ':
+                                        block_end = i
+                                        break
+
+                                # Check if this block is already marked
+                                block_content = content_str[block_start:block_end]
+                                if '/Artifact BMC' not in block_content and 'BDC' not in block_content:
+                                    # Wrap it - ensure proper spacing
+                                    content_str = (content_str[:block_start] +
+                                                 '/Artifact BMC\n' +
+                                                 block_content +
+                                                 '\nEMC\n' +  # Add newline after EMC
+                                                 content_str[block_end:])
+                                    modified = True
+                                    path_blocks_marked += 1
+                                    found_untagged = True
+                                    break  # Re-scan after modification
+
+                        if not found_untagged:
+                            break  # No more untagged graphics blocks found
+
+                    # PASS 5: Final sweep - remove any tagged content from artifacts
+                    # This catches any /MCID content that slipped through
+                    sweep_fixes = 0
+                    while True:
+                        # Find /Artifact BMC blocks
+                        artifact_match = re.search(r'/Artifact\s+BMC', content_str)
+                        if not artifact_match:
+                            break
+
+                        artifact_pos = artifact_match.start()
+                        bmc_end = artifact_match.end()
+
+                        # Find matching EMC
+                        nesting = 1
+                        search_pos = bmc_end
+                        matching_emc = -1
+
+                        while search_pos < len(content_str):
+                            next_marker = re.search(r'(BMC|BDC|EMC)', content_str[search_pos:])
+                            if not next_marker:
+                                break
+
+                            marker_pos = search_pos + next_marker.start()
+                            marker = next_marker.group(0)
+
+                            if marker in ['BMC', 'BDC']:
+                                nesting += 1
+                            elif marker == 'EMC':
+                                nesting -= 1
+                                if nesting == 0:
+                                    matching_emc = marker_pos
+                                    break
+
+                            search_pos = marker_pos + len(marker)
+
+                        if matching_emc == -1:
+                            # No matching EMC, skip this artifact
+                            content_str = content_str[:artifact_pos] + '###SKIP_ARTIFACT###' + content_str[bmc_end:]
+                            continue
+
+                        # Check content between BMC and EMC
+                        between = content_str[bmc_end:matching_emc]
+
+                        # If it contains /MCID (tagged content), unwrap it
+                        if '/MCID' in between:
+                            content_str = content_str[:artifact_pos] + between + content_str[matching_emc + 3:]
+                            modified = True
+                            sweep_fixes += 1
+                        else:
+                            # Mark as processed
+                            content_str = content_str[:artifact_pos] + '###SKIP_ARTIFACT###' + content_str[bmc_end:]
+
+                    # Restore skipped artifacts
+                    content_str = content_str.replace('###SKIP_ARTIFACT###', '/Artifact BMC')
+
+                    if sweep_fixes > 0:
+                        print(f"Pass 5: Unwrapped {sweep_fixes} tagged objects from artifacts", file=sys.stderr)
+
+                    # Update stream if modified
+                    if modified:
+                        if verbose:
+                            print(f"Page {page_num + 1}: Fixed {violations_found} artifacts, "
+                                  f"removed {whitespace_removed} whitespace, "
+                                  f"marked {bt_blocks_marked} BT blocks, "
+                                  f"marked {path_blocks_marked} path blocks, "
+                                  f"unwrapped {sweep_fixes} tagged from artifacts", file=sys.stderr)
+                        new_stream = content_str.encode('latin-1', errors='ignore')
+                        doc.update_stream(xref, new_stream)
+                        total_fixed += violations_found + whitespace_removed + bt_blocks_marked + path_blocks_marked + sweep_fixes
+                        path_blocks_marked_total += path_blocks_marked
+                        sweep_fixes_total += sweep_fixes
+
+            except Exception as page_error:
+                print(f"Warning: Error processing page {page_num + 1}: {page_error}", file=sys.stderr)
+                if verbose:
+                    import traceback
+                    traceback.print_exc(file=sys.stderr)
+
+        # Save the fixed PDF
+        doc.save(output_pdf_path, garbage=4, deflate=True, clean=True)
+        doc.close()
+
+        return {
+            "success": True,
+            "output_path": output_pdf_path,
+            "violations_found": violations_found,
+            "violations_fixed": total_fixed,
+            "whitespace_removed": whitespace_removed,
+            "bt_blocks_handled": bt_blocks_marked,
+            "path_blocks_marked": path_blocks_marked_total,
+            "tagged_unwrapped_from_artifacts": sweep_fixes_total,
+            "message": f"Fixed {total_fixed} total violations"
+        }
+
+    except Exception as e:
+        import traceback
+        if verbose:
+            traceback.print_exc(file=sys.stderr)
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+def main():
+    if len(sys.argv) < 2:
+        print(json.dumps({
+            "success": False,
+            "error": "Usage: fix_artifact_violations_v2.py <input_pdf> [output_pdf] [--verbose]"
+        }))
+        sys.exit(1)
+
+    input_pdf = sys.argv[1]
+    output_pdf = None
+    verbose = False
+
+    for arg in sys.argv[2:]:
+        if arg == '--verbose':
+            verbose = True
+        elif not output_pdf:
+            output_pdf = arg
+
+    if not os.path.exists(input_pdf):
+        print(json.dumps({
+            "success": False,
+            "error": f"Input PDF not found: {input_pdf}"
+        }))
+        sys.exit(1)
+
+    result = fix_artifact_violations(input_pdf, output_pdf, verbose)
+    print(json.dumps(result, indent=2))
+    sys.exit(0 if result["success"] else 1)
+
+
+if __name__ == "__main__":
+    main()
