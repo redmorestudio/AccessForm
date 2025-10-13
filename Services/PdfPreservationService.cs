@@ -21,6 +21,7 @@ namespace WordToPdfConverter.Services
         private readonly ArtifactViolationFixService _artifactViolationFixService;
         private readonly TaggedWhitespaceFixService _taggedWhitespaceFixService;
         private readonly OrphanedWhitespaceAdoptionService _orphanedWhitespaceAdoptionService;
+        private readonly AccessFormServer.Services.TocLinkFixService _tocLinkFixService;
 
         public PdfPreservationService(
             ILogger<PdfPreservationService> logger,
@@ -31,7 +32,8 @@ namespace WordToPdfConverter.Services
             ArtifactRemovalService artifactRemovalService,
             ArtifactViolationFixService artifactViolationFixService,
             TaggedWhitespaceFixService taggedWhitespaceFixService,
-            OrphanedWhitespaceAdoptionService orphanedWhitespaceAdoptionService)
+            OrphanedWhitespaceAdoptionService orphanedWhitespaceAdoptionService,
+            AccessFormServer.Services.TocLinkFixService tocLinkFixService)
         {
             _logger = logger;
             _accessibilityService = accessibilityService;
@@ -42,6 +44,7 @@ namespace WordToPdfConverter.Services
             _artifactViolationFixService = artifactViolationFixService;
             _taggedWhitespaceFixService = taggedWhitespaceFixService;
             _orphanedWhitespaceAdoptionService = orphanedWhitespaceAdoptionService;
+            _tocLinkFixService = tocLinkFixService;
         }
 
         /// <summary>
@@ -163,6 +166,39 @@ namespace WordToPdfConverter.Services
                     : "No whitespace violations found"
             });
 
+            // Step 3: Fix TOC link structure (create proper Link elements, add alt text)
+            _logger.LogInformation("[PDF-PRESERVATION] Step 3: Fixing TOC link structure for PDF/UA compliance...");
+            stepStartTime = DateTime.UtcNow;
+            var remediationResult = await _tocLinkFixService.FixTocLinksAsync(pdfBytes);
+
+            // Record in report
+            report.Steps.Add(new Models.ProcessingStep
+            {
+                Name = "TOC Structure Remediation",
+                Success = remediationResult.Success,
+                DurationMs = (long)(DateTime.UtcNow - stepStartTime).TotalMilliseconds,
+                Details = remediationResult.Success
+                    ? $"Fixed {remediationResult.FixedTocElements} TOC elements, {remediationResult.FixedLinks} link structures"
+                    : remediationResult.ErrorMessage ?? "Remediation failed"
+            });
+
+            if (remediationResult.Success && remediationResult.FixedPdf != null)
+            {
+                if (remediationResult.FixedTocElements > 0 || remediationResult.FixedLinks > 0)
+                {
+                    _logger.LogInformation($"[PDF-PRESERVATION] ✅ Fixed {remediationResult.FixedTocElements} TOC structures and {remediationResult.FixedLinks} links");
+                    pdfBytes = remediationResult.FixedPdf; // Use the fixed version
+                }
+                else
+                {
+                    _logger.LogInformation("[PDF-PRESERVATION] ✅ No TOC structure fixes needed");
+                }
+            }
+            else
+            {
+                _logger.LogWarning($"[PDF-PRESERVATION] ⚠️  TOC remediation failed: {remediationResult.ErrorMessage}, continuing with original PDF");
+            }
+
             using var ms = new MemoryStream(pdfBytes);
 
             // Check PDF version first
@@ -222,17 +258,18 @@ namespace WordToPdfConverter.Services
             _logger.LogError($"║ 📊 FIELD COUNT: {initialFormCount} fields detected by Syncfusion");
             _logger.LogError("╚═══════════════════════════════════════════════════════════════════╝");
 
-            // CRITICAL FIX: If Syncfusion can't see any form fields, DON'T process the PDF
+            // CRITICAL FIX: If Syncfusion can't see any form fields, DON'T process the PDF with Syncfusion
             // This prevents us from destroying forms that Syncfusion can't read
+            // BUT we still return the bytes with accessibility fixes applied (link fixes, whitespace, etc)
             if (initialFormCount == 0)
             {
                 _logger.LogError("╔═══════════════════════════════════════════════════════════════════╗");
-                _logger.LogError("║ 🚨 SYNCFUSION CANNOT READ FORMS - RETURNING ORIGINAL PDF        ║");
+                _logger.LogError("║ 🚨 SYNCFUSION CANNOT READ FORMS - RETURNING WITH FIXES ONLY     ║");
                 _logger.LogError("║    Syncfusion doesn't support this PDF's form format             ║");
-                _logger.LogError("║    Returning original bytes to preserve forms                    ║");
+                _logger.LogError("║    Returning bytes with accessibility fixes applied              ║");
                 _logger.LogError($"║    Annotations found: {annotationCount} total, {widgetAnnotations} widgets");
                 _logger.LogError("╚═══════════════════════════════════════════════════════════════════╝");
-                return pdfBytes;  // Return original unchanged
+                return pdfBytes;  // Return with fixes applied (linkFixResult.FixedPdf was already assigned to pdfBytes above)
             }
 
             // Log existing fields and check for calculations

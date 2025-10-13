@@ -13,6 +13,7 @@
     <!-- Temporarily disabled due to RestSharp conflict with PassportPDF -->
     <!-- <PackageReference Include="Adobe.PDFServicesSDK" Version="4.1.0" /> -->
     <PackageReference Include="Aspose.PDF" Version="24.12.0" />
+    <PackageReference Include="Aspose.Pdf-Cloud" Version="25.9.0" />
     <PackageReference Include="itext7" Version="8.0.5" />
     <PackageReference Include="itext7.bouncy-castle-adapter" Version="8.0.5" />
     <PackageReference Include="PassportPDF" Version="1.0.95" />

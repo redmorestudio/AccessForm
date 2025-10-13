@@ -1,6 +1,6 @@
 # AccessForm PDF Processing Architecture
 
-**Last Updated:** 2025-01-10
+**Last Updated:** 2025-10-12
 
 ## Documentation Index
 - **ARCHITECTURE.md** (this file) - Main processing paths, service overview, known issues

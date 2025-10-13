@@ -1,0 +1,64 @@
+===== DEEP TOC STRUCTURE ANALYSIS =====
+
+=== SEARCHING FOR TOCI ELEMENTS ===
+Found 22 TOCI elements
+
+=== TOCI #1 DETAILED STRUCTURE ===
+  Children count: 1
+  Child [0]:
+    Type: MCR (Marked Content Reference)
+    MCID: 1
+    Page: <</Annots 52 0 R /Contents 2 0 R /CropBox [0.0 0.0 612.0 792.0 ] /MediaBox [0.0 0.0 612.0 792.0 ] /Parent 689 0 R /Resources <</Font <</TT0 701 0 R /TT1 56 0 R >> >> /Rotate 0 /StructParents 1 /Tabs /S /Type /Page >>
+
+=== TOCI #2 DETAILED STRUCTURE ===
+  Children count: 2
+  Child [0]:
+    Role: Reference
+    Children: 2
+      MCR: MCID=4
+      MCR: MCID=-1
+  Child [1]:
+    Type: MCR (Marked Content Reference)
+    MCID: 5
+    Page: <</Annots 52 0 R /Contents 2 0 R /CropBox [0.0 0.0 612.0 792.0 ] /MediaBox [0.0 0.0 612.0 792.0 ] /Parent 689 0 R /Resources <</Font <</TT0 701 0 R /TT1 56 0 R >> >> /Rotate 0 /StructParents 1 /Tabs /S /Type /Page >>
+
+=== TOCI #3 DETAILED STRUCTURE ===
+  Children count: 2
+  Child [0]:
+    Role: Reference
+    Children: 2
+      MCR: MCID=8
+      MCR: MCID=-1
+  Child [1]:
+    Type: MCR (Marked Content Reference)
+    MCID: 9
+    Page: <</Annots 52 0 R /Contents 2 0 R /CropBox [0.0 0.0 612.0 792.0 ] /MediaBox [0.0 0.0 612.0 792.0 ] /Parent 689 0 R /Resources <</Font <</TT0 701 0 R /TT1 56 0 R >> >> /Rotate 0 /StructParents 1 /Tabs /S /Type /Page >>
+
+=== PAGE 2 LINK ANNOTATIONS ===
+Found 20 link annotations on page 2
+
+Link Annotation #1:
+  StructParent: 2
+  Contents: NONE
+  Action Type: /GoTo
+  Destination: [4 0 R /XYZ 70 720 0.0 ]
+  → Connected to structure element: /Reference
+
+Link Annotation #2:
+  StructParent: 3
+  Contents: NONE
+  Action Type: /GoTo
+  Destination: [4 0 R /XYZ 70 597 0.0 ]
+  → Connected to structure element: /Reference
+
+Link Annotation #3:
+  StructParent: 4
+  Contents: NONE
+  Action Type: /GoTo
+  Destination: [4 0 R /XYZ 70 152 0.0 ]
+  → Connected to structure element: /Reference
+
+=== EXTRACTING TEXT FROM TOCI ELEMENTS ===
+TOCI text: '[Page 2 content]'
+TOCI text: '[Page 2 content][Page 2 content][Page 2 content]'
+TOCI text: '[Page 2 content][Page 2 content][Page 2 content]'

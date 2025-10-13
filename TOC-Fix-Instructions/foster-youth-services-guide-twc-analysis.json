@@ -1,0 +1,270 @@
+{
+  "file": "foster-youth-services-guide-twc.pdf",
+  "timestamp": "2025-10-12T17:47:13.758744",
+  "pages": [
+    {
+      "page_number": 2,
+      "total_links": 20,
+      "issues": [
+        {
+          "link_index": 1,
+          "link_text": "Purpose ..........................................",
+          "destination_page": 3,
+          "issue_type": "NotInLinkElement",
+          "current_structure": "Reference"
+        },
+        {
+          "link_index": 2,
+          "link_text": "Overview .........................................",
+          "destination_page": 3,
+          "issue_type": "NotInLinkElement",
+          "current_structure": "Reference"
+        },
+        {
+          "link_index": 3,
+          "link_text": "Priority of Service ..............................",
+          "destination_page": 3,
+          "issue_type": "NotInLinkElement",
+          "current_structure": "Reference"
+        },
+        {
+          "link_index": 4,
+          "link_text": "Foster Youth Definition ..........................",
+          "destination_page": 4,
+          "issue_type": "NotInLinkElement",
+          "current_structure": "Reference"
+        },
+        {
+          "link_index": 5,
+          "link_text": "Priority Order ...................................",
+          "destination_page": 4,
+          "issue_type": "NotInLinkElement",
+          "current_structure": "Reference"
+        },
+        {
+          "link_index": 6,
+          "link_text": "Priority of Service for Support Services and Child",
+          "destination_page": 4,
+          "issue_type": "NotInLinkElement",
+          "current_structure": "Reference"
+        },
+        {
+          "link_index": 7,
+          "link_text": "Workforce Services for Foster Youth ..............",
+          "destination_page": 5,
+          "issue_type": "NotInLinkElement",
+          "current_structure": "Reference"
+        },
+        {
+          "link_index": 8,
+          "link_text": "Workforce Solutions Office Services ..............",
+          "destination_page": 5,
+          "issue_type": "NotInLinkElement",
+          "current_structure": "Reference"
+        },
+        {
+          "link_index": 9,
+          "link_text": "Foster Youth Transition Centers ..................",
+          "destination_page": 6,
+          "issue_type": "NotInLinkElement",
+          "current_structure": "Reference"
+        },
+        {
+          "link_index": 10,
+          "link_text": "Non-Workforce Services for Foster Youth ..........",
+          "destination_page": 7,
+          "issue_type": "NotInLinkElement",
+          "current_structure": "Reference"
+        },
+        {
+          "link_index": 11,
+          "link_text": "State Tuition and Fee Waiver .....................",
+          "destination_page": 8,
+          "issue_type": "NotInLinkElement",
+          "current_structure": "Reference"
+        },
+        {
+          "link_index": 12,
+          "link_text": "Education and Training Voucher Program ...........",
+          "destination_page": 9,
+          "issue_type": "NotInLinkElement",
+          "current_structure": "Reference"
+        },
+        {
+          "link_index": 13,
+          "link_text": "Preparation for Adult Living Program .............",
+          "destination_page": 10,
+          "issue_type": "NotInLinkElement",
+          "current_structure": "Reference"
+        },
+        {
+          "link_index": 14,
+          "link_text": "Coordinating Services ............................",
+          "destination_page": 11,
+          "issue_type": "NotInLinkElement",
+          "current_structure": "Reference"
+        },
+        {
+          "link_index": 15,
+          "link_text": "Memorandum of Understanding ......................",
+          "destination_page": 11,
+          "issue_type": "NotInLinkElement",
+          "current_structure": "Reference"
+        },
+        {
+          "link_index": 16,
+          "link_text": "Foster Youth Liaisons ............................",
+          "destination_page": 11,
+          "issue_type": "NotInLinkElement",
+          "current_structure": "Reference"
+        },
+        {
+          "link_index": 17,
+          "link_text": "Colocation Opportunities .........................",
+          "destination_page": 12,
+          "issue_type": "NotInLinkElement",
+          "current_structure": "Reference"
+        },
+        {
+          "link_index": 18,
+          "link_text": "Funding ..........................................",
+          "destination_page": 12,
+          "issue_type": "NotInLinkElement",
+          "current_structure": "Reference"
+        },
+        {
+          "link_index": 19,
+          "link_text": "Data Entry and Collection ........................",
+          "destination_page": 12,
+          "issue_type": "NotInLinkElement",
+          "current_structure": "Reference"
+        },
+        {
+          "link_index": 20,
+          "link_text": "List of Revisions ................................",
+          "destination_page": 13,
+          "issue_type": "NotInLinkElement",
+          "current_structure": "Reference"
+        }
+      ]
+    }
+  ],
+  "total_issues": 20,
+  "manual_fixes": [
+    {
+      "fix_number": 1,
+      "page": 2,
+      "link_text": "Purpose ..........................................",
+      "destination": 3,
+      "steps": [
+        "Step 1: Open Adobe Acrobat Pro DC",
+        "Step 2: Open the Tags panel (View > Show/Hide > Navigation Panes > Tags)",
+        "Step 3: Navigate to page 2 in the document",
+        "Step 4: In the Tags panel, expand the structure tree",
+        "Step 5: Look for a TOC or TOCI element containing 'Purpose ......................'",
+        "Step 6: Find the Reference element for this link",
+        "Step 7: Right-click the Reference element",
+        "Step 8: Select 'New Tag' from the context menu",
+        "Step 9: Choose 'Link' as the tag type",
+        "Step 10: Drag the Reference element into the newly created Link tag",
+        "Step 11: Right-click the Link tag and select 'Properties'",
+        "Step 12: In the 'Alternate Text' field, enter: 'Go to page 3'",
+        "Step 13: Click OK to save",
+        "Step 14: The link is now properly structured!"
+      ]
+    },
+    {
+      "fix_number": 2,
+      "page": 2,
+      "link_text": "Overview .........................................",
+      "destination": 3,
+      "steps": [
+        "Step 1: Open Adobe Acrobat Pro DC",
+        "Step 2: Open the Tags panel (View > Show/Hide > Navigation Panes > Tags)",
+        "Step 3: Navigate to page 2 in the document",
+        "Step 4: In the Tags panel, expand the structure tree",
+        "Step 5: Look for a TOC or TOCI element containing 'Overview .....................'",
+        "Step 6: Find the Reference element for this link",
+        "Step 7: Right-click the Reference element",
+        "Step 8: Select 'New Tag' from the context menu",
+        "Step 9: Choose 'Link' as the tag type",
+        "Step 10: Drag the Reference element into the newly created Link tag",
+        "Step 11: Right-click the Link tag and select 'Properties'",
+        "Step 12: In the 'Alternate Text' field, enter: 'Go to page 3'",
+        "Step 13: Click OK to save",
+        "Step 14: The link is now properly structured!"
+      ]
+    },
+    {
+      "fix_number": 3,
+      "page": 2,
+      "link_text": "Priority of Service ..............................",
+      "destination": 3,
+      "steps": [
+        "Step 1: Open Adobe Acrobat Pro DC",
+        "Step 2: Open the Tags panel (View > Show/Hide > Navigation Panes > Tags)",
+        "Step 3: Navigate to page 2 in the document",
+        "Step 4: In the Tags panel, expand the structure tree",
+        "Step 5: Look for a TOC or TOCI element containing 'Priority of Service ..........'",
+        "Step 6: Find the Reference element for this link",
+        "Step 7: Right-click the Reference element",
+        "Step 8: Select 'New Tag' from the context menu",
+        "Step 9: Choose 'Link' as the tag type",
+        "Step 10: Drag the Reference element into the newly created Link tag",
+        "Step 11: Right-click the Link tag and select 'Properties'",
+        "Step 12: In the 'Alternate Text' field, enter: 'Go to page 3'",
+        "Step 13: Click OK to save",
+        "Step 14: The link is now properly structured!"
+      ]
+    },
+    {
+      "fix_number": 4,
+      "page": 2,
+      "link_text": "Foster Youth Definition ..........................",
+      "destination": 4,
+      "steps": [
+        "Step 1: Open Adobe Acrobat Pro DC",
+        "Step 2: Open the Tags panel (View > Show/Hide > Navigation Panes > Tags)",
+        "Step 3: Navigate to page 2 in the document",
+        "Step 4: In the Tags panel, expand the structure tree",
+        "Step 5: Look for a TOC or TOCI element containing 'Foster Youth Definition ......'",
+        "Step 6: Find the Reference element for this link",
+        "Step 7: Right-click the Reference element",
+        "Step 8: Select 'New Tag' from the context menu",
+        "Step 9: Choose 'Link' as the tag type",
+        "Step 10: Drag the Reference element into the newly created Link tag",
+        "Step 11: Right-click the Link tag and select 'Properties'",
+        "Step 12: In the 'Alternate Text' field, enter: 'Go to page 4'",
+        "Step 13: Click OK to save",
+        "Step 14: The link is now properly structured!"
+      ]
+    },
+    {
+      "fix_number": 5,
+      "page": 2,
+      "link_text": "Priority Order ...................................",
+      "destination": 4,
+      "steps": [
+        "Step 1: Open Adobe Acrobat Pro DC",
+        "Step 2: Open the Tags panel (View > Show/Hide > Navigation Panes > Tags)",
+        "Step 3: Navigate to page 2 in the document",
+        "Step 4: In the Tags panel, expand the structure tree",
+        "Step 5: Look for a TOC or TOCI element containing 'Priority Order ...............'",
+        "Step 6: Find the Reference element for this link",
+        "Step 7: Right-click the Reference element",
+        "Step 8: Select 'New Tag' from the context menu",
+        "Step 9: Choose 'Link' as the tag type",
+        "Step 10: Drag the Reference element into the newly created Link tag",
+        "Step 11: Right-click the Link tag and select 'Properties'",
+        "Step 12: In the 'Alternate Text' field, enter: 'Go to page 4'",
+        "Step 13: Click OK to save",
+        "Step 14: The link is now properly structured!"
+      ]
+    },
+    {
+      "fix_number": "batch",
+      "page": 2,
+      "note": "Repeat the same process for remaining 15 links on this page"
+    }
+  ]
+}

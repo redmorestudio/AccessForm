@@ -1,6 +1,6 @@
 # AccessForm API Architecture - Endpoint Documentation
 
-**Last Updated:** 2025-01-10
+**Last Updated:** 2025-10-12
 
 ## Overview
 

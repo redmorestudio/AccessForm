@@ -126,6 +126,13 @@ builder.Services.AddScoped<PdfUAComplianceService>();
 // Add table/link accessibility cleanup service
 builder.Services.AddScoped<AccessFormServer.Services.TableLinkAccessibilityService>();
 
+// Add link annotation fix service (fixes link errors by adding PDF/UA structure elements in place)
+builder.Services.AddScoped<AccessFormServer.Services.LinkAnnotationFixService>();
+
+// Add TOC link fix service (creates proper Link elements for TOC annotations)
+// Replaces TocStructureRemediationService with better Link wrapping logic
+builder.Services.AddScoped<AccessFormServer.Services.TocLinkFixService>();
+
 // Add comprehensive PDF field and tag editor service
 builder.Services.AddScoped<PdfFieldTagEditorService>();
 

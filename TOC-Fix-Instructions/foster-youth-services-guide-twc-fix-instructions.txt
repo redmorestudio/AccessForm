@@ -1,0 +1,119 @@
+======================================================================
+TOC LINK STRUCTURE FIX INSTRUCTIONS
+======================================================================
+File: foster-youth-services-guide-twc.pdf
+Generated: 2025-10-12 17:47:14
+
+Total Issues: 20 links need fixing
+Estimated Time: ~10 minutes
+
+======================================================================
+INSTRUCTIONS FOR ADOBE ACROBAT PRO
+======================================================================
+
+FIX #1 - Page 2
+--------------------------------------------------
+Link: 'Purpose ..........................................'
+Goes to: Page 3
+
+Steps:
+  Step 1: Open Adobe Acrobat Pro DC
+  Step 2: Open the Tags panel (View > Show/Hide > Navigation Panes > Tags)
+  Step 3: Navigate to page 2 in the document
+  Step 4: In the Tags panel, expand the structure tree
+  Step 5: Look for a TOC or TOCI element containing 'Purpose ......................'
+  Step 6: Find the Reference element for this link
+  Step 7: Right-click the Reference element
+  Step 8: Select 'New Tag' from the context menu
+  Step 9: Choose 'Link' as the tag type
+  Step 10: Drag the Reference element into the newly created Link tag
+  Step 11: Right-click the Link tag and select 'Properties'
+  Step 12: In the 'Alternate Text' field, enter: 'Go to page 3'
+  Step 13: Click OK to save
+  Step 14: The link is now properly structured!
+
+FIX #2 - Page 2
+--------------------------------------------------
+Link: 'Overview .........................................'
+Goes to: Page 3
+
+Steps:
+  Step 1: Open Adobe Acrobat Pro DC
+  Step 2: Open the Tags panel (View > Show/Hide > Navigation Panes > Tags)
+  Step 3: Navigate to page 2 in the document
+  Step 4: In the Tags panel, expand the structure tree
+  Step 5: Look for a TOC or TOCI element containing 'Overview .....................'
+  Step 6: Find the Reference element for this link
+  Step 7: Right-click the Reference element
+  Step 8: Select 'New Tag' from the context menu
+  Step 9: Choose 'Link' as the tag type
+  Step 10: Drag the Reference element into the newly created Link tag
+  Step 11: Right-click the Link tag and select 'Properties'
+  Step 12: In the 'Alternate Text' field, enter: 'Go to page 3'
+  Step 13: Click OK to save
+  Step 14: The link is now properly structured!
+
+FIX #3 - Page 2
+--------------------------------------------------
+Link: 'Priority of Service ..............................'
+Goes to: Page 3
+
+Steps:
+  Step 1: Open Adobe Acrobat Pro DC
+  Step 2: Open the Tags panel (View > Show/Hide > Navigation Panes > Tags)
+  Step 3: Navigate to page 2 in the document
+  Step 4: In the Tags panel, expand the structure tree
+  Step 5: Look for a TOC or TOCI element containing 'Priority of Service ..........'
+  Step 6: Find the Reference element for this link
+  Step 7: Right-click the Reference element
+  Step 8: Select 'New Tag' from the context menu
+  Step 9: Choose 'Link' as the tag type
+  Step 10: Drag the Reference element into the newly created Link tag
+  Step 11: Right-click the Link tag and select 'Properties'
+  Step 12: In the 'Alternate Text' field, enter: 'Go to page 3'
+  Step 13: Click OK to save
+  Step 14: The link is now properly structured!
+
+FIX #4 - Page 2
+--------------------------------------------------
+Link: 'Foster Youth Definition ..........................'
+Goes to: Page 4
+
+Steps:
+  Step 1: Open Adobe Acrobat Pro DC
+  Step 2: Open the Tags panel (View > Show/Hide > Navigation Panes > Tags)
+  Step 3: Navigate to page 2 in the document
+  Step 4: In the Tags panel, expand the structure tree
+  Step 5: Look for a TOC or TOCI element containing 'Foster Youth Definition ......'
+  Step 6: Find the Reference element for this link
+  Step 7: Right-click the Reference element
+  Step 8: Select 'New Tag' from the context menu
+  Step 9: Choose 'Link' as the tag type
+  Step 10: Drag the Reference element into the newly created Link tag
+  Step 11: Right-click the Link tag and select 'Properties'
+  Step 12: In the 'Alternate Text' field, enter: 'Go to page 4'
+  Step 13: Click OK to save
+  Step 14: The link is now properly structured!
+
+FIX #5 - Page 2
+--------------------------------------------------
+Link: 'Priority Order ...................................'
+Goes to: Page 4
+
+Steps:
+  Step 1: Open Adobe Acrobat Pro DC
+  Step 2: Open the Tags panel (View > Show/Hide > Navigation Panes > Tags)
+  Step 3: Navigate to page 2 in the document
+  Step 4: In the Tags panel, expand the structure tree
+  Step 5: Look for a TOC or TOCI element containing 'Priority Order ...............'
+  Step 6: Find the Reference element for this link
+  Step 7: Right-click the Reference element
+  Step 8: Select 'New Tag' from the context menu
+  Step 9: Choose 'Link' as the tag type
+  Step 10: Drag the Reference element into the newly created Link tag
+  Step 11: Right-click the Link tag and select 'Properties'
+  Step 12: In the 'Alternate Text' field, enter: 'Go to page 4'
+  Step 13: Click OK to save
+  Step 14: The link is now properly structured!
+
+[BATCH NOTE] Repeat the same process for remaining 15 links on this page
