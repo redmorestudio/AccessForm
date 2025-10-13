@@ -130,8 +130,8 @@ builder.Services.AddScoped<AccessFormServer.Services.TableLinkAccessibilityServi
 builder.Services.AddScoped<AccessFormServer.Services.LinkAnnotationFixService>();
 
 // Add TOC link fix service (creates proper Link elements for TOC annotations)
-// Replaces TocStructureRemediationService with better Link wrapping logic
-builder.Services.AddScoped<AccessFormServer.Services.TocLinkFixService>();
+// Enhanced version with better orphan handling and parent tree management
+builder.Services.AddScoped<AccessFormServer.Services.TocLinkFixServiceEnhanced>();
 
 // Add comprehensive PDF field and tag editor service
 builder.Services.AddScoped<PdfFieldTagEditorService>();

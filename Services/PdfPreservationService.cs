@@ -21,7 +21,7 @@ namespace WordToPdfConverter.Services
         private readonly ArtifactViolationFixService _artifactViolationFixService;
         private readonly TaggedWhitespaceFixService _taggedWhitespaceFixService;
         private readonly OrphanedWhitespaceAdoptionService _orphanedWhitespaceAdoptionService;
-        private readonly AccessFormServer.Services.TocLinkFixService _tocLinkFixService;
+        private readonly AccessFormServer.Services.TocLinkFixServiceEnhanced _tocLinkFixService;
 
         public PdfPreservationService(
             ILogger<PdfPreservationService> logger,
@@ -33,7 +33,7 @@ namespace WordToPdfConverter.Services
             ArtifactViolationFixService artifactViolationFixService,
             TaggedWhitespaceFixService taggedWhitespaceFixService,
             OrphanedWhitespaceAdoptionService orphanedWhitespaceAdoptionService,
-            AccessFormServer.Services.TocLinkFixService tocLinkFixService)
+            AccessFormServer.Services.TocLinkFixServiceEnhanced tocLinkFixService)
         {
             _logger = logger;
             _accessibilityService = accessibilityService;
