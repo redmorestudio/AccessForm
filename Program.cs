@@ -57,6 +57,7 @@ builder.Services.AddScoped<AccessibilityService>();
 builder.Services.AddScoped<AccessibilityReportService>();
 builder.Services.AddScoped<AccessibilityRetrofitService>();
 builder.Services.AddScoped<PdfAccessibilityEnhancer>();
+builder.Services.AddScoped<WordToPdfConverter.Services.VeraPdfService>();
 builder.Services.AddScoped<AccessFormServer.Services.ImageAltTextService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.FieldAnalysisService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.FormFieldCreationService>();
