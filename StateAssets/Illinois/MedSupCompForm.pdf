@@ -1,0 +1,2131 @@
+
+<!DOCTYPE HTML>
+<html lang="en">
+    <head>
+   <meta charset="UTF-8"/>
+
+<meta name="description" content="To protect consumers by providing assistance and information, by efficiently regulating the insurance industry&#39;s market behavior and financial solvency, and by fostering a competitive insurance marketplace."/>
+<meta name="template" content="Home Page"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta http-equiv="Last-Modified" content="01-10-2025 09:25:33"/>
+
+<meta http-equiv="X-UA-Compatible" content="ie=edge"/>
+
+<!-- The Twitter meta tags-->
+<meta name="twitter:card" content="summary"/>
+<meta name="twitter:url" content="https://idoi.illinois.gov/en.html"/>
+<meta name="twitter:title" content="Home - IDOI"/>
+<meta name="twitter:description" content="To protect consumers by providing assistance and information, by efficiently regulating the insurance industry&#39;s market behavior and financial solvency, and by fostering a competitive insurance marketplace."/>
+<!-- The Open Graph meta tags -->
+<meta property="og:url" content="https://idoi.illinois.gov/en.html"/>
+<meta property="og:type" content="agency-home-page"/>
+<meta property="og:title" content="Home - IDOI"/>
+<meta property="og:description" content="To protect consumers by providing assistance and information, by efficiently regulating the insurance industry&#39;s market behavior and financial solvency, and by fostering a competitive insurance marketplace."/>
+
+<meta property="og:locale" content="en"/>
+
+   <title>Home - IDOI</title>
+   <link rel="canonical" href="https://idoi.illinois.gov"/>
+   <!--Preconnect and DNS-Prefetch to improve page load time. -->
+<link rel="preconnect" href="//dpm.demdex.net"/>
+<link rel="preconnect" href="//fast.stateofil.demdex.net"/>
+<link rel="preconnect" href="//stateofil.demdex.net"/>
+<link rel="preconnect" href="//stateofil.tt.omtrdc.net"/>
+<link rel="preconnect" href="//smetrics.il.gov.sc.omtrdc.net"/>
+<link rel="preconnect" href="//metrics.il.gov.sc.omtrdc.net"/>
+<!--/Preconnect and DNS-Prefetch-->
+   
+
+   
+	<script>
+	var mode =  true;
+	var servername = "";
+	const headers = {};
+    var name = htmlDecode("Illinois Department of Insurance:Home - IDOI");
+    var pageName = htmlDecode("Home - IDOI");
+    var siteSection1 = htmlDecode("Home - IDOI");
+    var siteSection2 = htmlDecode("");
+    var siteSection3 = htmlDecode("");
+    var siteSection4 = htmlDecode("");
+	window.adobeDataLayer = window.adobeDataLayer || [];
+	xmlhttp = new XMLHttpRequest();
+	xmlhttp.open("HEAD", document.URL, true);
+	xmlhttp.onreadystatechange = function() {
+		if (xmlhttp.readyState == 4) {
+			xmlhttp.getAllResponseHeaders().trim().split(/[\r\n]+/).map(value => value.split(/: /)).forEach(keyValue => {
+			headers[keyValue[0].trim()] = keyValue[1].trim();
+			});
+		if (headers.hasOwnProperty("x-dispatcher")) {
+			servername=headers["x-dispatcher"];
+			window.adobeDataLayer.push({
+				"event": "Page Loaded",
+				"xdm": {
+					"web": {
+						"webPageDetails": {
+							"server": servername
+                            }
+                        }
+                    }
+                });
+			}    
+		}
+	}    
+	xmlhttp.send();
+	window.adobeDataLayer.push({
+		"event": "Page Loaded",
+		"xdm": {
+			"web": {
+				"webPageDetails": {
+					"siteSection": "insurance", //home is for the root directory
+					"language": "en",
+					"name": name, //name is [directory level 1]:[page title]
+					"pageType": "agency-home-page", //the template name or id
+					"server": servername,
+					"pageName": pageName,
+					"ErrorPage": "", // incase of 404 error page only
+					"publishDate": "10/01/2025",
+					"originalPublishDate": "10/01/2025",
+					"errorCode": "",
+					"contentType":"",
+					"errorType": "",
+				},
+				"category": {
+					"siteSection1": siteSection1,
+					"siteSection2": siteSection2,
+					"siteSection3": siteSection3,
+					"siteSection4": siteSection4
+
+				},
+				"aem": {
+					"environment": "prod",
+					"authorVsPublish": "publish",
+					"version": "6.5.21.0",
+					"buildDate": "2025-09-25T19:25:32Z",
+					"authorId": "anonymous",
+					"previewMode": mode
+
+				}
+			}
+		}
+	});
+	
+	// Function to decode the encoded html String
+	function htmlDecode(input) {
+	    if (input) {
+	        var doc = new DOMParser().parseFromString(input, "text/html");
+	        return doc.documentElement.textContent;
+	    } else {
+	        return "";
+	    }
+	}
+
+	</script>
+   <script>
+      //(function(g,b,d,f){(function(a,c,d){if(a){var e=b.createElement("style");e.id=c;e.innerHTML=d;a.appendChild(e)}})(b.getElementsByTagName("head")[0],"at-body-style",d);setTimeout(function(){var a=b.getElementsByTagName("head")[0];if(a){var c=b.getElementById("at-body-style");c&&a.removeChild(c)}},f)})(window,document,"body {opacity: 0 !important}",3E3);
+   </script>
+
+	
+	   
+	
+
+
+
+	   
+
+
+	   
+
+
+	   
+
+
+	   
+	    <script src="//assets.adobedtm.com/c318d2739692/7710421a8ac1/launch-eae2ed0f1b30.min.js" async></script>
+	   
+
+
+   
+
+    
+    
+<link rel="stylesheet" href="/etc.clientlibs/soi/components/content/v1/column-control/clientlibs.min.2ab879f828ba72e740aa98f5e369863a.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/soi/clientlibs/clientlib-base.min.2135ea2bb62222ee0e2818eb203da67c.css" type="text/css">
+<link rel="stylesheet" href="/etc.clientlibs/soi/clientlibs/clientlib-site.min.2451f6d09bef140b983959475731d579.css" type="text/css">
+
+
+
+    
+        
+    
+<link rel="stylesheet" href="/etc.clientlibs/soi/clientlibs/clientlib-theme-2.min.380d82b8631777dd2edfc2d4652781c2.css" type="text/css">
+
+
+
+    
+    
+    <!--
+    THIS IS WHERE CUSTOM CODE GOES, BASED ON AGENCY PATH
+    -->
+    <!-- custom stylesheet linked -->
+    <!-- Custom Agency Path: This containing page to agency page to dam address-->
+    
+        <link rel="stylesheet" href="/content/dam/soi/en/web/insurance/resources/css/custom.css" type="text/css"/>
+    
+    <!-- custom stylesheet included -->   
+
+
+   
+    
+    
+
+    
+
+    
+    
+    
+
+   
+   <link rel="shortcut icon" href="/content/dam/soi/en/web/insurance/images/favicon.ico"/>
+</head>
+    <body class="home-page page basicpage" id="home-page-9df9d11101" data-cmp-data-layer-enabled>
+        <script>
+          window.adobeDataLayer = window.adobeDataLayer || [];
+          adobeDataLayer.push({
+              page: JSON.parse("{\x22home\u002Dpage\u002D9df9d11101\x22:{\x22@type\x22:\x22soi\/components\/structure\/home\u002Dpage\x22,\x22repo:modifyDate\x22:\x222025\u002D10\u002D01T14:25:49Z\x22,\x22dc:title\x22:\x22Home \u002D IDOI\x22,\x22dc:description\x22:\x22To protect consumers by providing assistance and information, by efficiently regulating the insurance industry\x27s market behavior and financial solvency, and by fostering a competitive insurance marketplace.\x22,\x22xdm:template\x22:\x22\/conf\/soi\/settings\/wcm\/templates\/agency\u002Dhome\u002Dpage\x22,\x22xdm:language\x22:\x22en\x22,\x22xdm:tags\x22:[],\x22repo:path\x22:\x22\/content\/soi\/insurance\/en.html\x22}}"),
+              event:'cmp:show',
+              eventInfo: {
+                  path: 'page.home\u002Dpage\u002D9df9d11101'
+              }
+          });
+        </script>
+        
+        
+            
+
+  <div class="cmp-page__skiptomaincontent">
+ <a class="cmp-page__skiptomaincontent-link" href="#main">Skip to main content</a>
+</div>
+
+    
+
+
+
+
+            
+
+
+
+            <main class="soi-base">
+   <div class="soi-container">
+      <div class="template__placeholder template__placeholder--content">
+         
+
+
+<div class="aem-Grid aem-Grid--12 aem-Grid--default--12 ">
+    
+    <div class="experiencefragment container--full-width aem-GridColumn aem-GridColumn--default--12">
+<div id="experiencefragment-f951c8c8f8" class="cmp-experiencefragment cmp-experiencefragment--global-header">
+
+
+    
+   <div class="cmp-container " style="height: auto;">
+      <div class="cmp-container__mobile " style="height: auto;">
+         
+
+
+<div class="aem-Grid aem-Grid--12 aem-Grid--default--12 ">
+    
+    <div class="global-header aem-GridColumn--default--none aem-GridColumn aem-GridColumn--default--12 aem-GridColumn--offset--default--0">
+   <header class="global-header logo class" id="logo">
+      <div class="cmp-global-header">
+         <div class="cmp-global-header__container">
+            <a href="https://www.illinois.gov" class="cmp-global-header__logo">
+            <img src="/content/dam/soi/en/web/global/images/logos/header-logo.svg" alt="Illinois.gov"/>
+            </a>
+            <ul class="cmp-global-header__nav">
+               
+                  <li class="cmp-global-header__nav-item">
+                     <a class="cmp-global-header__nav-item-link undefined" href="https://www.illinois.gov/search-results.html?contentType=agency" aria-label="Agencies" target="_blank">
+                     <img src="/content/dam/soi/en/web/global/images/icons/agency-icon.svg" alt=""/>
+                     Agencies</a>
+                  </li>
+               
+                  <li class="cmp-global-header__nav-item">
+                     <a class="cmp-global-header__nav-item-link undefined" href="https://www.illinois.gov/search-results.html?contentType=service" aria-label="Services" target="_blank">
+                     <img src="/content/dam/soi/en/web/global/images/icons/service-icon.svg" alt=""/>
+                     Services</a>
+                  </li>
+               
+            </ul>
+         </div>
+      </div>
+   </header>
+
+
+    
+</div>
+<div class="container responsivegrid aem-GridColumn aem-GridColumn--default--12">
+
+    
+   <div class="cmp-container " style="height: auto;">
+      <div class="cmp-container__mobile " style="height: auto;">
+         
+
+
+<div class="aem-Grid aem-Grid--12 aem-Grid--default--12 ">
+    
+    
+    
+</div>
+
+      </div>
+   </div>
+
+    
+</div>
+
+    
+</div>
+
+      </div>
+   </div>
+
+    
+</div>
+
+    
+</div>
+<div class="experiencefragment container--full-width aem-GridColumn aem-GridColumn--default--12">
+<div id="experiencefragment-051ca5b4f7" class="cmp-experiencefragment cmp-experiencefragment--global-alert">
+
+
+    
+   <div class="cmp-container " style="height: auto;background-color: rgba(127,127,127,0);">
+      <div class="cmp-container__mobile " style="height: auto;background-color: rgba(127,127,127,0);">
+         
+
+
+<div class="aem-Grid aem-Grid--12 aem-Grid--default--12 ">
+    
+    <div class="global-alert aem-GridColumn--default--hide aem-GridColumn aem-GridColumn--default--12 aem-GridColumn--offset--default--0">
+
+    
+</div>
+
+    
+</div>
+
+      </div>
+   </div>
+
+    
+</div>
+
+    
+</div>
+<div class="agency-header agency-header--white-text agency-header--navigation-white-text aem-GridColumn aem-GridColumn--default--12">
+    
+
+
+
+<div class=" ">
+   
+   <!-- Set background color from color picker -->
+   <div class="cmp-agency-header" style="background-color: #162B53;" data-disable-sticky="false">
+      <div class="container container--padding-left-right responsivegrid aem-GridColumn  aem-GridColumn--default--12 ">
+         <div class="cmp-container">
+            <div class="cmp-container__mobile">
+               <div class="aem-Grid aem-Grid--12 aem-Grid--default--12 ">
+                  <div class="cmp-agency-header__header">
+                     <div class="cmp-agency-header__wrapper">
+                        
+                        <a href="/" class="cmp-agency-header__logo-link"> <img src="/content/dam/soi/en/web/insurance/images/idoi-logo.png" alt="IDOI" class="cmp-agency-header__logo"/>
+                        </a>
+                        
+                        <div class="cmp-agency-header__links-search">
+                           <div class="cmp-agency-header__links-desktop">
+                              
+                                 <a href="/aboutus/aboutidoi.html" class="cmp-agency-header__links-desktop__item cmp-agency-header__links-desktop__item--link">Director Ann Gillespie</a>
+                              
+                              <div class="cmp-agency-header__links-desktop__item">
+                                 
+                                 <div class="translate weglot" weglot-api-key="wg_dca94f080353b6fdbe17f34d221df0316">                   
+                                       <em class="fas fa-globe"></em>
+                                       <div id="weglot-desktop">
+                                       </div>                  
+                                 </div>
+                                 
+                              </div>
+                              <div class="cmp-agency-header__links-desktop__item">
+                                 <div class="social-media-icons social-media-icons--dark">
+                                    <div class="cmp-social-media-icons">
+                                        
+                                    </div>
+                                 </div>
+                              </div>
+                           </div>
+                           <div class="cmp-agency-header__search">
+                              <div>
+     <div class="search-input-row">
+        <div class="search-input ">
+            <div class="cmp-search-input" data-ajax-url="https://doit-web-content-management.ent.us-east4.gcp.elastic-cloud.com/api/as/v1/engines/{index}/query_suggestion" data-search-page="https://idoi.illinois.gov/search-results.html" data-agency="insurance" data-engine-key="search-6vsm2asko372xhcp4ttjjm1e" data-suggestions-limit="4" data-engine-key-crawler="search-6vsm2asko372xhcp4ttjjm1e" data-page-type="insurance" data-searchbar-filters="title" data-engines="[{&#34;name&#34;:&#34;doi-main&#34;,&#34;label&#34;:&#34;This Site&#34;,&#34;isDefault&#34;:&#34;true&#34;},{&#34;name&#34;:&#34;soi-allproperties&#34;,&#34;label&#34;:&#34;All Illinois.gov sites&#34;,&#34;isDefault&#34;:&#34;false&#34;}]">
+                <input type="text" placeholder="Search" aria-label="Search" class="cmp-search-input__search-input"/>
+                <a href="#" class="cmp-search-input__search-icon" aria-label="Toggle Search">
+                    <i class="fas fa-search cmp-search-input__search-icon__search" aria-hidden="true"></i>
+                    <i class="fas fa-times cmp-search-input__search-icon__close" aria-hidden="true"></i>
+                </a>
+                <div class="cmp-search-input__suggestion" data-template-id="search-input-suggestion-1"></div>
+            </div>
+            <script id="search-input-suggestion-1" type="text/x-handlebars-template">
+                {{#if values.length}}
+                <ul class="cmp-search-input__dropdown">
+                    {{#each values}}
+                        {{#ifLess @index ../limit}}
+                            <li class="cmp-search-input__dropdown-item">
+                                <a href="{{../../searchPage}}?q={{convertAnd ../this.suggestion}}" class="cmp-search-input__dropdown-item-link">{{../this.suggestion}}</a>
+                            </li>
+                        {{/ifLess}}
+                    {{/each}}
+                </ul>
+                {{/if}}
+            </script>
+        </div>
+        <div class="cmp-options-wrap" data-template-id="option-template-id"></div>
+        <script id="option-template-id" type="text/x-handlebars-template">
+            {{#if options.length}}
+            <div class="options">
+                <fieldset class="cmp-form-options cmp-form-options--drop-down">
+                    <label class="cmp-form-options__label" for="searchInSelect">Search In</label>
+                    <select class="cmp-form-options__field cmp-form-options__field--drop-down" name="searchIn" id="searchInSelect" aria-label="Search In">
+                        {{#each options}}
+                            <option value="{{this.name}}" {{#ifEquals this.isDefault 'true' }} selected aria-selected="true" {{else}} aria-selected="false" {{/ifEquals}}>{{this.label}}</option>
+                        {{/each}}
+                    </select>
+                </fieldset>
+            </div>
+            {{/if}}
+        </script>
+    </div>
+
+
+    
+</div>
+                           </div>
+                        </div>
+                        <div class="cmp-agency-header__mobile-icons">
+                           <a href="#" aria-label="Agency header search" class="cmp-agency-header__mobile-search">
+                              <em class="fas fa-search" aria-hidden="true"></em>
+                           </a>
+                           <button class="cmp-agency-header__mobile-nav" aria-label="Expand site navigation">
+                            <em class="fas fa-bars cmp-agency-header__mobile-nav__nav" aria-hidden="true"></em>
+                            <em class="fas fa-times cmp-agency-header__mobile-nav__close" aria-hidden="true"></em>
+                           </button>
+                        </div>
+                     </div>
+                  </div>
+               </div>
+            </div>
+         </div>
+      </div>
+      <div class="header-navigation " style="background-color: #8a95a9;">
+         <div class="container container--header-navigation responsivegrid aem-GridColumn  aem-GridColumn--default--12 " style="border-top: 1px solid #FFFFFF">
+            <div class="cmp-container">
+               <div class="cmp-container__mobile">
+                  <div class="aem-Grid aem-Grid--12 aem-Grid--default--12 ">
+                     <nav class="cmp-header-navigation" itemtype="http://schema.org/SiteNavigationElement">
+                        <ul class="cmp-header-navigation__group cmp-header-navigation__group--main">
+                           
+                              <li class="cmp-header-navigation__item cmp-header-navigation__item--expand-on-hover cmp-header-navigation__dropdown cmp-header-navigation__item--level-0">
+                                 <span class="cmp-header-navigation__dropdown-wrapper">
+                                    <a class="cmp-header-navigation__item-link cmp-header-navigation__dropdown-text" href="/home.html" aria-label="Home">Home</a>
+                                    <button class="cmp-header-navigation__dropdown-arrow" aria-label="Home" aria-expanded="false"></button>
+                                 </span>
+                                 
+                              </li>
+                           
+                              <li class="cmp-header-navigation__item cmp-header-navigation__item--expand-on-hover cmp-header-navigation__dropdown cmp-header-navigation__item--level-0">
+                                 <span class="cmp-header-navigation__dropdown-wrapper">
+                                    <a class="cmp-header-navigation__item-link cmp-header-navigation__dropdown-text" href="/consumers.html" aria-label="Consumers">Consumers</a>
+                                    <button class="cmp-header-navigation__dropdown-arrow" aria-label="Consumers" aria-expanded="false"></button>
+                                 </span>
+                                 <ul class="cmp-header-navigation__group cmp-header-navigation__subnav">
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/consumers/file-a-complaint.html" aria-label="How to File a Complaint">How to File a Complaint</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/consumers/file-an-external-review.html" aria-label="How to File an External Review">How to File an External Review</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/consumers/affordable-care-act--aca----illinois-exchange-plan.html" aria-label="Affordable Care Act (ACA) - Illinois Exchange Plan">Affordable Care Act (ACA) - Illinois Exchange Plan</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/consumers/affordable-care-act--aca----illinois-rate-filings.html" aria-label="Affordable Care Act (ACA) - Illinois Rate Filings">Affordable Care Act (ACA) - Illinois Rate Filings</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/consumers/consumerinsurance.html" aria-label=" Consumer Insurance"> Consumer Insurance</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/consumers/hearing.html" aria-label="Consumer Hearings">Consumer Hearings</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/consumers/short-term-limited-duration-insurance.html" aria-label="Short-Term Limited Duration Insurance">Short-Term Limited Duration Insurance</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/consumers/company-lookup.html" aria-label="Company Lookup">Company Lookup</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/consumers/covid-19.html" aria-label="COVID-19">COVID-19</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/consumers/disasters.html" aria-label="Disasters">Disasters</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/consumers/public-pension.html" aria-label="IDOI Public Pension Division">IDOI Public Pension Division</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/consumers/secure-login-applications.html" aria-label="Secure Login - Applications">Secure Login - Applications</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/consumers/reports.html" aria-label="Reports">Reports</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/consumers/naloxone.html" aria-label="Naloxone">Naloxone</a>
+                                       </li>
+                                    
+                                 </ul>
+                              </li>
+                           
+                              <li class="cmp-header-navigation__item cmp-header-navigation__item--expand-on-hover cmp-header-navigation__dropdown cmp-header-navigation__item--level-0">
+                                 <span class="cmp-header-navigation__dropdown-wrapper">
+                                    <a class="cmp-header-navigation__item-link cmp-header-navigation__dropdown-text" href="/producers.html" aria-label="Producers / Agents">Producers / Agents</a>
+                                    <button class="cmp-header-navigation__dropdown-arrow" aria-label="Producers / Agents" aria-expanded="false"></button>
+                                 </span>
+                                 <ul class="cmp-header-navigation__group cmp-header-navigation__subnav">
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/producers/insurance-producers-agents-portal.html" aria-label="Insurance Producers / Agents Portal">Insurance Producers / Agents Portal</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/producers/illinois-insurance-laws-and-regulations.html" aria-label="Illinois Insurance Laws &amp; Regulations">Illinois Insurance Laws &amp; Regulations</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/producers/illinois-public-adjuster.html" aria-label="Licensed Illinois Public Adjuster">Licensed Illinois Public Adjuster</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/producers/illinois-public-adjuster-examination-and-license-info.html" aria-label="Illinois Public Adjuster Examination And License Info">Illinois Public Adjuster Examination And License Info</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/producers/licensescertificationsfaqs.html" aria-label="Licenses, Certifications, And FAQs">Licenses, Certifications, And FAQs</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/producers/hearings.html" aria-label="Producer, Public Adjuster, &amp; Navigator Hearings">Producer, Public Adjuster, &amp; Navigator Hearings</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/producers/regulatory-filings-and-data-reporting.html" aria-label="Regulatory Filings And Data Reporting">Regulatory Filings And Data Reporting</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/producers/directors-orders.html" aria-label="Director&#39;s Orders">Director&#39;s Orders</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/producers/company-lookup.html" aria-label="Company Lookup">Company Lookup</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/producers/secure-login-applications.html" aria-label="Secure Login - Applications">Secure Login - Applications</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/producers/reports.html" aria-label="Reports">Reports</a>
+                                       </li>
+                                    
+                                 </ul>
+                              </li>
+                           
+                              <li class="cmp-header-navigation__item cmp-header-navigation__item--expand-on-hover cmp-header-navigation__dropdown cmp-header-navigation__item--level-0">
+                                 <span class="cmp-header-navigation__dropdown-wrapper">
+                                    <a class="cmp-header-navigation__item-link cmp-header-navigation__dropdown-text" href="/companies.html" aria-label="Companies">Companies</a>
+                                    <button class="cmp-header-navigation__dropdown-arrow" aria-label="Companies" aria-expanded="false"></button>
+                                 </span>
+                                 <ul class="cmp-header-navigation__group cmp-header-navigation__subnav">
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/company-bulletins-page.html" aria-label="Company Bulletins">Company Bulletins</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/insurance-company-portal.html" aria-label="Insurance Company Portal">Insurance Company Portal</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/company-information.html" aria-label="Illinois Insurance Company Information">Illinois Insurance Company Information</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/company-lookup.html" aria-label="Company Lookup">Company Lookup</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/company-divisions.html" aria-label="Company Divisions">Company Divisions</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/reinsurers.html" aria-label="Reinsurers">Reinsurers</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/company-taxes-and-forms.html" aria-label="Company Tax Forms, Deposits, Fees and Online ePay for Taxes and Invoices">Company Tax Forms, Deposits, Fees and Online ePay for Taxes and Invoices</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/idoi-help-center-login-for-respondents.html" aria-label="IDOI Help Center Login for Respondents">IDOI Help Center Login for Respondents</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/aca-for-issuers.html" aria-label="Affordable Care Act (ACA) For Issuers">Affordable Care Act (ACA) For Issuers</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/annual-statement-forms.html" aria-label="Annual Statement Forms For Insurance Companies">Annual Statement Forms For Insurance Companies</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/approved-ppa-uro-eiros.html" aria-label="Approved PPA, URO &amp; EIROs">Approved PPA, URO &amp; EIROs</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/directors-orders.html" aria-label="Director&#39;s Orders">Director&#39;s Orders</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/healthcare-rate-review-portal.html" aria-label="Healthcare Rate Review Portal">Healthcare Rate Review Portal</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/checklists-life-accident-health.html" aria-label="Checklists Life - Accident - Health">Checklists Life - Accident - Health</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/checklists-property-casualty.html" aria-label="Checklists: Property - Casualty">Checklists: Property - Casualty</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/medical-malpractice-reporting.html" aria-label="Medical Malpractice Reporting">Medical Malpractice Reporting</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/rate-rule-form-filings-public-access.html" aria-label="Rate, Rule &amp; Form Filings – Public Access">Rate, Rule &amp; Form Filings – Public Access</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/long-term-care-rescission-reporting-forms.html" aria-label="Long Term Care Rescission Reporting Forms">Long Term Care Rescission Reporting Forms</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/managed-care-license-registration-information.html" aria-label="Managed Care License / Registration Information">Managed Care License / Registration Information</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/internationally-active-insurance-groups.html" aria-label="Internationally Active Insurance Groups - IAIG">Internationally Active Insurance Groups - IAIG</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/company-plan-of-division-law-faqs.html" aria-label="Company Plan of Division Law FAQs">Company Plan of Division Law FAQs</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/industry-supplier-diversity.html" aria-label="Industry Supplier Diversity">Industry Supplier Diversity</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/secure-login-applications.html" aria-label="Secure Login - Applications">Secure Login - Applications</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/companies/reports.html" aria-label="Reports">Reports</a>
+                                       </li>
+                                    
+                                 </ul>
+                              </li>
+                           
+                              <li class="cmp-header-navigation__item cmp-header-navigation__item--expand-on-hover cmp-header-navigation__dropdown cmp-header-navigation__item--level-0">
+                                 <span class="cmp-header-navigation__dropdown-wrapper">
+                                    <a class="cmp-header-navigation__item-link cmp-header-navigation__dropdown-text" href="/wc-fraud.html" aria-label="Workers&#39; Compensation">Workers&#39; Compensation</a>
+                                    <button class="cmp-header-navigation__dropdown-arrow" aria-label="Workers&#39; Compensation" aria-expanded="false"></button>
+                                 </span>
+                                 <ul class="cmp-header-navigation__group cmp-header-navigation__subnav">
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/wc-fraud/workers-compensation-insurance-compliance.html" aria-label="Workers Compensation Insurance Compliance">Workers Compensation Insurance Compliance</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/wc-fraud/wc-case-intake-sheet.html" aria-label="WC Compliance Case Intake Sheet">WC Compliance Case Intake Sheet</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/wc-fraud/workers-compensation-fraud-unit.html" aria-label="Workers Compensation Fraud Unit">Workers Compensation Fraud Unit</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/wc-fraud/fraud-posters.html" aria-label="Workers&#39; Compensation Fraud - Materials">Workers&#39; Compensation Fraud - Materials</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/wc-fraud/workers-comp-fraud-referral-form-to-report-fraud.html" aria-label="WC Fraud Referral Form" target="blank">WC Fraud Referral Form</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/wc-fraud/workers-comp-fraud-unit-reports.html" aria-label="Workers&#39; Comp Fraud Unit - Reports">Workers&#39; Comp Fraud Unit - Reports</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/wc-fraud/settlement-surcharge-litigation.html" aria-label="Workers&#39; Compensation - Settlement of Surcharge Litigation">Workers&#39; Compensation - Settlement of Surcharge Litigation</a>
+                                       </li>
+                                    
+                                 </ul>
+                              </li>
+                           
+                              <li class="cmp-header-navigation__item cmp-header-navigation__item--expand-on-hover cmp-header-navigation__dropdown cmp-header-navigation__item--level-0">
+                                 <span class="cmp-header-navigation__dropdown-wrapper">
+                                    <a class="cmp-header-navigation__item-link cmp-header-navigation__dropdown-text" href="/aboutus.html" aria-label="About Us">About Us</a>
+                                    <button class="cmp-header-navigation__dropdown-arrow" aria-label="About Us" aria-expanded="false"></button>
+                                 </span>
+                                 <ul class="cmp-header-navigation__group cmp-header-navigation__subnav">
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/aboutus/contactus.html" aria-label="Contact Us">Contact Us</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/aboutus/reports.html" aria-label="Reports">Reports</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/aboutus/employment-opportunities.html" aria-label="Career Opportunities">Career Opportunities</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/aboutus/aboutidoi.html" aria-label="About the Director">About the Director</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/aboutus/event-request.html" aria-label="Event Participation Request">Event Participation Request</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/aboutus/osd.html" aria-label="Office of the Special Deputy Receiver">Office of the Special Deputy Receiver</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/aboutus/foia.html" aria-label="Illinois Freedom of Information Act (FOIA)">Illinois Freedom of Information Act (FOIA)</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/aboutus/sbm-procurement-opportunities.html" aria-label="SBM Procurement Opportunities">SBM Procurement Opportunities</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/aboutus/hbeac.html" aria-label="HBEAC">HBEAC</a>
+                                       </li>
+                                    
+                                       <li class="cmp-header-navigation__item cmp-header-navigation__item--level-1">
+                                          <a class="cmp-header-navigation__item-link" href="/aboutus/uniform-directory-task-force.html" aria-label="Uniform Directory Task Force">Uniform Directory Task Force</a>
+                                       </li>
+                                    
+                                 </ul>
+                              </li>
+                           
+                        </ul>
+                        <div class="cmp-header-navigation__group cmp-header-navigation__item cmp-header-navigation__group--desktop-only">
+                           <div class="cmp-header-navigation__dropdown cmp-header-navigation__more-dropdown">
+                              <span class="cmp-header-navigation__dropdown-wrapper">
+                                 <button class="cmp-header-navigation__item-link cmp-header-navigation__more-dropdown-text cmp-header-navigation__dropdown-text">
+                                    More
+                                    <span class="cmp-header-navigation__dropdown-arrow" aria-expanded="false" aria-label="More"></span>
+                                 </button>
+                              </span>
+                              <ul class="cmp-header-navigation__group cmp-header-navigation__subnav">
+                              </ul>
+                           </div>
+                        </div>
+                        <ul class="cmp-header-navigation__group cmp-header-navigation__group--mobile-only">
+                           
+                              <li class="cmp-header-navigation__item">
+                                 <a href="/aboutus/aboutidoi.html" class="cmp-header-navigation__item-link">Director Ann Gillespie</a>
+                              </li>
+                           
+                           <li class="cmp-header-navigation__item cmp-header-navigation__translate">
+                              <div class="cmp-header-navigation__item-link">
+                                 
+                                 <div class="translate weglot" weglot-api-key="wg_dca94f080353b6fdbe17f34d221df0316">
+                                       <em class="fas fa-globe"></em>
+                                       <div id="weglot-mobile">
+                                       </div>
+                                 </div>
+                                 
+                              </div>
+                           </li>
+                           
+                        </ul>
+                     </nav>
+                  </div>
+               </div>
+            </div>
+         </div>
+      </div>
+   </div>
+</div>
+<script defer type="text/javascript" src="https://cdn.weglot.us/weglot.min.js"></script></div>
+<div class="container responsivegrid aem-GridColumn aem-GridColumn--default--12">
+
+    
+   <div class="cmp-container " style="height: auto;">
+      <div class="cmp-container__mobile " style="height: auto;">
+         
+
+
+<div class="aem-Grid aem-Grid--12 aem-Grid--default--12 ">
+    
+    <div class="container responsivegrid aem-GridColumn aem-GridColumn--default--12">
+
+    
+   <div class="cmp-container " data-image-reference="/content/dam/soi/en/web/insurance/images/main-page-banner-v1.jpeg" style="background-image: url(/content/dam/soi/en/web/insurance/images/main-page-banner-v1.jpeg);background-position: center center;height: 420px;background-color: #dee3eb;">
+      <div class="cmp-container__mobile " style="background-image: url(/content/dam/soi/en/web/insurance/images/main-page-banner-v1.jpeg);background-position: center center;height: auto;background-color: #dee3eb;" data-image-reference="/content/dam/soi/en/web/insurance/images/main-page-banner-v1.jpeg">
+         
+
+
+<div class="aem-Grid aem-Grid--12 aem-Grid--default--12 ">
+    
+    <div class="container responsivegrid container--max-width aem-GridColumn aem-GridColumn--default--12">
+
+    
+   <div class="cmp-container " style="height: auto;">
+      <div class="cmp-container__mobile " style="height: auto;">
+         
+
+
+<div class="aem-Grid aem-Grid--12 aem-Grid--default--12 aem-Grid--phone--12 ">
+    
+    <div class="spacer spacer--large aem-GridColumn--phone--hide aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--default--12 aem-GridColumn--offset--phone--0">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="spacer spacer--large aem-GridColumn--phone--hide aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--default--12 aem-GridColumn--offset--phone--0">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="spacer spacer--large aem-GridColumn--phone--hide aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--default--12 aem-GridColumn--offset--phone--0">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="spacer spacer--large aem-GridColumn--phone--hide aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--default--12 aem-GridColumn--offset--phone--0">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="spacer spacer--large aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="spacer spacer--bg aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="spacer spacer--small aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="button button--center aem-GridColumn aem-GridColumn--default--12">
+    <a id="button-a5edc69ceb" class="cmp-button insurance-cta" href="/consumers.html" role="button" target="_blank" aria-label="Find Covid-19 Vaccination Sites Near You" data-cmp-clickable data-cmp-data-layer="{&#34;button-a5edc69ceb&#34;:{&#34;@type&#34;:&#34;core/wcm/components/button/v1/button&#34;,&#34;repo:modifyDate&#34;:&#34;2024-01-04T21:37:27Z&#34;,&#34;dc:title&#34;:&#34;Consumer Insurance >&#34;,&#34;xdm:linkURL&#34;:&#34;/content/soi/insurance/en/consumers.html&#34;}}">
+        
+    
+
+        <span class="cmp-button__text">Consumer Insurance &gt;</span>
+    </a>
+
+
+
+    
+</div>
+
+    
+</div>
+
+      </div>
+   </div>
+
+    
+</div>
+
+    
+</div>
+
+      </div>
+   </div>
+
+    
+</div>
+<div class="container responsivegrid aem-GridColumn aem-GridColumn--default--12">
+
+    
+   <div class="cmp-container " style="height: auto;background-color: #dee3eb;">
+      <div class="cmp-container__mobile " style="height: auto;background-color: #dee3eb;">
+         
+
+
+<div class="aem-Grid aem-Grid--12 aem-Grid--default--12 ">
+    
+    <div class="container responsivegrid container--max-width aem-GridColumn aem-GridColumn--default--12">
+
+    
+   <div class="cmp-container " style="height: auto;background-color: #dee3eb;">
+      <div class="cmp-container__mobile " style="height: auto;">
+         
+
+
+<div class="aem-Grid aem-Grid--12 aem-Grid--default--12 aem-Grid--phone--12 ">
+    
+    <div class="spacer aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="title title--left aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--default--12 aem-GridColumn--offset--phone--0">
+<div data-cmp-data-layer="{&#34;title-c1db013be8&#34;:{&#34;@type&#34;:&#34;soi/components/content/v1/title&#34;,&#34;repo:modifyDate&#34;:&#34;2022-10-26T19:18:39Z&#34;,&#34;dc:title&#34;:&#34;   How Do I ...?&#34;}}" id="title-c1db013be8" class="cmp-title ">
+    <h2 class="cmp-title__text">    How Do I ...?</h2>
+</div>
+
+    
+
+</div>
+<div class="card-container container responsivegrid aem-GridColumn aem-GridColumn--default--12">
+   <div class="cmp-card-container  ">
+      
+
+
+<div class="aem-Grid aem-Grid--12 aem-Grid--default--12 aem-Grid--phone--12 ">
+    
+    <div class="image-card aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--offset--phone--0 aem-GridColumn--offset--default--0 aem-GridColumn--default--4"><div class="image-card ">
+   
+   
+      <a class="cmp-image-card" href="/producers/licensescertificationsfaqs.html" style="background-color: rgb(255,255,255);">
+      
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/question2-fitted.jpg" class="cmp-image-card__image cmp-image-card__image--desktop lazyload" data-bg="https://s7d1.scene7.com/is/image/isp/question2-fitted?ts=1666632764322&amp;$ImageCardStandardHeight$&amp;align=0,0" style="background-position:  center center;"></div>
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/question2.jpg" class="cmp-image-card__image cmp-image-card__image--mobile lazyload" data-bg="https:\2f\2fs7d1.scene7.com\2fis\2fimage\2fisp\2fquestion2?ts=1664212966295\26$ImageCardComponent$\26 align=0,0" style="background-position:  center center;"></div>
+   <div class="cmp-image-card__body">
+      <div class="cmp-image-card__text cmp-image-card__text--no-desc ">
+         <div class="cmp-image-card__text-title">Apply for or Renew a License</div>
+         
+      </div>
+      
+   </div>
+
+      </a>
+   
+</div></div>
+<div class="image-card aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--offset--phone--0 aem-GridColumn--offset--default--0 aem-GridColumn--default--4"><div class="image-card ">
+   
+   
+      <a class="cmp-image-card" href="/consumers/file-a-complaint.html" style="background-color: rgb(255,255,255);">
+      
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/complaints-fitted2.jpg" class="cmp-image-card__image cmp-image-card__image--desktop lazyload" data-bg="https://s7d1.scene7.com/is/image/isp/complaints-fitted2?ts=1666633548369&amp;$ImageCardStandardHeight$&amp;align=0,0" style="background-position:  center center;"></div>
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/complaints-fitted2.jpg" class="cmp-image-card__image cmp-image-card__image--mobile lazyload" data-bg="https:\2f\2fs7d1.scene7.com\2fis\2fimage\2fisp\2f complaints-fitted2?ts=1666633548369\26$ImageCardComponent$\26 align=0,0" style="background-position:  center center;"></div>
+   <div class="cmp-image-card__body">
+      <div class="cmp-image-card__text cmp-image-card__text--no-desc ">
+         <div class="cmp-image-card__text-title">File a Complaint</div>
+         
+      </div>
+      
+   </div>
+
+      </a>
+   
+</div></div>
+<div class="image-card aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--offset--phone--0 aem-GridColumn--offset--default--0 aem-GridColumn--default--4"><div class="image-card ">
+   
+   
+      <a class="cmp-image-card" href="/companies/company-lookup.html" style="background-color: rgb(255,255,255);">
+      
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/lookup-a-company-license-fitted.jpg" class="cmp-image-card__image cmp-image-card__image--desktop lazyload" data-bg="https://s7d1.scene7.com/is/image/isp/lookup-a-company-license-fitted?ts=1666633901267&amp;$ImageCardStandardHeight$&amp;align=0,0" style="background-position:  center center;"></div>
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/lookup-a-company-license.jpg" class="cmp-image-card__image cmp-image-card__image--mobile lazyload" data-bg="https:\2f\2fs7d1.scene7.com\2fis\2fimage\2fisp\2flookup-a-company-license?ts=1664212966342\26$ImageCardComponent$\26 align=0,0" style="background-position:  center center;"></div>
+   <div class="cmp-image-card__body">
+      <div class="cmp-image-card__text cmp-image-card__text--no-desc ">
+         <div class="cmp-image-card__text-title">Lookup a Company License</div>
+         
+      </div>
+      
+   </div>
+
+      </a>
+   
+</div></div>
+
+    
+</div>
+
+   </div>
+</div>
+<div class="spacer spacer--small aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+
+    
+</div>
+
+      </div>
+   </div>
+
+    
+</div>
+
+    
+</div>
+
+      </div>
+   </div>
+
+    
+</div>
+<div class="container responsivegrid aem-GridColumn aem-GridColumn--default--12">
+
+    
+   <div class="cmp-container " style="height: auto;background-color: #ffffff;">
+      <div class="cmp-container__mobile " style="height: auto;background-color: #ffffff;">
+         
+
+
+<div class="aem-Grid aem-Grid--12 aem-Grid--default--12 ">
+    
+    <div class="container responsivegrid container--max-width aem-GridColumn aem-GridColumn--default--12">
+
+    
+   <div class="cmp-container " style="height: auto;">
+      <div class="cmp-container__mobile " style="height: auto;">
+         
+
+
+<div class="aem-Grid aem-Grid--12 aem-Grid--default--12 ">
+    
+    <div class="spacer spacer--bg aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="title aem-GridColumn aem-GridColumn--default--12">
+<div data-cmp-data-layer="{&#34;title-7ed2a08730&#34;:{&#34;@type&#34;:&#34;soi/components/content/v1/title&#34;,&#34;repo:modifyDate&#34;:&#34;2022-09-20T10:43:15Z&#34;,&#34;dc:title&#34;:&#34;Our Mission&#34;}}" id="title-7ed2a08730" class="cmp-title ">
+    <h2 class="cmp-title__text"> Our Mission</h2>
+</div>
+
+    
+
+</div>
+<div class="spacer spacer--small aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="text aem-GridColumn aem-GridColumn--default--12"><div id="text-ee96468460" class="cmp-text ">
+    <p>To protect consumers by providing assistance and information, by efficiently regulating the insurance industry's market behavior and financial solvency, and by fostering a competitive insurance marketplace.</p>
+
+</div>
+
+    
+
+</div>
+<div class="spacer spacer--small aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="separator separator--grey aem-GridColumn aem-GridColumn--default--12">
+<div id="separator-b76dfedd59" class="cmp-separator">
+    <hr class="cmp-separator__horizontal-rule" aria-hidden="true"/>
+</div></div>
+<div class="card-container container responsivegrid aem-GridColumn aem-GridColumn--default--12">
+   <div class="cmp-card-container  ">
+      
+
+
+<div class="aem-Grid aem-Grid--12 aem-Grid--default--12 aem-Grid--phone--12 ">
+    
+    <div class="image-card aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--offset--phone--0 aem-GridColumn--default--3 aem-GridColumn--offset--default--0"><div class="image-card ">
+   
+   
+      <a class="cmp-image-card" href="/consumers/consumerinsurance/health/affordable-care-act--aca----illinois-rate-filings.html" style="background-color: #dee3eb;">
+      
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/Rate Filings V3.jpg" class="cmp-image-card__image cmp-image-card__image--desktop lazyload" data-bg="https://s7d1.scene7.com/is/image/isp/Rate Filings V3?ts=1718229538394&amp;$ImageCardComponent$&amp;align=0,0" style="background-position:  center center;"></div>
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/Rate Filings V3.jpg" class="cmp-image-card__image cmp-image-card__image--mobile lazyload" data-bg="https:\2f\2fs7d1.scene7.com\2fis\2fimage\2fisp\2fRate Filings V3?ts=1718229538394\26$ImageCardComponent$\26 align=0,0" style="background-position:  center center;"></div>
+   <div class="cmp-image-card__body">
+      <div class="cmp-image-card__text cmp-image-card__text--no-desc ">
+         <div class="cmp-image-card__text-title">Affordable Care Act (ACA) - Illinois Rate Filings</div>
+         
+      </div>
+      
+   </div>
+
+      </a>
+   
+</div></div>
+<div class="image-card aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--offset--phone--0 aem-GridColumn--default--3 aem-GridColumn--offset--default--0"><div class="image-card ">
+   
+   
+      <a class="cmp-image-card" href="/consumers/consumerinsurance/health.html" style="background-color: #dee3eb;">
+      
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/consumers1.jpg" class="cmp-image-card__image cmp-image-card__image--desktop lazyload" data-bg="https://s7d1.scene7.com/is/image/isp/consumers1?ts=1664212966357&amp;$ImageCardComponent$&amp;align=0,0" style="background-position:  center center;"></div>
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/consumers1.jpg" class="cmp-image-card__image cmp-image-card__image--mobile lazyload" data-bg="https:\2f\2fs7d1.scene7.com\2fis\2fimage\2fisp\2f consumers1?ts=1664212966357\26$ImageCardComponent$\26 align=0,0" style="background-position:  center center;"></div>
+   <div class="cmp-image-card__body">
+      <div class="cmp-image-card__text cmp-image-card__text--no-desc ">
+         <div class="cmp-image-card__text-title">Health Insurance</div>
+         
+      </div>
+      
+   </div>
+
+      </a>
+   
+</div></div>
+<div class="image-card aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--offset--phone--0 aem-GridColumn--default--3 aem-GridColumn--offset--default--0"><div class="image-card ">
+   
+   
+      <a class="cmp-image-card" href="/producers.html" style="background-color: #dee3eb;">
+      
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/producers.jpg" class="cmp-image-card__image cmp-image-card__image--desktop lazyload" data-bg="/content/dam/soi/en/web/insurance/images/producers.jpg" style="background-position:  center center;"></div>
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/producers.jpg" class="cmp-image-card__image cmp-image-card__image--mobile lazyload" data-bg="\2f content\2f dam\2fsoi\2f en\2fweb\2finsurance\2fimages\2fproducers.jpg" style="background-position:  center center;"></div>
+   <div class="cmp-image-card__body">
+      <div class="cmp-image-card__text cmp-image-card__text--no-desc ">
+         <div class="cmp-image-card__text-title">Producers / Agents</div>
+         
+      </div>
+      
+   </div>
+
+      </a>
+   
+</div></div>
+<div class="image-card aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--offset--phone--0 aem-GridColumn--default--3 aem-GridColumn--offset--default--0"><div class="image-card ">
+   
+   
+      <a class="cmp-image-card" href="/companies.html" style="background-color: #dee3eb;">
+      
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/company-bulletin.jpg" class="cmp-image-card__image cmp-image-card__image--desktop lazyload" data-bg="/content/dam/soi/en/web/insurance/images/company-bulletin.jpg" style="background-position:  center center;"></div>
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/company-bulletin.jpg" class="cmp-image-card__image cmp-image-card__image--mobile lazyload" data-bg="\2f content\2f dam\2fsoi\2f en\2fweb\2finsurance\2fimages\2f company-bulletin.jpg" style="background-position:  center center;"></div>
+   <div class="cmp-image-card__body">
+      <div class="cmp-image-card__text cmp-image-card__text--no-desc ">
+         <div class="cmp-image-card__text-title">Company Bulletins, Tax Forms, and Reports</div>
+         
+      </div>
+      
+   </div>
+
+      </a>
+   
+</div></div>
+
+    
+</div>
+
+   </div>
+</div>
+<div class="spacer spacer--small aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="card-container container responsivegrid aem-GridColumn aem-GridColumn--default--12">
+   <div class="cmp-card-container  ">
+      
+
+
+<div class="aem-Grid aem-Grid--12 aem-Grid--default--12 aem-Grid--phone--12 ">
+    
+    <div class="image-card aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--offset--phone--0 aem-GridColumn--default--3 aem-GridColumn--offset--default--0"><div class="image-card ">
+   
+   
+      <a class="cmp-image-card" href="/consumers/company-divisions.html" style="background-color: #dee3eb;">
+      
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/company-division.jpg" class="cmp-image-card__image cmp-image-card__image--desktop lazyload" data-bg="https://s7d1.scene7.com/is/image/isp/company-division?ts=1664212966316&amp;$ImageCardComponent$&amp;align=0,0" style="background-position:  center center;"></div>
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/company-division.jpg" class="cmp-image-card__image cmp-image-card__image--mobile lazyload" data-bg="https:\2f\2fs7d1.scene7.com\2fis\2fimage\2fisp\2f company-division?ts=1664212966316\26$ImageCardComponent$\26 align=0,0" style="background-position:  center center;"></div>
+   <div class="cmp-image-card__body">
+      <div class="cmp-image-card__text cmp-image-card__text--no-desc ">
+         <div class="cmp-image-card__text-title">Company Divisions</div>
+         
+      </div>
+      
+   </div>
+
+      </a>
+   
+</div></div>
+<div class="image-card aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--offset--phone--0 aem-GridColumn--default--3 aem-GridColumn--offset--default--0"><div class="image-card ">
+   
+   
+      <a class="cmp-image-card" href="/consumers.html" style="background-color: #dee3eb;">
+      
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/consumer-outreach.jpg" class="cmp-image-card__image cmp-image-card__image--desktop lazyload" data-bg="/content/dam/soi/en/web/insurance/images/consumer-outreach.jpg" style="background-position:  center center;"></div>
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/consumer-outreach.jpg" class="cmp-image-card__image cmp-image-card__image--mobile lazyload" data-bg="\2f content\2f dam\2fsoi\2f en\2fweb\2finsurance\2fimages\2f consumer-outreach.jpg" style="background-position:  center center;"></div>
+   <div class="cmp-image-card__body">
+      <div class="cmp-image-card__text cmp-image-card__text--no-desc ">
+         <div class="cmp-image-card__text-title">Consumer Outreach</div>
+         
+      </div>
+      
+   </div>
+
+      </a>
+   
+</div></div>
+<div class="image-card aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--offset--phone--0 aem-GridColumn--default--3 aem-GridColumn--offset--default--0"><div class="image-card ">
+   
+   
+      <a class="cmp-image-card" href="/aboutus/employment-opportunities.html" style="background-color: #dee3eb;">
+      
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/adobe-stock-234282851.jpg" class="cmp-image-card__image cmp-image-card__image--desktop lazyload" data-bg="/content/dam/soi/en/web/insurance/images/adobe-stock-234282851.jpg" style="background-position:  center center;"></div>
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/adobe-stock-234282851.jpg" class="cmp-image-card__image cmp-image-card__image--mobile lazyload" data-bg="\2f content\2f dam\2fsoi\2f en\2fweb\2finsurance\2fimages\2f adobe-stock-234282851.jpg" style="background-position:  center center;"></div>
+   <div class="cmp-image-card__body">
+      <div class="cmp-image-card__text cmp-image-card__text--no-desc ">
+         <div class="cmp-image-card__text-title">Careers at IDOI</div>
+         
+      </div>
+      
+   </div>
+
+      </a>
+   
+</div></div>
+<div class="image-card aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--offset--phone--0 aem-GridColumn--default--3 aem-GridColumn--offset--default--0"><div class="image-card ">
+   
+   
+      <a class="cmp-image-card" href="/consumers/covid-19.html" style="background-color: #dee3eb;">
+      
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/covid-19-2.jpg" class="cmp-image-card__image cmp-image-card__image--desktop lazyload" data-bg="https://s7d1.scene7.com/is/image/isp/covid-19-2-1?ts=1664212966368&amp;$ImageCardComponent$&amp;align=0,0" style="background-position:  center center;"></div>
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/covid-19-2.jpg" class="cmp-image-card__image cmp-image-card__image--mobile lazyload" data-bg="https:\2f\2fs7d1.scene7.com\2fis\2fimage\2fisp\2f covid-19-2-1?ts=1664212966368\26$ImageCardComponent$\26 align=0,0" style="background-position:  center center;"></div>
+   <div class="cmp-image-card__body">
+      <div class="cmp-image-card__text cmp-image-card__text--no-desc ">
+         <div class="cmp-image-card__text-title">Insurance Coverage and COVID-19</div>
+         
+      </div>
+      
+   </div>
+
+      </a>
+   
+</div></div>
+
+    
+</div>
+
+   </div>
+</div>
+<div class="spacer spacer--bg aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="separator separator--grey aem-GridColumn aem-GridColumn--default--12">
+<div id="separator-d938e78922" class="cmp-separator">
+    <hr class="cmp-separator__horizontal-rule" aria-hidden="true"/>
+</div></div>
+<div class="card-container container responsivegrid aem-GridColumn aem-GridColumn--default--12">
+   <div class="cmp-card-container  ">
+      
+
+
+<div class="aem-Grid aem-Grid--12 aem-Grid--default--12 aem-Grid--phone--12 ">
+    
+    <div class="image-card aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--offset--phone--0 aem-GridColumn--offset--default--0 aem-GridColumn--default--4"><div class="image-card ">
+   
+   
+      <a class="cmp-image-card" href="/consumers.html" style="background-color: ;">
+      
+   <div data-image-reference="/content/dam/soi/en/web/insurance/sites/insurance/publishingimages/currentfocusimages/consumers.jpg" class="cmp-image-card__image cmp-image-card__image--desktop lazyload" data-bg="/content/dam/soi/en/web/insurance/sites/insurance/publishingimages/currentfocusimages/consumers.jpg" style="background-position:  center center;"></div>
+   <div data-image-reference="/content/dam/soi/en/web/insurance/sites/insurance/publishingimages/currentfocusimages/consumers.jpg" class="cmp-image-card__image cmp-image-card__image--mobile lazyload" data-bg="\2f content\2f dam\2fsoi\2f en\2fweb\2finsurance\2fsites\2finsurance\2fpublishingimages\2f currentfocusimages\2f consumers.jpg" style="background-position:  center center;"></div>
+   <div class="cmp-image-card__body">
+      <div class="cmp-image-card__text  ">
+         <div class="cmp-image-card__text-title">Consumer Information &amp; Links</div>
+         <p><p style="text-align: left;">Get answers to your insurance questions, file a complaint against an insurance company or agent, request assistance from our consumer assistance office, get facts about an insurance company, and more.<br />
+</p>
+</p>
+      </div>
+      
+   </div>
+
+      </a>
+   
+</div></div>
+<div class="image-card aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--offset--phone--0 aem-GridColumn--offset--default--0 aem-GridColumn--default--4"><div class="image-card ">
+   
+   
+      <a class="cmp-image-card" href="/producers.html" style="background-color: ;">
+      
+   <div data-image-reference="/content/dam/soi/en/web/insurance/sites/insurance/publishingimages/currentfocusimages/agents.jpg" class="cmp-image-card__image cmp-image-card__image--desktop lazyload" data-bg="/content/dam/soi/en/web/insurance/sites/insurance/publishingimages/currentfocusimages/agents.jpg" style="background-position:  center center;"></div>
+   <div data-image-reference="/content/dam/soi/en/web/insurance/sites/insurance/publishingimages/currentfocusimages/agents.jpg" class="cmp-image-card__image cmp-image-card__image--mobile lazyload" data-bg="\2f content\2f dam\2fsoi\2f en\2fweb\2finsurance\2fsites\2finsurance\2fpublishingimages\2f currentfocusimages\2f agents.jpg" style="background-position:  center center;"></div>
+   <div class="cmp-image-card__body">
+      <div class="cmp-image-card__text  ">
+         <div class="cmp-image-card__text-title">Producer Information &amp; Links</div>
+         <p><p style="text-align: left;">​Learn how to become a producer or how to renew your producer license, find important producer notices, review your continuing education hours, and more.</p>
+</p>
+      </div>
+      
+   </div>
+
+      </a>
+   
+</div></div>
+<div class="image-card aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--offset--phone--0 aem-GridColumn--offset--default--0 aem-GridColumn--default--4"><div class="image-card ">
+   
+   
+      <a class="cmp-image-card" href="/companies.html" style="background-color: ;">
+      
+   <div data-image-reference="/content/dam/soi/en/web/insurance/sites/insurance/publishingimages/currentfocusimages/companies.jpg" class="cmp-image-card__image cmp-image-card__image--desktop lazyload" data-bg="/content/dam/soi/en/web/insurance/sites/insurance/publishingimages/currentfocusimages/companies.jpg" style="background-position:  center center;"></div>
+   <div data-image-reference="/content/dam/soi/en/web/insurance/sites/insurance/publishingimages/currentfocusimages/companies.jpg" class="cmp-image-card__image cmp-image-card__image--mobile lazyload" data-bg="\2f content\2f dam\2fsoi\2f en\2fweb\2finsurance\2fsites\2finsurance\2fpublishingimages\2f currentfocusimages\2f companies.jpg" style="background-position:  center center;"></div>
+   <div class="cmp-image-card__body">
+      <div class="cmp-image-card__text  ">
+         <div class="cmp-image-card__text-title">Insurance Company Information &amp; Links</div>
+         <p><p style="text-align: left;">​Find tax forms, access the Respondent Message Center, comply with regulatory filings, review company bulletins, order financial statements, get facts about laws, regulations and the Freedom of Information Act.</p>
+</p>
+      </div>
+      
+   </div>
+
+      </a>
+   
+</div></div>
+
+    
+</div>
+
+   </div>
+</div>
+
+    
+</div>
+
+      </div>
+   </div>
+
+    
+</div>
+
+    
+</div>
+
+      </div>
+   </div>
+
+    
+</div>
+<div class="spacer aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="container responsivegrid aem-GridColumn aem-GridColumn--default--12">
+
+    
+   <div class="cmp-container " style="height: auto;background-color: #8a95a8;">
+      <div class="cmp-container__mobile " style="height: auto;background-color: #8a95a8;">
+         
+
+
+<div class="aem-Grid aem-Grid--12 aem-Grid--default--12 ">
+    
+    <div class="container responsivegrid container--max-width aem-GridColumn aem-GridColumn--default--12">
+
+    
+   <div class="cmp-container " style="height: auto;">
+      <div class="cmp-container__mobile " style="height: auto;">
+         
+
+
+<div class="aem-Grid aem-Grid--12 aem-Grid--default--12 ">
+    
+    <div class="title title--white aem-GridColumn aem-GridColumn--default--12">
+<div data-cmp-data-layer="{&#34;title-225ec6e08c&#34;:{&#34;@type&#34;:&#34;soi/components/content/v1/title&#34;,&#34;repo:modifyDate&#34;:&#34;2025-09-30T14:44:15Z&#34;,&#34;dc:title&#34;:&#34;  Popular Services&#34;}}" id="title-225ec6e08c" class="cmp-title ">
+    <h2 class="cmp-title__text">   Popular Services</h2>
+</div>
+
+    
+
+</div>
+<div class="spacer spacer--bg aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="card-container container responsivegrid aem-GridColumn aem-GridColumn--default--12">
+   <div class="cmp-card-container  ">
+      
+
+
+<div class="aem-Grid aem-Grid--12 aem-Grid--default--12 aem-Grid--phone--12 ">
+    
+    <div class="image-card aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--offset--phone--0 aem-GridColumn--offset--default--0 aem-GridColumn--default--4"><div class="image-card ">
+   
+   
+      <a class="cmp-image-card" href="https://idoi.illinois.gov/wc-fraud.html" style="background-color: #ffffff;">
+      
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/services_doi_workerscompfraud_resized1.png" class="cmp-image-card__image cmp-image-card__image--desktop lazyload" data-bg="https://s7d1.scene7.com/is/image/isp/services_doi_workerscompfraud_resized1?ts=1759326640383&amp;$ImageCardComponent$&amp;align=0,0" style="background-position:  center center;"></div>
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/services_doi_workerscompfraud.png" class="cmp-image-card__image cmp-image-card__image--mobile lazyload" data-bg="https:\2f\2fs7d1.scene7.com\2fis\2fimage\2fisp\2fservices_doi_workerscompfraud-1?ts=1666887125836\26$ImageCardComponent$\26 align=0,0" style="background-position:  center center;"></div>
+   <div class="cmp-image-card__body">
+      <div class="cmp-image-card__text  ">
+         <div class="cmp-image-card__text-title">Report Workers Compensation Fraud</div>
+         <p><p>Workers Comp Fraud costs Illinois taxpayers millions of dollars each year. Please provide information in matters you'd like DOI to investigate where someone may be committing fraud.</p>
+</p>
+      </div>
+      
+   </div>
+
+      </a>
+   
+</div></div>
+<div class="image-card aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--offset--phone--0 aem-GridColumn--offset--default--0 aem-GridColumn--default--4"><div class="image-card ">
+   
+   
+      <a class="cmp-image-card" href="https://getcovered.illinois.gov/" style="background-color: #ffffff;" target="blank">
+      
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/gci-logo-color-tagline1.png" class="cmp-image-card__image cmp-image-card__image--desktop lazyload" data-bg="https://s7d1.scene7.com/is/image/isp/gci-logo-color-tagline1?ts=1759326029944&amp;$ImageCardComponent$&amp;align=0,0" style="background-position:  center center;"></div>
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/gci-logo-color-tagline1.png" class="cmp-image-card__image cmp-image-card__image--mobile lazyload" data-bg="\2f content\2f dam\2fsoi\2f en\2fweb\2finsurance\2fimages\2fgci-logo-color-tagline1.png" style="background-position:  center center;"></div>
+   <div class="cmp-image-card__body">
+      <div class="cmp-image-card__text  ">
+         <div class="cmp-image-card__text-title">Get Covered Illinois</div>
+         <p><p>Get covered, stay covered and stay healthy with Get Covered Illinois. Get Covered Illinois (GCI) is the official ACA Health Insurance Marketplace for the state of Illinois, helping you shop for health insurance to fit your needs and budget.</p>
+</p>
+      </div>
+      
+   </div>
+
+      </a>
+   
+</div></div>
+<div class="image-card aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--offset--phone--0 aem-GridColumn--offset--default--0 aem-GridColumn--default--4"><div class="image-card ">
+   
+   
+      <a class="cmp-image-card" href="https://idoi.illinois.gov/consumers/consumerinsurance/health.html" style="background-color: #ffffff;">
+      
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/health-insurance2.jpg" class="cmp-image-card__image cmp-image-card__image--desktop lazyload" data-bg="https://s7d1.scene7.com/is/image/isp/health-insurance2?ts=1759326822770&amp;$ImageCardComponent$&amp;align=0,0" style="background-position:  center center;"></div>
+   <div data-image-reference="/content/dam/soi/en/web/insurance/images/health-insurance.jpg" class="cmp-image-card__image cmp-image-card__image--mobile lazyload" data-bg="https:\2f\2fs7d1.scene7.com\2fis\2fimage\2fisp\2fhealth-insurance?ts=1665518179826\26$ImageCardComponent$\26 align=0,0" style="background-position:  center center;"></div>
+   <div class="cmp-image-card__body">
+      <div class="cmp-image-card__text  ">
+         <div class="cmp-image-card__text-title">Office of Consumer Health Insurance (OCHI)</div>
+         <p><p>OCHI can answer questions about your current health insurance plan, explain policies and policyholder rights, provide guidance on how to file appeals and complaints, and provide resources through the “Uninsured Ombudsman Program.”</p>
+</p>
+      </div>
+      
+   </div>
+
+      </a>
+   
+</div></div>
+
+    
+</div>
+
+   </div>
+</div>
+<div class="spacer spacer--large aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+
+    
+</div>
+
+      </div>
+   </div>
+
+    
+</div>
+
+    
+</div>
+
+      </div>
+   </div>
+
+    
+</div>
+<div class="container responsivegrid aem-GridColumn aem-GridColumn--default--12">
+
+    
+   <div class="cmp-container " style="height: auto;background-color: #ffffff;">
+      <div class="cmp-container__mobile " style="height: auto;background-color: #ffffff;">
+         
+
+
+<div class="aem-Grid aem-Grid--12 aem-Grid--default--12 ">
+    
+    <div class="spacer spacer--bg aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="spacer aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="container responsivegrid container--max-width aem-GridColumn aem-GridColumn--default--12">
+
+    
+   <div class="cmp-container " style="height: auto;">
+      <div class="cmp-container__mobile " style="height: auto;">
+         
+
+
+<div class="aem-Grid aem-Grid--12 aem-Grid--default--12 ">
+    
+    <div class="text aem-GridColumn aem-GridColumn--default--12"><div id="text-338743adbc" class="cmp-text ">
+    <p><a href="/content/dam/soi/en/web/insurance/sites/insurance/news/documents/IDOI-Announces-Leadership-Changes.pdf"><span class="text-medium">IDOI Announces Leadership Changes</span></a></p>
+
+</div>
+
+    
+
+</div>
+<div class="spacer spacer--small aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="text aem-GridColumn aem-GridColumn--default--12"><div id="text-82b58e30ef" class="cmp-text ">
+    <p><strong><a href="https://gov-pritzker-newsroom.prezly.com/gov-pritzker-signs-healthcare-bills-lowering-prescription-drugs-costs-and-expanding-healthcare-access" target="_blank"><span class="text-medium">Gov. Pritzker Signs Healthcare Bills Lowering Prescription Drugs Costs and Expanding Healthcare Access</span></a></strong></p>
+
+</div>
+
+    
+
+</div>
+<div class="spacer spacer--small aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="text aem-GridColumn aem-GridColumn--default--12"><div id="text-d060ecca46" class="cmp-text ">
+    <p><strong><a href="https://gov-pritzker-newsroom.prezly.com/gov-pritzker-announces-record-high-enrollment-rate-on-states-health-insurance-marketplace?utm_source=prezly.com&amp;utm_medium=campaign&amp;utm_campaign=Gov.+Pritzker+Announces+Record+High+Enrollment+Rate+on+State%E2%80%99s+Health+Insurance+Marketplace&amp;utm_id=c3859c63-3ef9-4b1a-a395-fbceda4244a8&amp;utm_content=story+title" target="_blank"><span class="text-medium">Gov. Pritzker Announces Record High Enrollment Rate on State’s Health Insurance Marketplace</span></a></strong></p>
+
+</div>
+
+    
+
+</div>
+<div class="spacer spacer--small aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="text aem-GridColumn aem-GridColumn--default--12"><div id="text-5c4123b8c2" class="cmp-text ">
+    <p><span class="text-medium"><a href="https://gov-pritzker-newsroom.prezly.com/governor-pritzker-signs-healthcare-protection-act-into-law" target="_blank"><strong>Gov. Pritzker Signs Healthcare Protection Act Into Law</strong></a></span></p>
+
+</div>
+
+    
+
+</div>
+<div class="spacer spacer--small aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="text aem-GridColumn aem-GridColumn--default--12"><div id="text-dd6360dc2c" class="cmp-text ">
+    <p><span class="text-medium"><a href="https://gov-pritzker-newsroom.prezly.com/gov-pritzker-celebrates-passage-of-healthcare-protection-act-in-illinois-house-of-representatives" target="_blank"><strong>Gov. Pritzker Celebrates Passage of Healthcare Protection Act</strong></a></span></p>
+
+</div>
+
+    
+
+</div>
+<div class="spacer spacer--small aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="text aem-GridColumn aem-GridColumn--default--12"><div id="text-d5e56b3de5" class="cmp-text ">
+    <p><a href="https://www.illinois.gov/news/release.html?releaseid=29743" target="_blank"><span class="text-medium">Gov. Pritzker Highlights Health Insurance Reform Initiatives</span></a></p>
+
+</div>
+
+    
+
+</div>
+<div class="spacer spacer--small aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="text aem-GridColumn aem-GridColumn--default--12"><div id="text-4d780ef33e" class="cmp-text ">
+    <p><a href="https://www.illinois.gov/news/release.html?releaseid=27178" target="_blank"><span class="text-medium">Gov. Pritzker Announces One Appointment to Boards and Commissions</span></a></p>
+<p style="margin-left: 40.0px;">*Morgan Winters will serve as the State-Based Marketplace Director within the Illinois Department of Insurance.</p>
+
+</div>
+
+    
+
+</div>
+
+    
+</div>
+
+      </div>
+   </div>
+
+    
+</div>
+<div class="spacer spacer--large aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="container responsivegrid container--max-width aem-GridColumn aem-GridColumn--default--12">
+
+    
+   <div class="cmp-container " style="height: auto;">
+      <div class="cmp-container__mobile " style="height: auto;">
+         
+
+
+<div class="aem-Grid aem-Grid--12 aem-Grid--default--12 aem-Grid--phone--12 ">
+    
+    <div class="container responsivegrid aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--default--6 aem-GridColumn--offset--phone--0 aem-GridColumn--offset--default--0">
+
+    
+   <div class="cmp-container " style="height: auto;">
+      <div class="cmp-container__mobile " style="height: auto;">
+         
+
+
+<div class="aem-Grid aem-Grid--6 aem-Grid--default--6 aem-Grid--phone--12 ">
+    
+    <div class="title aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--default--6">
+<div data-cmp-data-layer="{&#34;title-10b8053553&#34;:{&#34;@type&#34;:&#34;soi/components/content/v1/title&#34;,&#34;repo:modifyDate&#34;:&#34;2022-08-29T13:34:45Z&#34;,&#34;dc:title&#34;:&#34;News&#34;}}" id="title-10b8053553" class="cmp-title ">
+    <h2 class="cmp-title__text"> News</h2>
+</div>
+
+    
+
+</div>
+<div class="spacer aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--default--6">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="news-feed news-feed--only-title news-feed--separator aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--default--6 aem-GridColumn--offset--phone--0 aem-GridColumn--offset--default--0"><div>
+   <div class="cmp-news-feed" data-feed-limit="5" data-news-feed-url="/content/soi/insurance/en/jcr:content/responsivegrid/container/container_837947266/container/container/news_feed_copy.model.json">
+      <div class="cmp-news-feed__list" data-template-id="news-feed-template-id-1"></div>
+      <div class="text-cta">
+         <a class="cmp-text-cta" href="https://idoi.illinois.gov/news.html" aria-label="VIEW ALL NEWS">
+         <span class="cmp-text-cta__text">VIEW ALL NEWS</span></a>
+      </div>
+      <div class="cmp-news-feed__no-data">
+         	No News
+      </div>
+      <script id="news-feed-template-id-1" type="text/x-handlebars-template">
+         <ul>
+             {{#each newsFeedItemList}}
+             <li>
+                 {{#if this.thumbnail}}
+                  <div>
+                     {{#if this.dynamic}}
+                     <img class="lazyload" data-src="{{this.thumbnail}}&$NewsFeed$" alt="" />
+                     {{else}}
+                     <img class="lazyload" data-src="{{this.thumbnail}}" alt="" />
+                     {{/if}}
+                  </div>
+                 {{/if}}
+                 <div class="cmp-news-feed__text">
+                     {{#if this.title}}
+                     <p><strong>
+                         <a href="{{this.url}}">{{this.title}}</a>
+                     </strong></p>
+                     {{/if}}
+                     {{#if this.date}}
+                     <p><span class="agency-footer-links-font-style">{{#if this.type}} <span class="cmp-news-feed__type">{{this.type}} - </span>{{/if}} {{this.date}}{{#if this.year}}<span class="cmp-news-feed__year">, {{this.year}}</span>{{/if}}</span></p>
+                     {{/if}}
+                     {{#if this.description}}
+                     <p class="cmp-news-feed__desc">{{this.description}}</p>
+                     {{/if}}
+                 </div>
+             </li>
+             {{/each}}
+         </ul>
+      </script>
+   </div>
+</div>
+
+    
+</div>
+<div class="spacer spacer--small aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--default--6">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+
+    
+</div>
+
+      </div>
+   </div>
+
+    
+</div>
+<div class="container responsivegrid aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--default--6 aem-GridColumn--offset--phone--0 aem-GridColumn--offset--default--0">
+
+    
+   <div class="cmp-container " style="height: auto;">
+      <div class="cmp-container__mobile " style="height: auto;">
+         
+
+
+<div class="aem-Grid aem-Grid--6 aem-Grid--default--6 aem-Grid--phone--12 ">
+    
+    <div class="title aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--default--6">
+<div data-cmp-data-layer="{&#34;title-e8454f2a95&#34;:{&#34;@type&#34;:&#34;soi/components/content/v1/title&#34;,&#34;repo:modifyDate&#34;:&#34;2022-08-29T13:35:57Z&#34;,&#34;dc:title&#34;:&#34;Upcoming Events&#34;}}" id="title-e8454f2a95" class="cmp-title ">
+    <h2 class="cmp-title__text"> Upcoming Events</h2>
+</div>
+
+    
+
+</div>
+<div class="spacer aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--default--6">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+<div class="events-feed news-feed--separator aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--default--6"><div>
+   <div class="cmp-news-feed" data-feed-limit="5" data-news-feed-url="/content/soi/insurance/en/jcr:content/responsivegrid/container/container_837947266/container/container_954410120/events_feed_copy_649735540.model.json" data-is-event-feed="true">
+      <div class="cmp-news-feed__list" data-template-id="news-feed-template-id-4"></div>
+      
+      <div>
+         No upcoming events
+      </div>
+        <script id="news-feed-template-id-4" type="text/x-handlebars-template">
+            <ul>
+                    {{#each eventFeedItemList}}
+                <li>
+                        <div class="cmp-news-feed__event-date-container">
+                            <div class="cmp-news-feed__event-date">
+                                {{#if this.month}}
+                                    <span class="cmp-news-feed__event-date__month">
+                                        {{this.month}}
+                                    </span>
+                                {{/if}}
+            
+                                {{#if this.day}}
+                                    <span class="cmp-news-feed__event-date__day">
+                                        {{this.day}}
+                                    </span>
+                                {{/if}}
+    
+                                {{#if this.year}}
+                                <span class="cmp-news-feed__event-date__year">
+                                    {{this.year}}
+                                </span>
+                                {{/if}}
+                            </div>
+                        </div>
+                    <div class="cmp-news-feed__text">
+                        {{#if this.title}}
+                        <p><strong>
+                        <a href="{{this.url}}">
+                            {{#if this.canceled}}<span class="text-highlight">Canceled:</span> <span class="text-strikethrough">{{/if}}
+                                {{this.title}}
+                            {{#if this.canceled}}</span>{{/if}}
+                            </a>
+                        </strong></p>
+                        {{/if}}
+                        {{#if this.date}}
+                        <p>
+                        <span class="agency-footet-links-font-style">
+                            {{#if this.type}} <span class="cmp-news-feed__type">{{this.type}} - </span>{{/if}}
+                            {{this.date}}{{#if this.time}}<span class="cmp-news-feed__time">, {{this.time}}</span>{{/if}}
+                        </span>
+                        </p>
+                        {{/if}}
+                        {{#if this.assetList.length}}
+                        <p class="asset-list">
+                        {{#each this.assetList}}
+                            <a href="{{this.assetLink}}" aria-label="{{this.assetAriaLabel}}" target="_blank">{{this.assetLabel}}</a>
+                        {{/each}}
+                        </p>
+                        {{/if}}
+                        {{#if this.description}}
+                        <p class="cmp-news-feed__desc">{{this.description}}</p>
+                        {{/if}}
+                    </div>
+                </li>
+                {{/each}}
+            </ul>
+        </script>
+   </div>
+</div>
+
+    
+</div>
+<div class="spacer aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--default--6">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+
+    
+</div>
+
+      </div>
+   </div>
+
+    
+</div>
+
+    
+</div>
+
+      </div>
+   </div>
+
+    
+</div>
+
+    
+</div>
+
+      </div>
+   </div>
+
+    
+</div>
+<div class="spacer aem-GridColumn aem-GridColumn--default--12">
+    <div class="cmp-spacer"></div>
+
+
+    
+
+</div>
+
+    
+</div>
+
+      </div>
+   </div>
+
+    
+</div>
+<div class="agencyfooter aem-GridColumn aem-GridColumn--default--12">
+<div class="doiFooter">
+   <h2 class="sr-only">Footer</h2>
+   
+   
+      <div class="cmp-agency-footer">
+   
+      <div class="container container--padding-left-right responsivegrid aem-GridColumn aem-GridColumn--default--12">
+         <div class="cmp-container">
+            <div class="cmp-container__mobile">
+               <div class="aem-Grid aem-Grid--12 aem-Grid--default--12">
+                  <div class="cmp-agency-footer__back-to-top">
+                     <div class="back-to-top">
+                        <div class="cmp-back-to-top">
+                           <button>
+                              <span class="cmp-back-to-top__text">Back to top</span>
+                              <i class="fas fa-sort-up"></i>
+                           </button>
+                        </div>
+                     </div>
+                  </div>
+                  <div class="cmp-agency-footer__links-icons">
+                     
+                        <div class="cmp-agency-footer__links-wrapper width-default">
+                           <h3>Offices</h3>
+                           
+                           
+                              <div class="cmp-agency-footer__text">
+                                 <p>Illinois Department of Insurance<br />
+115 S. LaSalle Street, 13th Floor<br />
+Chicago, IL 60603<br />
+<a href="tel:3128142420">(312) 814-2420</a></p>
+<p>Illinois Department of Insurance<br />
+320 W. Washington St.<br />
+Springfield, IL 62767<br />
+<a href="tel:2177824515">(217) 782-4515</a></p>
+
+                              </div>
+                           
+                        </div>
+                     
+                        <div class="cmp-agency-footer__links-wrapper ">
+                           <h3>Links</h3>
+                           
+                              <ul>
+                                 
+                                    <li><a href="/aboutus/contactus.html" aria-label="Contact Us">Contact Us</a></li>
+                                 
+                                    <li><a href="/companies/company-bulletins-page.html" aria-label="Company Bulletins">Company Bulletins</a></li>
+                                 
+                                    <li><a href="/aboutus/foia.html" aria-label="Freedom of Information Act">Freedom of Information Act</a></li>
+                                 
+                                    <li><a href="/aboutus/osd.html" aria-label="Office of the Special Deputy Receiver">Office of the Special Deputy Receiver</a></li>
+                                 
+                                    <li><a href="mailto:DOI.Webmaster@illinois.gov?subject=website%20feedback" aria-label="Website Feedback">Website Feedback</a></li>
+                                 
+                                    <li><a href="/aboutus/google-translate-disclaimer.html" aria-label="Google Translate Disclaimer">Google Translate Disclaimer</a></li>
+                                 
+                              </ul>
+                           
+                           
+                        </div>
+                     
+                     
+                        <div class="cmp-agency-footer__links-wrapper">
+                        <div class="social-media-icons">
+                           <div class="cmp-social-media-icons" style="flex-wrap: wrap; justify-content: center;">
+                              
+                                 
+                                 
+                                    <a href="https://twitter.com/IL_Insurance" role="link" aria-label="Twitter" target="_blank">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 36 448 512" style="fill:  !important; width: 32px">
+                                          <path data-name="twitter icon" d="M64 32C28.7 32 0 60.7 0 96v320c0 35.3 28.7 64 64 64h320c35.3 0 64-28.7 64-64V96c0-35.3-28.7-64-64-64zm297.1 84L257.3 234.6L379.4 396h-95.6L209 298.1L123.3 396H75.8l111-126.9L69.7 116h98l67.7 89.5l78.2-89.5zm-37.8 251.6L153.4 142.9h-28.3l171.8 224.7h26.3z"/>
+                                       </svg>
+                                    </a>
+                                 
+                                 
+                                 
+                                 
+                                 
+                                 
+                                 
+                                 
+                                 
+                              
+                                 
+                                 
+                                 
+                                 
+                                    <a href="https://www.linkedin.com/company/il-department-of-insurance/" aria-label="LinkedIn" target="_blank">
+                                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22.64 22.64" style="fill:  !important; width: 32px">
+                                          <path data-name="linkedin icon" d="M19.288,19.293H15.936V14.04c0-1.253-.025-2.865-1.747-2.865-1.748,0-2.015,1.363-2.015,2.772v5.346H8.821V8.49h3.221V9.962h.043a3.533,3.533,0,0,1,3.179-1.745c3.4,0,4.025,2.236,4.025,5.146v5.93ZM5.035,7.012A1.947,1.947,0,1,1,6.982,5.064,1.945,1.945,0,0,1,5.035,7.012ZM6.716,19.293H3.354V8.49H6.716ZM20.965,0H1.671A1.651,1.651,0,0,0,0,1.631V21.009A1.65,1.65,0,0,0,1.671,22.64H20.963a1.656,1.656,0,0,0,1.677-1.631V1.631A1.657,1.657,0,0,0,20.963,0Z"></path>
+                                       </svg>
+                                    </a>
+                                 
+                                 
+                                 
+                                 
+                                 
+                                 
+                                 
+                                           
+                           </div>
+                        </div>
+                        
+                     </div>
+                     
+                  </div>
+                  
+                  
+                  
+                     <map-details api-key="pk.eyJ1IjoiZG9pdHdlYnNlcnZpY2VzIiwiYSI6ImNsbGw4b21hMzFydjMzZW5zeDFldmNueTgifQ.DV5viEN7i1rSXmdv36pzfg"></map-details>
+                  
+                  
+                  
+               </div>
+            </div>
+         </div>
+      </div>
+   </div>
+</div></div>
+<div class="experiencefragment container--full-width aem-GridColumn aem-GridColumn--default--12">
+<div id="experiencefragment-a836b655bf" class="cmp-experiencefragment cmp-experiencefragment--global-footer">
+
+
+    
+   <div class="cmp-container " style="height: auto;">
+      <div class="cmp-container__mobile " style="height: auto;">
+         
+
+
+<div class="aem-Grid aem-Grid--12 aem-Grid--default--12 ">
+    
+    <div class="global-footer aem-GridColumn aem-GridColumn--default--12">
+   <footer class="global-footer Global Footer" id="GF-1">
+      <div class="cmp-global-footer">
+         <div class="cmp-global-footer__container">
+            <ul class="cmp-global-footer__nav">
+               <li class="cmp-global-footer__nav-item">
+                  <a href="https://doit.illinois.gov/initiatives/accessibility/iitaa.html" aria-label="Web Accessibility" target="_blank" class="cmp-global-footer__nav-item-link">Web Accessibility</a>
+               </li>
+            
+               <li class="cmp-global-footer__nav-item">
+                  <a href="http://www.missingkids.com/" aria-label="Missing &amp; Exploited Children" target="_blank" class="cmp-global-footer__nav-item-link">Missing &amp; Exploited Children</a>
+               </li>
+            
+               <li class="cmp-global-footer__nav-item">
+                  <a href="http://www.amberillinois.org/" aria-label="Amber Alerts" target="_blank" class="cmp-global-footer__nav-item-link">Amber Alerts</a>
+               </li>
+            
+               <li class="cmp-global-footer__nav-item">
+                  <a href="https://www.illinois.gov/about/privacy.html" aria-label="Illinois Privacy Info" target="_blank" class="cmp-global-footer__nav-item-link">Illinois Privacy Info</a>
+               </li>
+            </ul>
+            <div class="cmp-global-footer__copyright-text"><ul>
+<li><a href="https://gov.illinois.gov" target="_blank" title="Governor JB Pritzker">Governor JB Pritzker</a></li>
+<li>© 2025</li>
+<li><a href="https://www.illinois.gov" target="_blank" title="State of Illinois">State of Illinois</a></li>
+</ul>
+</div>
+         </div>
+      </div>
+   </footer>
+
+
+    
+</div>
+<div class="embedSuper aem-GridColumn aem-GridColumn--default--12">
+        <style>
+.google-translate .cmp-google-translate .goog-te-gadget > span {
+display: none;
+}
+</style>
+        
+
+
+    
+
+</div>
+
+    
+</div>
+
+      </div>
+   </div>
+
+    
+</div>
+
+    
+</div>
+
+    
+</div>
+
+      </div>
+      
+   </div>
+</main>
+            
+    
+    
+
+    
+    
+<script src="/etc.clientlibs/soi/clientlibs/clientlib-base.min.86db31df3dd7bfdefe6a299153edd583.js"></script>
+<script src="/etc.clientlibs/soi/clientlibs/clientlib-site.min.f437c6f9ee795839cadc87ab8512453d.js"></script>
+
+
+
+
+
+
+    
+
+    
+
+    
+    
+
+
+
+    
+    
+
+            
+
+        
+    </body>
+</html>
