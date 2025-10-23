@@ -86,14 +86,24 @@ The prompt includes:
 - Working pikepdf code examples
 - Explicit API usage notes
 
-**Critical API Guidance Added**:
+**Critical API Guidance** (Services/Remediation/AI/GptRemediationService.cs:301-338):
+
+Strengthened with explicit error messages and wrong/right examples:
 ```
-- Use PascalCase: pdf.Root (NOT pdf.root)
-- Metadata as strings: meta['pdfuaid:part'] = '1' (NOT integer 1)
-- Correct method: register_xml_namespace() (NOT register_namespace())
+⚠️ CRITICAL pikepdf API REQUIREMENTS - FAILURE TO FOLLOW WILL CAUSE SCRIPT TO CRASH:
+
+1. METADATA VALUES MUST BE STRINGS:
+   ❌ WRONG: meta['pdfuaid:part'] = 1  (TypeError: Setting pdfuaid:part to 1 with type <class 'int'>)
+   ✅ RIGHT: meta['pdfuaid:part'] = '1'  (String value required!)
+
+   ❌ WRONG: want_part = 1; meta['pdfuaid:part'] = want_part
+   ✅ RIGHT: want_part = '1'; meta['pdfuaid:part'] = want_part
+
+2. Use PascalCase: pdf.Root (NOT pdf.root)
+3. Use register_xml_namespace() NOT register_namespace()
 ```
 
-**Working Example Included**: Complete script showing proper metadata handling
+**Working Example**: Complete script with inline comments emphasizing string requirements
 
 ### Script Execution
 
