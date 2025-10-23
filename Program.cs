@@ -148,6 +148,9 @@ builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.AI.ScriptExec
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.AI.GptRemediationService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Adapters.GptServiceAdapter>();
 
+// Add quick-fix services (run early)
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.CircularRoleMappingFixService>();
+
 // Add table/link accessibility cleanup service
 builder.Services.AddScoped<AccessFormServer.Services.TableLinkAccessibilityService>();
 

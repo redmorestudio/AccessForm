@@ -42,8 +42,8 @@ namespace AccessFormServer.Services
             _enabled = _configuration.GetValue<bool>("AiServices:OpenAI:Enabled", false);
             _apiKey = _configuration["AiServices:OpenAI:ApiKey"];
             _model = _configuration["AiServices:OpenAI:Model"] ?? "gpt-5";
-            _baseUrl = _configuration["AiServices:OpenAI:BaseUrl"] ?? "https://api.openai.com/v1/gpt-5";
-            _maxTokens = _configuration.GetValue<int>("AiServices:OpenAI:MaxTokens", 4096);
+            _baseUrl = _configuration["AiServices:OpenAI:BaseUrl"] ?? "https://api.openai.com/v1";
+            _maxTokens = _configuration.GetValue<int>("AiServices:OpenAI:MaxTokens", 8192);
             _temperature = _configuration.GetValue<float>("AiServices:OpenAI:Temperature", 0.0f);
 
             _httpClient = httpClientFactory?.CreateClient() ?? new HttpClient();
@@ -97,7 +97,7 @@ namespace AccessFormServer.Services
                             }
                         }
                     },
-                    max_tokens = _maxTokens,
+                    max_completion_tokens = _maxTokens,
                     temperature = _temperature
                 };
 
@@ -171,13 +171,10 @@ namespace AccessFormServer.Services
                         new
                         {
                             role = "user",
-                            content = new object[]
-                            {
-                                new { type = "input_text", text = prompt }
-                            }
+                            content = prompt
                         }
                     },
-                    max_tokens = _maxTokens,
+                    max_completion_tokens = _maxTokens,
                     temperature = _temperature
                 };
 
@@ -187,7 +184,7 @@ namespace AccessFormServer.Services
                 });
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                var response = await _httpClient.PostAsync($"{_baseUrl}/completions", content, cancellationToken);
+                var response = await _httpClient.PostAsync($"{_baseUrl}/chat/completions", content, cancellationToken);
 
                 if (!response.IsSuccessStatusCode)
                 {
