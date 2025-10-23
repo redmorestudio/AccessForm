@@ -170,6 +170,13 @@ namespace WordToPdfConverter.Services.Remediation.Strategy
                         services.Add(linkService);
                     break;
 
+                case ViolationCategory.Fonts:
+                    var fontService = _serviceProvider.GetService(
+                        typeof(Adapters.FontEmbeddingServiceAdapter)) as IRemediationService;
+                    if (fontService != null)
+                        services.Add(fontService);
+                    break;
+
                 // Add other categories as we build more adapters
                 default:
                     _logger.LogWarning($"No service adapter registered for category: {category}");

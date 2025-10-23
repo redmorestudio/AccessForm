@@ -140,12 +140,22 @@ builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.RemediationOr
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Adapters.WhitespaceServiceAdapter>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Adapters.ContentServiceAdapter>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Adapters.LinkServiceAdapter>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Adapters.FontEmbeddingServiceAdapter>();
+
+// Add GPT-5 powered remediation services
+builder.Services.AddSingleton<WordToPdfConverter.Services.Remediation.AI.SolutionCache>(); // Singleton for caching
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.AI.ScriptExecutor>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.AI.GptRemediationService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Adapters.GptServiceAdapter>();
 
 // Add table/link accessibility cleanup service
 builder.Services.AddScoped<AccessFormServer.Services.TableLinkAccessibilityService>();
 
 // Add link annotation fix service (fixes link errors by adding PDF/UA structure elements in place)
 builder.Services.AddScoped<AccessFormServer.Services.LinkAnnotationFixService>();
+
+// Add processing progress tracking service (singleton for cross-request tracking)
+builder.Services.AddSingleton<WordToPdfConverter.Services.ProcessingProgressService>();
 
 // Add TOC link fix service (creates proper Link elements for TOC annotations)
 // Enhanced version with better orphan handling and parent tree management
@@ -290,7 +300,7 @@ app.MapGet("/api/accessibility-reports", () =>
     {
         return Results.Json(new { reports = new List<object>() });
     }
-    
+
     var reports = Directory.GetFiles(reportDir, "*.html")
         .OrderByDescending(f => File.GetCreationTime(f))
         .Select(f => new
@@ -302,6 +312,34 @@ app.MapGet("/api/accessibility-reports", () =>
         .ToList();
     
     return Results.Json(new { reports });
+});
+
+// Add endpoint to get processing progress for real-time status updates
+app.MapGet("/api/progress/{sessionId}", (string sessionId, WordToPdfConverter.Services.ProcessingProgressService progressService) =>
+{
+    var progress = progressService.GetProgress(sessionId);
+
+    if (progress == null)
+    {
+        return Results.NotFound(new { error = "Session not found" });
+    }
+
+    return Results.Json(new
+    {
+        sessionId = progress.SessionId,
+        currentStep = progress.CurrentStep,
+        detailedStatus = progress.DetailedStatus,
+        percentComplete = progress.PercentComplete,
+        elapsedSeconds = (int)(DateTime.UtcNow - progress.StartTime).TotalSeconds,
+        isComplete = progress.IsComplete,
+        hasError = progress.HasError,
+        errorMessage = progress.ErrorMessage,
+        // Remediation-specific fields
+        remediationIteration = progress.RemediationIteration,
+        violationsFound = progress.ViolationsFound,
+        violationsFixed = progress.ViolationsFixed,
+        remediationPhase = progress.RemediationPhase
+    });
 });
 
 // Add API endpoint for Word to PDF conversion with DUAL output (normal + accessible)
@@ -3981,6 +4019,7 @@ app.MapPost("/api/convert-with-config", async (
     PdfCompleteRebuildService completeRebuildService,
     WordToPdfConverter.Services.PdfPreservationService pdfPreservationService,
     WordToPdfConverter.Services.Remediation.RemediationOrchestrator remediationOrchestrator,
+    WordToPdfConverter.Services.ProcessingProgressService progressService,
     ILogger<Program> logger) =>
 {
     try
@@ -4035,6 +4074,10 @@ app.MapPost("/api/convert-with-config", async (
                               $"MultiStageValidation={config.Services.UseMultiStageValidation}, " +
                               $"Mode={config.Mode}");
 
+        // Start progress tracking session
+        var sessionId = progressService.StartSession($"Processing {file.FileName}...");
+        logger.LogInformation($"Started progress session: {sessionId}");
+
         byte[] pdfBytes;
         List<WordToPdfConverter.Models.FieldDetectionResult> fields;
         WordToPdfConverter.Services.Remediation.Models.RemediationResult remediationResult = null;
@@ -4043,35 +4086,58 @@ app.MapPost("/api/convert-with-config", async (
         {
             // PDF uploaded directly - use preservation service to keep calculations intact
             logger.LogInformation($"PDF uploaded directly: {file.FileName}, using preservation pipeline to keep calculations");
+            progressService.UpdateProgress(sessionId, "Analyzing existing PDF fields...", null, 10);
 
             // Get existing fields from the PDF
             fields = pdfPreservationService.GetExistingFields(fileBytes);
             logger.LogInformation($"Found {fields.Count} existing fields in PDF (preserving calculations)");
+            progressService.UpdateProgress(sessionId, $"Found {fields.Count} existing fields", "Preserving calculations", 20);
 
             // Process the PDF while preserving fields and their JavaScript actions
             pdfBytes = await pdfPreservationService.ProcessExistingPdfAsync(fileBytes);
             logger.LogInformation("PDF processed with all fields and calculations preserved");
+            progressService.UpdateProgress(sessionId, "PDF structure preserved", "Starting PDF/UA validation", 30);
 
             // Run closed-loop remediation for PDF/UA compliance
             logger.LogInformation("Starting closed-loop PDF/UA remediation");
-            remediationResult = await remediationOrchestrator.RemediateAsync(
-                pdfBytes,
-                WordToPdfConverter.Services.Remediation.Models.RemediationOptions.Aggressive);
+            progressService.UpdateProgress(sessionId, "Starting PDF/UA remediation", "Validating compliance", 40);
+            try
+            {
+                var remediationOptions = WordToPdfConverter.Services.Remediation.Models.RemediationOptions.Aggressive;
+                remediationOptions.ProgressSessionId = sessionId;
+                remediationResult = await remediationOrchestrator.RemediateAsync(
+                    pdfBytes,
+                    remediationOptions);
 
-            if (remediationResult.Success)
-            {
-                logger.LogInformation($"Remediation successful! Compliant={remediationResult.Summary.IsCompliant}, " +
-                    $"Iterations={remediationResult.Summary.TotalIterations}, " +
-                    $"Violations Fixed={remediationResult.Summary.ViolationsFixed}");
-                pdfBytes = remediationResult.OutputPdf;
-                logger.LogInformation($"DEBUG: remediationResult.OutputPdf is {(pdfBytes == null ? "NULL" : $"{pdfBytes.Length} bytes")}");
+                if (remediationResult.Success)
+                {
+                    logger.LogInformation($"Remediation successful! Compliant={remediationResult.Summary.IsCompliant}, " +
+                        $"Iterations={remediationResult.Summary.TotalIterations}, " +
+                        $"Violations Fixed={remediationResult.Summary.ViolationsFixed}");
+                    pdfBytes = remediationResult.OutputPdf;
+                    logger.LogInformation($"Using fully remediated PDF: {pdfBytes.Length} bytes");
+                }
+                else
+                {
+                    logger.LogWarning($"Remediation exited: {remediationResult.ExitReason}, " +
+                        $"Remaining Violations={remediationResult.Summary.FinalViolationCount}");
+                    pdfBytes = remediationResult.OutputPdf; // Use last successfully validated PDF
+
+                    if (remediationResult.ExitReason == WordToPdfConverter.Services.Remediation.Models.ExitReason.FatalError)
+                    {
+                        logger.LogWarning($"Returning last successfully validated PDF (iteration {remediationResult.Summary.TotalIterations - 1}): {pdfBytes.Length} bytes");
+                    }
+                    else
+                    {
+                        logger.LogInformation($"Using best-effort result: {pdfBytes.Length} bytes");
+                    }
+                }
             }
-            else
+            catch (Exception ex)
             {
-                logger.LogWarning($"Remediation exited: {remediationResult.ExitReason}, " +
-                    $"Remaining Violations={remediationResult.Summary.FinalViolationCount}");
-                pdfBytes = remediationResult.OutputPdf; // Use best-effort result
-                logger.LogInformation($"DEBUG: remediationResult.OutputPdf is {(pdfBytes == null ? "NULL" : $"{pdfBytes.Length} bytes")}");
+                logger.LogError(ex, "Remediation failed unexpectedly");
+                logger.LogWarning("Continuing with PDF before remediation");
+                // remediationResult stays null, pdfBytes keeps the pre-remediation PDF
             }
         }
         else
@@ -4079,6 +4145,56 @@ app.MapPost("/api/convert-with-config", async (
             // Word document - convert to PDF then detect fields
             logger.LogInformation($"Processing Word document {file.FileName} with config");
             (pdfBytes, fields) = await fieldService.ConvertWithConfig(fileBytes, file.FileName, config);
+
+            // Run closed-loop remediation for Word-converted PDFs too!
+            logger.LogInformation("Starting closed-loop PDF/UA remediation for Word-converted PDF");
+            progressService.UpdateProgress(sessionId, "Starting PDF/UA validation", "Checking compliance", 40);
+
+            try
+            {
+                var remediationOptions = new WordToPdfConverter.Services.Remediation.Models.RemediationOptions
+                {
+                    MaxIterations = 5,
+                    MaxDuration = TimeSpan.FromMinutes(5),
+                    ValidateBetweenPhases = true,
+                    DetectStagnation = true,
+                    StagnationThreshold = 2,
+                    GenerateDetailedReport = true,
+                    ProgressSessionId = sessionId
+                };
+
+                remediationResult = await remediationOrchestrator.RemediateAsync(pdfBytes, remediationOptions);
+
+                if (remediationResult.Success)
+                {
+                    logger.LogInformation($"Remediation successful! Compliant={remediationResult.Summary.IsCompliant}, " +
+                        $"Iterations={remediationResult.Summary.TotalIterations}, " +
+                        $"Violations Fixed={remediationResult.Summary.ViolationsFixed}");
+                    pdfBytes = remediationResult.OutputPdf;
+                    logger.LogInformation($"Using fully remediated PDF: {pdfBytes.Length} bytes");
+                }
+                else
+                {
+                    logger.LogWarning($"Remediation exited: {remediationResult.ExitReason}, " +
+                        $"Remaining Violations={remediationResult.Summary.FinalViolationCount}");
+                    pdfBytes = remediationResult.OutputPdf; // Use last successfully validated PDF
+
+                    if (remediationResult.ExitReason == WordToPdfConverter.Services.Remediation.Models.ExitReason.FatalError)
+                    {
+                        logger.LogWarning($"Returning last successfully validated PDF (iteration {remediationResult.Summary.TotalIterations - 1}): {pdfBytes.Length} bytes");
+                    }
+                    else
+                    {
+                        logger.LogInformation($"Using best-effort result: {pdfBytes.Length} bytes");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Remediation failed unexpectedly for Word document");
+                logger.LogWarning("Continuing with PDF before remediation");
+                // remediationResult stays null, pdfBytes keeps the pre-remediation PDF
+            }
         }
 
         logger.LogInformation($"Field detection completed. Found {fields?.Count ?? 0} fields");
@@ -4104,15 +4220,15 @@ app.MapPost("/api/convert-with-config", async (
             // Create empty field updates list since fields are already in the PDF
             var fieldUpdates = new List<PdfCompleteRebuildService.FieldUpdate>();
 
-            // Create service options
+            // Create service options - enable Aspose autotag for accessibility
             var serviceOptions = new PdfCompleteRebuildService.ServiceOptions
             {
-                UseAsposeAutotag = false,
+                UseAsposeAutotag = true,  // Enable Aspose for accessibility tagging
                 UseAsposeFontEmbed = true,
                 UsePassportPdf = false
             };
 
-            logger.LogInformation("Rebuild options: Aspose=False, FontEmbed=True, PassportPdf=False");
+            logger.LogInformation("Rebuild options: Aspose=True, FontEmbed=True, PassportPdf=False");
 
             // Run the font embedding
             var rebuildResult = await completeRebuildService.CompletelyRebuildPdfAsync(pdfBytes, fieldUpdates, serviceOptions);
@@ -4159,9 +4275,13 @@ app.MapPost("/api/convert-with-config", async (
         logger.LogInformation($"Fields: {fields?.Count ?? 0} total");
         logger.LogInformation($"===================================");
 
+        // Mark session as complete
+        progressService.CompleteSession(sessionId, true, "Processing completed successfully");
+
         // Return response in expected format WITH detected fields for the frontend
         return Results.Ok(new
         {
+            sessionId = sessionId,  // Include session ID for progress polling
             normalPdf = new
             {
                 filename = Path.GetFileNameWithoutExtension(file.FileName) + "_normal.pdf",
@@ -4230,7 +4350,21 @@ app.MapPost("/api/convert-with-config", async (
                     } : null,
                     context = v.Context,
                     remediationHint = v.RemediationHint
-                }).ToArray()
+                }).ToArray() ?? Array.Empty<object>(),
+                initialViolationsDetailed = remediationResult.InitialValidation?.Violations?.Select(v => new
+                {
+                    ruleId = v.RuleId,
+                    clause = v.Clause,
+                    description = v.Description,
+                    severity = v.Severity.ToString(),
+                    location = v.Location != null ? new
+                    {
+                        pageNumber = v.Location.PageNumber,
+                        contextDescription = v.Location.ContextDescription
+                    } : null,
+                    context = v.Context,
+                    remediationHint = v.RemediationHint
+                }).ToArray() ?? Array.Empty<object>()
             } : null,
             debugInfo = new
             {
@@ -4270,6 +4404,8 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
     PassportPdfService passportPdfService,
     PdfCompleteRebuildService completeRebuildService,
     WordToPdfConverter.Services.PdfPreservationService pdfPreservationService,
+    WordToPdfConverter.Services.Remediation.RemediationOrchestrator remediationOrchestrator,
+    ProcessingProgressService progressService,
     ILogger<Program> logger) =>
 {
     try
@@ -4370,12 +4506,12 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
                 // Create service options
                 var serviceOptions = new PdfCompleteRebuildService.ServiceOptions
                 {
-                    UseAsposeAutotag = false,
+                    UseAsposeAutotag = true,  // Enable Aspose for accessibility tagging
                     UseAsposeFontEmbed = true,
                     UsePassportPdf = false
                 };
 
-                logger.LogInformation("Rebuild options: Aspose=False, FontEmbed=True, PassportPdf=False");
+                logger.LogInformation("Rebuild options: Aspose=True, FontEmbed=True, PassportPdf=False");
 
                 // Run the font embedding
                 var rebuildResult = await completeRebuildService.CompletelyRebuildPdfAsync(pdfBytes, fieldUpdates, serviceOptions);
@@ -4414,6 +4550,43 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
         // because loading/saving with Aspose after PassportPDF breaks font embedding.
         // These features are available in the /api/convert and /api/remediate-pdf endpoints.
 
+        // Run closed-loop remediation for PDF/UA compliance
+        logger.LogInformation("Starting closed-loop PDF/UA remediation");
+        WordToPdfConverter.Services.Remediation.Models.RemediationResult remediationResult = null;
+        try
+        {
+            var sessionId = progressService.StartSession("Starting PDF/UA remediation");
+            progressService.UpdateProgress(sessionId, "Starting PDF/UA remediation", "Validating compliance", 60);
+
+            var remediationOptions = WordToPdfConverter.Services.Remediation.Models.RemediationOptions.Aggressive;
+            remediationOptions.ProgressSessionId = sessionId;
+            remediationResult = await remediationOrchestrator.RemediateAsync(
+                pdfBytes,
+                remediationOptions);
+
+            if (remediationResult.Success)
+            {
+                logger.LogInformation($"Remediation successful! Compliant={remediationResult.Summary.IsCompliant}, " +
+                    $"Iterations={remediationResult.Summary.TotalIterations}, " +
+                    $"Violations Fixed={remediationResult.Summary.ViolationsFixed}");
+                logger.LogInformation($"Initial violations: {remediationResult.InitialValidation?.Violations?.Count ?? 0}, " +
+                    $"Remaining violations: {remediationResult.RemainingViolations?.Count ?? 0}");
+                pdfBytes = remediationResult.OutputPdf;
+                progressService.UpdateProgress(sessionId, "PDF/UA remediation complete", "Processing complete", 100);
+            }
+            else
+            {
+                logger.LogWarning($"Remediation completed with issues: {remediationResult.ExitReason}");
+                logger.LogWarning($"Initial violations: {remediationResult.InitialValidation?.Violations?.Count ?? 0}, " +
+                    $"Remaining violations: {remediationResult.RemainingViolations?.Count ?? 0}");
+            }
+        }
+        catch (Exception remediationEx)
+        {
+            logger.LogError(remediationEx, "Remediation failed - continuing with PassportPDF output");
+            // Continue with PassportPDF output even if remediation fails
+        }
+
         // Return response in expected format
         return Results.Ok(new
         {
@@ -4434,10 +4607,71 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
                 compliance = "PDF/UA + WCAG 2.1 AA",
                 fieldsProcessed = fields?.Count ?? 0,
                 measuresApplied = 15,
-                aiEnhanced = true,
-                accessibilityScore = 95,
-                processingTime = 0
+                aiEnhanced = config.Services.UseClaudeVision || config.Services.UseClaudeValidation,
+                accessibilityScore = (int)Math.Round(remediationResult?.FinalValidation?.Summary?.ComplianceScore ?? 85),
+                processingTime = (int)Math.Round(remediationResult?.Summary.TotalDuration.TotalSeconds ?? 0),
+                // PDF/UA specific validation data
+                pdfUACompliant = remediationResult?.Summary.IsCompliant ?? false,
+                remediationIterations = remediationResult?.Summary.TotalIterations ?? 0,
+                violationsFixed = remediationResult?.Summary.ViolationsFixed ?? 0,
+                violationsRemaining = remediationResult?.Summary.FinalViolationCount ?? 0,
+                exitReason = remediationResult?.ExitReason.ToString()
             },
+            validation = remediationResult != null ? new
+            {
+                enabled = true,
+                success = remediationResult.Success,
+                compliant = remediationResult.Summary.IsCompliant,
+                iterations = remediationResult.Summary.TotalIterations,
+                duration = remediationResult.Summary.FormattedDuration,
+                initialViolations = remediationResult.Summary.InitialViolationCount,
+                finalViolations = remediationResult.Summary.FinalViolationCount,
+                violationsFixed = remediationResult.Summary.ViolationsFixed,
+                complianceImprovement = remediationResult.Summary.ComplianceImprovement,
+                exitReason = remediationResult.ExitReason.ToString(),
+                recommendations = remediationResult.Recommendations?.Select(r => new
+                {
+                    type = r.Type.ToString(),
+                    priority = r.Priority.ToString(),
+                    description = r.Description,
+                    suggestedAction = r.SuggestedAction
+                }).ToArray(),
+                iterationHistory = remediationResult.IterationHistory?.Select(it => new
+                {
+                    iteration = it.IterationNumber,
+                    violations = it.ViolationCount,
+                    fixesApplied = it.FixesApplied,
+                    duration = it.Duration.TotalSeconds
+                }).ToArray(),
+                remainingViolations = remediationResult.RemainingViolations?.Select(v => new
+                {
+                    ruleId = v.RuleId,
+                    clause = v.Clause,
+                    description = v.Description,
+                    severity = v.Severity.ToString(),
+                    location = v.Location != null ? new
+                    {
+                        pageNumber = v.Location.PageNumber,
+                        contextDescription = v.Location.ContextDescription
+                    } : null,
+                    context = v.Context,
+                    remediationHint = v.RemediationHint
+                }).ToArray() ?? Array.Empty<object>(),
+                initialViolationsDetailed = remediationResult.InitialValidation?.Violations?.Select(v => new
+                {
+                    ruleId = v.RuleId,
+                    clause = v.Clause,
+                    description = v.Description,
+                    severity = v.Severity.ToString(),
+                    location = v.Location != null ? new
+                    {
+                        pageNumber = v.Location.PageNumber,
+                        contextDescription = v.Location.ContextDescription
+                    } : null,
+                    context = v.Context,
+                    remediationHint = v.RemediationHint
+                }).ToArray() ?? Array.Empty<object>()
+            } : null,
             debugInfo = new
             {
                 fieldsDetected = fields?.Count ?? 0,
