@@ -25,6 +25,7 @@ namespace WordToPdfConverter.Services.Remediation.Models
         // History tracking
         public List<IterationSnapshot> History { get; set; } = new();
         public List<PhaseResult> AllPhaseResults { get; set; } = new();
+        public ValidationResult InitialValidation { get; set; }
         public ValidationResult CurrentValidation { get; set; }
 
         // Metrics

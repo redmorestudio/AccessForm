@@ -39,10 +39,10 @@
                                         <strong>Syncfusion</strong> <small class="text-muted">(Coordinate detection)</small>
                                     </label>
                                 </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="useGoogle" @bind="useGoogle" disabled="@enableAllAI">
-                                    <label class="form-check-label" for="useGoogle" style="@(enableAllAI ? "opacity: 0.6;" : "")">
-                                        <strong>Google Document AI</strong> <small class="text-muted">(Structured analysis)</small>
+                                <div class="form-check" style="opacity: 0.4;">
+                                    <input class="form-check-input" type="checkbox" id="useGoogle" @bind="useGoogle" disabled>
+                                    <label class="form-check-label" for="useGoogle">
+                                        <strong>Google Document AI</strong> <small class="text-muted">(Not Available)</small>
                                     </label>
                                 </div>
                                 <div class="form-check">
@@ -57,10 +57,10 @@
                                         <strong>Claude Validation</strong> <small class="text-muted">(Fix bounding boxes)</small>
                                     </label>
                                 </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="useGroqValidation" @bind="useGroqValidation" disabled="@enableAllAI">
-                                    <label class="form-check-label" for="useGroqValidation" style="@(enableAllAI ? "opacity: 0.6;" : "")">
-                                        <strong>Groq Label Validation</strong> <small class="text-muted">(DEPRECATED - use Multi-Stage)</small>
+                                <div class="form-check" style="opacity: 0.4;">
+                                    <input class="form-check-input" type="checkbox" id="useGroqValidation" @bind="useGroqValidation" disabled>
+                                    <label class="form-check-label" for="useGroqValidation">
+                                        <strong>Groq Label Validation</strong> <small class="text-muted">(Not Available)</small>
                                     </label>
                                 </div>
                                 <div class="form-check p-2" style="background-color: rgba(40, 123, 255, 0.1); border-left: 3px solid #287bff;">
@@ -297,7 +297,133 @@
                                             <li>✓ Keyboard navigation enabled</li>
                                         </ul>
                                     </div>
-                                    
+
+                                    @if (processingResults.Validation != null && processingResults.Validation.Enabled)
+                                    {
+                                        <div class="validation-results mb-3">
+                                            <div class="alert @(processingResults.PdfUACompliant ? "alert-success" : "alert-warning") mb-2">
+                                                <strong>PDF/UA Validation:</strong>
+                                                @if (processingResults.PdfUACompliant)
+                                                {
+                                                    <span class="badge bg-success">✓ Compliant</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-warning text-dark">⚠ @processingResults.ViolationsRemaining violations remaining</span>
+                                                }
+                                            </div>
+
+                                            <small class="text-muted">Remediation Summary:</small>
+                                            <ul class="small mb-0 mt-1">
+                                                <li>🔄 Iterations: @processingResults.RemediationIterations (@processingResults.Validation.Duration)</li>
+                                                <li>📊 Starting Violations: @processingResults.Validation.InitialViolations</li>
+                                                <li>✓ Violations Fixed: @processingResults.ViolationsFixed</li>
+                                                <li>⚠️ Violations Remaining: @processingResults.ViolationsRemaining</li>
+                                                @if (processingResults.Validation.ComplianceImprovement > 0)
+                                                {
+                                                    <li>📈 Compliance Improved: +@processingResults.Validation.ComplianceImprovement.ToString("F1")%</li>
+                                                }
+                                                <li>🏁 Exit Reason: @processingResults.ExitReason</li>
+                                            </ul>
+
+                                            @if (processingResults.Validation.Recommendations.Any())
+                                            {
+                                                <details class="mt-2">
+                                                    <summary class="text-muted small" style="cursor: pointer;">View Recommendations (@processingResults.Validation.Recommendations.Count)</summary>
+                                                    <ul class="small mt-1">
+                                                        @foreach (var rec in processingResults.Validation.Recommendations)
+                                                        {
+                                                            <li>
+                                                                <span class="badge bg-@(rec.Priority == "Critical" ? "danger" : rec.Priority == "High" ? "warning" : "info")">@rec.Priority</span>
+                                                                @rec.Description
+                                                                @if (!string.IsNullOrEmpty(rec.SuggestedAction))
+                                                                {
+                                                                    <br/><small class="text-muted">→ @rec.SuggestedAction</small>
+                                                                }
+                                                            </li>
+                                                        }
+                                                    </ul>
+                                                </details>
+                                            }
+
+                                            @if (processingResults.Validation.IterationHistory.Any())
+                                            {
+                                                <details class="mt-2">
+                                                    <summary class="text-muted small" style="cursor: pointer;">View Iteration History (@processingResults.Validation.IterationHistory.Count iterations)</summary>
+                                                    <div class="table-responsive mt-1">
+                                                        <table class="table table-sm small">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>#</th>
+                                                                    <th>Violations</th>
+                                                                    <th>Compliance</th>
+                                                                    <th>Fixed</th>
+                                                                    <th>Duration</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                @foreach (var iter in processingResults.Validation.IterationHistory)
+                                                                {
+                                                                    <tr>
+                                                                        <td>@iter.Iteration</td>
+                                                                        <td>@iter.Violations</td>
+                                                                        <td>@iter.Compliance.ToString("F1")%</td>
+                                                                        <td>@iter.FixesApplied</td>
+                                                                        <td>@iter.Duration.ToString("F1")s</td>
+                                                                    </tr>
+                                                                }
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </details>
+                                            }
+
+                                            @if (processingResults.Validation.RemainingViolations.Any())
+                                            {
+                                                <details class="mt-2">
+                                                    <summary class="text-muted small" style="cursor: pointer;">View Remaining Violations (@processingResults.Validation.RemainingViolations.Count)</summary>
+                                                    <div class="mt-1">
+                                                        @foreach (var violation in processingResults.Validation.RemainingViolations)
+                                                        {
+                                                            <div class="card mb-2 small">
+                                                                <div class="card-body p-2">
+                                                                    <div class="d-flex justify-content-between align-items-start mb-1">
+                                                                        <strong class="text-danger">@violation.RuleId</strong>
+                                                                        <span class="badge bg-@(violation.Severity == "Critical" ? "danger" : violation.Severity == "Error" ? "warning" : "info")">@violation.Severity</span>
+                                                                    </div>
+                                                                    @if (!string.IsNullOrEmpty(violation.Clause))
+                                                                    {
+                                                                        <div class="text-muted" style="font-size: 0.85em;">Clause: @violation.Clause</div>
+                                                                    }
+                                                                    <div class="mt-1">@violation.Description</div>
+                                                                    @if (violation.Location != null)
+                                                                    {
+                                                                        <div class="mt-1 text-muted" style="font-size: 0.85em;">
+                                                                            @if (violation.Location.PageNumber.HasValue)
+                                                                            {
+                                                                                <span>📄 Page @violation.Location.PageNumber</span>
+                                                                            }
+                                                                            @if (!string.IsNullOrEmpty(violation.Location.ContextDescription))
+                                                                            {
+                                                                                <span class="ms-2">@violation.Location.ContextDescription</span>
+                                                                            }
+                                                                        </div>
+                                                                    }
+                                                                    @if (!string.IsNullOrEmpty(violation.RemediationHint))
+                                                                    {
+                                                                        <div class="mt-2 alert alert-info p-1 mb-0" style="font-size: 0.85em;">
+                                                                            <strong>💡 Hint:</strong> @violation.RemediationHint
+                                                                        </div>
+                                                                    }
+                                                                </div>
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                </details>
+                                            }
+                                        </div>
+                                    }
+
                                     <button class="btn btn-success w-100" @onclick="() => DownloadFile(processingResults.AccessibleFileData, processingResults.AccessibleFileName)">
                                         <span class="me-2">⬇️</span> Download Accessible PDF
                                     </button>
@@ -798,7 +924,7 @@
         public int AiFieldsDetected { get; set; }
         public int AiFieldsApplied { get; set; }
         public int AccessibilityScore { get; set; }
-        
+
         // Tag Structure Report fields
         public string TagTree { get; set; } = "";
         public int TotalTagNodes { get; set; }
@@ -807,8 +933,68 @@
         public int TotalHeadings { get; set; }
         public int TotalParagraphs { get; set; }
         public int TotalTables { get; set; }
+
+        // PDF/UA Validation fields (from closed-loop remediation)
+        public bool PdfUACompliant { get; set; }
+        public int RemediationIterations { get; set; }
+        public int ViolationsFixed { get; set; }
+        public int ViolationsRemaining { get; set; }
+        public string? ExitReason { get; set; }
+        public ValidationData? Validation { get; set; }
     }
-    
+
+    private class ValidationData
+    {
+        public bool Enabled { get; set; }
+        public bool Success { get; set; }
+        public bool Compliant { get; set; }
+        public int Iterations { get; set; }
+        public string Duration { get; set; } = "";
+        public int InitialViolations { get; set; }
+        public int FinalViolations { get; set; }
+        public int ViolationsFixed { get; set; }
+        public double ComplianceImprovement { get; set; }
+        public string ExitReason { get; set; } = "";
+        public List<RecommendationData> Recommendations { get; set; } = new();
+        public List<IterationData> IterationHistory { get; set; } = new();
+        public List<ViolationData> RemainingViolations { get; set; } = new();
+    }
+
+    private class RecommendationData
+    {
+        public string Type { get; set; } = "";
+        public string Priority { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string? SuggestedAction { get; set; }
+    }
+
+    private class IterationData
+    {
+        public int Iteration { get; set; }
+        public int Violations { get; set; }
+        public double Compliance { get; set; }
+        public int FixesApplied { get; set; }
+        public double Duration { get; set; }
+        public List<string> Phases { get; set; } = new();
+    }
+
+    private class ViolationData
+    {
+        public string RuleId { get; set; } = "";
+        public string Clause { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string Severity { get; set; } = "";
+        public ViolationLocationData? Location { get; set; }
+        public string? Context { get; set; }
+        public string? RemediationHint { get; set; }
+    }
+
+    private class ViolationLocationData
+    {
+        public int? PageNumber { get; set; }
+        public string? ContextDescription { get; set; }
+    }
+
     // Classes for JavaScript interop
     public class FileData
     {
@@ -1132,29 +1318,26 @@
             // Determine file type and endpoint based on AI mode
             bool isWord = IsWordFile(selectedFile.Name);
             string endpoint;
-            
-            if (UseAiMode)
+
+            // ALWAYS use /api/convert-with-config for PDFs to ensure PDF/UA validation runs
+            if (!isWord)
             {
-                // Use the configurable endpoint for BOTH Word and PDF with AI processing
                 endpoint = "/api/convert-with-config";
-                if (isWord)
-                {
-                    processingMessage = $"Processing with: {(useSyncfusion ? "Syncfusion " : "")}{(useGoogle ? "Google " : "")}{(useClaudeVision ? "Claude Vision " : "")}{(useClaudeValidation ? "Validation" : "")}";
-                    await JSRuntime.InvokeVoidAsync("console.log", $"Using config endpoint with: Syncfusion={useSyncfusion}, Google={useGoogle}, Vision={useClaudeVision}, Validation={useClaudeValidation}, Mode={processingMode}");
-                }
-                else
-                {
-                    // PDFs use the same endpoint - it has full accessibility pipeline via PdfPreservationService
-                    processingMessage = "Processing PDF with full accessibility pipeline...";
-                    await JSRuntime.InvokeVoidAsync("console.log", "Using config endpoint for PDF processing (same pipeline as Word)");
-                }
+                processingMessage = "Processing PDF with PDF/UA validation...";
+                await JSRuntime.InvokeVoidAsync("console.log", "Using config endpoint for PDF - includes PDF/UA validation");
+            }
+            else if (UseAiMode)
+            {
+                // Word docs use configurable endpoint when AI mode enabled
+                endpoint = "/api/convert-with-config";
+                processingMessage = $"Processing with: {(useSyncfusion ? "Syncfusion " : "")}{(useGoogle ? "Google " : "")}{(useClaudeVision ? "Claude Vision " : "")}{(useClaudeValidation ? "Validation" : "")}";
+                await JSRuntime.InvokeVoidAsync("console.log", $"Using config endpoint with: Syncfusion={useSyncfusion}, Google={useGoogle}, Vision={useClaudeVision}, Validation={useClaudeValidation}, Mode={processingMode}");
             }
             else
             {
-                endpoint = isWord ? "/api/convert" : "/api/remediate-pdf";
-                processingMessage = isWord ? 
-                    "Converting Word document to accessible PDF..." : 
-                    "Remediating PDF for accessibility...";
+                // Word docs without AI mode use simple endpoint
+                endpoint = "/api/convert";
+                processingMessage = "Converting Word document to accessible PDF...";
             }
             
             StateHasChanged();
@@ -1293,9 +1476,74 @@
                     MeasuresApplied = result.GetProperty("report").GetProperty("measuresApplied").GetInt32(),
                     AiEnhanced = GetJsonBool(result.GetProperty("report"), "aiEnhanced", false),
                     AiProvider = GetJsonString(result.GetProperty("report"), "aiProvider", "None"),
-                    AccessibilityScore = GetJsonInt(result.GetProperty("report"), "accessibilityScore", 0)
+                    AccessibilityScore = GetJsonInt(result.GetProperty("report"), "accessibilityScore", 0),
+                    // PDF/UA Validation data from closed-loop remediation
+                    PdfUACompliant = GetJsonBool(result.GetProperty("report"), "pdfUACompliant", false),
+                    RemediationIterations = GetJsonInt(result.GetProperty("report"), "remediationIterations", 0),
+                    ViolationsFixed = GetJsonInt(result.GetProperty("report"), "violationsFixed", 0),
+                    ViolationsRemaining = GetJsonInt(result.GetProperty("report"), "violationsRemaining", 0),
+                    ExitReason = GetJsonString(result.GetProperty("report"), "exitReason", null)
                 };
-                
+
+                // Parse validation data if present
+                if (result.TryGetProperty("validation", out JsonElement validationProp) && validationProp.ValueKind != JsonValueKind.Null)
+                {
+                    processingResults.Validation = new ValidationData
+                    {
+                        Enabled = GetJsonBool(validationProp, "enabled", false),
+                        Success = GetJsonBool(validationProp, "success", false),
+                        Compliant = GetJsonBool(validationProp, "compliant", false),
+                        Iterations = GetJsonInt(validationProp, "iterations", 0),
+                        Duration = GetJsonString(validationProp, "duration", ""),
+                        InitialViolations = GetJsonInt(validationProp, "initialViolations", 0),
+                        FinalViolations = GetJsonInt(validationProp, "finalViolations", 0),
+                        ViolationsFixed = GetJsonInt(validationProp, "violationsFixed", 0),
+                        ComplianceImprovement = validationProp.TryGetProperty("complianceImprovement", out var improvementProp) ? improvementProp.GetDouble() : 0.0,
+                        ExitReason = GetJsonString(validationProp, "exitReason", "")
+                    };
+
+                    // Parse recommendations
+                    if (validationProp.TryGetProperty("recommendations", out JsonElement recommendations) && recommendations.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var rec in recommendations.EnumerateArray())
+                        {
+                            processingResults.Validation.Recommendations.Add(new RecommendationData
+                            {
+                                Type = GetJsonString(rec, "type", ""),
+                                Priority = GetJsonString(rec, "priority", ""),
+                                Description = GetJsonString(rec, "description", ""),
+                                SuggestedAction = GetJsonString(rec, "suggestedAction", null)
+                            });
+                        }
+                    }
+
+                    // Parse iteration history
+                    if (validationProp.TryGetProperty("iterationHistory", out JsonElement iterationHistory) && iterationHistory.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var iter in iterationHistory.EnumerateArray())
+                        {
+                            var iterData = new IterationData
+                            {
+                                Iteration = GetJsonInt(iter, "iteration", 0),
+                                Violations = GetJsonInt(iter, "violations", 0),
+                                Compliance = iter.TryGetProperty("compliance", out var complianceProp) ? complianceProp.GetDouble() : 0.0,
+                                FixesApplied = GetJsonInt(iter, "fixesApplied", 0),
+                                Duration = iter.TryGetProperty("duration", out var durationProp) ? durationProp.GetDouble() : 0.0
+                            };
+
+                            if (iter.TryGetProperty("phases", out JsonElement phases) && phases.ValueKind == JsonValueKind.Array)
+                            {
+                                foreach (var phase in phases.EnumerateArray())
+                                {
+                                    iterData.Phases.Add(phase.GetString() ?? "");
+                                }
+                            }
+
+                            processingResults.Validation.IterationHistory.Add(iterData);
+                        }
+                    }
+                }
+
                 // Extract debug ID if present (for both Word and PDF sources)
                 if (result.TryGetProperty("debugId", out JsonElement debugIdProp))
                 {
@@ -1401,9 +1649,102 @@
                     MeasuresApplied = result.GetProperty("report").GetProperty("measuresApplied").GetInt32(),
                     AiEnhanced = GetJsonBool(result.GetProperty("report"), "aiEnhanced", false),
                     AiProvider = GetJsonString(result.GetProperty("report"), "aiProvider", "None"),
-                    AccessibilityScore = GetJsonInt(result.GetProperty("report"), "accessibilityScore", 0)
+                    AccessibilityScore = GetJsonInt(result.GetProperty("report"), "accessibilityScore", 0),
+                    // PDF/UA Validation data from closed-loop remediation
+                    PdfUACompliant = GetJsonBool(result.GetProperty("report"), "pdfUACompliant", false),
+                    RemediationIterations = GetJsonInt(result.GetProperty("report"), "remediationIterations", 0),
+                    ViolationsFixed = GetJsonInt(result.GetProperty("report"), "violationsFixed", 0),
+                    ViolationsRemaining = GetJsonInt(result.GetProperty("report"), "violationsRemaining", 0),
+                    ExitReason = GetJsonString(result.GetProperty("report"), "exitReason", null)
                 };
-                
+
+                // Parse validation data if present (for PDF remediation)
+                if (result.TryGetProperty("validation", out JsonElement validationPropPdf) && validationPropPdf.ValueKind != JsonValueKind.Null)
+                {
+                    processingResults.Validation = new ValidationData
+                    {
+                        Enabled = GetJsonBool(validationPropPdf, "enabled", false),
+                        Success = GetJsonBool(validationPropPdf, "success", false),
+                        Compliant = GetJsonBool(validationPropPdf, "compliant", false),
+                        Iterations = GetJsonInt(validationPropPdf, "iterations", 0),
+                        Duration = GetJsonString(validationPropPdf, "duration", ""),
+                        InitialViolations = GetJsonInt(validationPropPdf, "initialViolations", 0),
+                        FinalViolations = GetJsonInt(validationPropPdf, "finalViolations", 0),
+                        ViolationsFixed = GetJsonInt(validationPropPdf, "violationsFixed", 0),
+                        ComplianceImprovement = validationPropPdf.TryGetProperty("complianceImprovement", out var improvementPropPdf) ? improvementPropPdf.GetDouble() : 0.0,
+                        ExitReason = GetJsonString(validationPropPdf, "exitReason", "")
+                    };
+
+                    // Parse recommendations
+                    if (validationPropPdf.TryGetProperty("recommendations", out JsonElement recommendationsPdf) && recommendationsPdf.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var rec in recommendationsPdf.EnumerateArray())
+                        {
+                            processingResults.Validation.Recommendations.Add(new RecommendationData
+                            {
+                                Type = GetJsonString(rec, "type", ""),
+                                Priority = GetJsonString(rec, "priority", ""),
+                                Description = GetJsonString(rec, "description", ""),
+                                SuggestedAction = GetJsonString(rec, "suggestedAction", null)
+                            });
+                        }
+                    }
+
+                    // Parse iteration history
+                    if (validationPropPdf.TryGetProperty("iterationHistory", out JsonElement iterationHistoryPdf) && iterationHistoryPdf.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var iter in iterationHistoryPdf.EnumerateArray())
+                        {
+                            var iterData = new IterationData
+                            {
+                                Iteration = GetJsonInt(iter, "iteration", 0),
+                                Violations = GetJsonInt(iter, "violations", 0),
+                                Compliance = iter.TryGetProperty("compliance", out var compliancePropPdf) ? compliancePropPdf.GetDouble() : 0.0,
+                                FixesApplied = GetJsonInt(iter, "fixesApplied", 0),
+                                Duration = iter.TryGetProperty("duration", out var durationPropPdf) ? durationPropPdf.GetDouble() : 0.0
+                            };
+
+                            if (iter.TryGetProperty("phases", out JsonElement phasesPdf) && phasesPdf.ValueKind == JsonValueKind.Array)
+                            {
+                                foreach (var phase in phasesPdf.EnumerateArray())
+                                {
+                                    iterData.Phases.Add(phase.GetString() ?? "");
+                                }
+                            }
+
+                            processingResults.Validation.IterationHistory.Add(iterData);
+                        }
+                    }
+
+                    // Parse remaining violations
+                    if (validationPropPdf.TryGetProperty("remainingViolations", out JsonElement remainingViolationsPdf) && remainingViolationsPdf.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var violation in remainingViolationsPdf.EnumerateArray())
+                        {
+                            var violationData = new ViolationData
+                            {
+                                RuleId = GetJsonString(violation, "ruleId", ""),
+                                Clause = GetJsonString(violation, "clause", ""),
+                                Description = GetJsonString(violation, "description", ""),
+                                Severity = GetJsonString(violation, "severity", ""),
+                                Context = GetJsonString(violation, "context", null),
+                                RemediationHint = GetJsonString(violation, "remediationHint", null)
+                            };
+
+                            if (violation.TryGetProperty("location", out JsonElement locationPdf) && locationPdf.ValueKind != JsonValueKind.Null)
+                            {
+                                violationData.Location = new ViolationLocationData
+                                {
+                                    PageNumber = locationPdf.TryGetProperty("pageNumber", out var pageNumPdf) && pageNumPdf.ValueKind != JsonValueKind.Null ? pageNumPdf.GetInt32() : null,
+                                    ContextDescription = GetJsonString(locationPdf, "contextDescription", null)
+                                };
+                            }
+
+                            processingResults.Validation.RemainingViolations.Add(violationData);
+                        }
+                    }
+                }
+
                 // Parse tag structure if present (for PDF remediation)
                 await JSRuntime.InvokeVoidAsync("console.log", "PDF: Checking for tagStructure in response...");
                 if (result.TryGetProperty("tagStructure", out JsonElement tagStructurePdf))
@@ -1439,12 +1780,19 @@
                 await JSRuntime.InvokeVoidAsync("console.log", $"PDF - Tag nodes: {processingResults.TotalTagNodes}, AI: {processingResults.AiEnhanced}");
             }
             
-            await JSRuntime.InvokeVoidAsync("console.log", "ProcessApiResponse: Successfully parsed response, clearing file selection");
+            await JSRuntime.InvokeVoidAsync("console.log", "ProcessApiResponse: Successfully parsed response");
+            await JSRuntime.InvokeVoidAsync("console.log", $"ProcessApiResponse: processingResults populated - Iterations: {processingResults.Validation?.Iterations ?? 0}, Violations: {processingResults.ViolationsRemaining}");
+
             selectedFile = null; // Clear selection after successful processing
+
+            // Force UI update
+            StateHasChanged();
+            await JSRuntime.InvokeVoidAsync("console.log", "ProcessApiResponse: StateHasChanged called");
         }
         catch (Exception ex)
         {
             await JSRuntime.InvokeVoidAsync("console.error", $"ProcessApiResponse: Error parsing response: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("console.error", $"ProcessApiResponse: Stack trace: {ex.StackTrace}");
             throw new Exception($"Failed to parse server response: {ex.Message}", ex);
         }
     }

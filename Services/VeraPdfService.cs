@@ -76,6 +76,11 @@ namespace WordToPdfConverter.Services
                 // Store raw output
                 result.RawVeraPdfOutput = jsonOutput;
 
+                // DEBUG: Save JSON to file for inspection
+                var debugPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"verapdf-debug-{DateTime.Now:yyyyMMdd-HHmmss}.json");
+                await System.IO.File.WriteAllTextAsync(debugPath, jsonOutput);
+                _logger.LogInformation($"DEBUG: VeraPDF JSON saved to {debugPath}");
+
                 // Parse veraPDF output
                 ParseVeraPdfOutput(jsonOutput, result);
 
@@ -150,14 +155,35 @@ namespace WordToPdfConverter.Services
                 throw new TimeoutException("veraPDF validation timed out after 2 minutes");
             }
 
+            var output = outputBuilder.ToString();
+            var error = errorBuilder.ToString();
+
+            // VeraPDF returns exit code 1 when PDF has violations (by design)
+            // Only treat it as an error if we didn't get valid JSON output
             if (process.ExitCode != 0)
             {
-                var error = errorBuilder.ToString();
+                // Check if we got valid JSON despite exit code 1
+                if (!string.IsNullOrWhiteSpace(output) && output.TrimStart().StartsWith("{"))
+                {
+                    // We got JSON output, exit code 1 just means violations were found
+                    _logger.LogDebug("veraPDF returned exit code {ExitCode} (expected for PDFs with violations)", process.ExitCode);
+                    return output;
+                }
+
+                // Real error - no valid output
+                _logger.LogError(
+                    "veraPDF failed with exit code {ExitCode}\n" +
+                    "STDERR: {Error}\n" +
+                    "STDOUT: {Output}",
+                    process.ExitCode, error, output);
+
                 throw new InvalidOperationException(
-                    $"veraPDF failed with exit code {process.ExitCode}: {error}");
+                    $"veraPDF failed with exit code {process.ExitCode}. " +
+                    $"Error: {(string.IsNullOrEmpty(error) ? "No error output" : error.Trim())}. " +
+                    $"Output: {(string.IsNullOrEmpty(output) ? "No output" : output.Substring(0, Math.Min(200, output.Length)))}");
             }
 
-            return outputBuilder.ToString();
+            return output;
         }
 
         /// <summary>
@@ -167,6 +193,10 @@ namespace WordToPdfConverter.Services
         {
             try
             {
+                // Log first 500 characters of JSON for debugging
+                _logger.LogDebug("VeraPDF JSON output (first 500 chars): {Json}",
+                    jsonOutput.Length > 500 ? jsonOutput.Substring(0, 500) : jsonOutput);
+
                 using var document = JsonDocument.Parse(jsonOutput);
                 var root = document.RootElement;
 
@@ -181,20 +211,42 @@ namespace WordToPdfConverter.Services
                     throw new InvalidOperationException("Invalid veraPDF output: missing 'jobs' property");
                 }
 
-                if (!jobs.TryGetProperty("job", out var job))
+                // jobs is an array, get the first element
+                if (jobs.ValueKind != JsonValueKind.Array || jobs.GetArrayLength() == 0)
                 {
-                    throw new InvalidOperationException("Invalid veraPDF output: missing 'job' property");
+                    throw new InvalidOperationException("Invalid veraPDF output: 'jobs' is not an array or is empty");
                 }
 
-                if (!job.TryGetProperty("validationReport", out var valReport))
+                var job = jobs[0];
+
+                if (!job.TryGetProperty("validationResult", out var validationResults))
                 {
-                    throw new InvalidOperationException("Invalid veraPDF output: missing 'validationReport' property");
+                    throw new InvalidOperationException("Invalid veraPDF output: missing 'validationResult' property");
                 }
 
-                // Parse summary
-                result.Summary.ProfileName = valReport.GetProperty("profileName").GetString() ?? "PDF/UA-1";
-                result.Summary.Statement = valReport.GetProperty("statement").GetString() ?? "";
-                result.Summary.IsCompliant = valReport.GetProperty("isCompliant").GetString() == "true";
+                // validationResult is also an array, get the first element
+                if (validationResults.ValueKind != JsonValueKind.Array || validationResults.GetArrayLength() == 0)
+                {
+                    throw new InvalidOperationException("Invalid veraPDF output: 'validationResult' is not an array or is empty");
+                }
+
+                var valReport = validationResults[0];
+
+                // Parse summary - use TryGetProperty to handle optional fields
+                if (valReport.TryGetProperty("profileName", out var profileName))
+                    result.Summary.ProfileName = profileName.GetString() ?? "PDF/UA-1";
+                else
+                    result.Summary.ProfileName = "PDF/UA-1";
+
+                if (valReport.TryGetProperty("statement", out var statement))
+                    result.Summary.Statement = statement.GetString() ?? "";
+                else
+                    result.Summary.Statement = "";
+
+                if (valReport.TryGetProperty("isCompliant", out var isCompliant))
+                    result.Summary.IsCompliant = isCompliant.GetString() == "true";
+                else
+                    result.Summary.IsCompliant = false;
 
                 // Parse details
                 if (valReport.TryGetProperty("details", out var details))
@@ -207,8 +259,8 @@ namespace WordToPdfConverter.Services
 
                     result.Summary.TotalChecks = result.Summary.PassedChecks + result.Summary.FailedChecks;
 
-                    // Parse violations (failed rules)
-                    if (details.TryGetProperty("rule", out var rules))
+                    // Parse violations (failed rules) - use "ruleSummaries" not "rule"
+                    if (details.TryGetProperty("ruleSummaries", out var rules))
                     {
                         if (rules.ValueKind == JsonValueKind.Array)
                         {
@@ -225,6 +277,12 @@ namespace WordToPdfConverter.Services
                     }
                 }
             }
+            catch (KeyNotFoundException ex)
+            {
+                _logger.LogError(ex, "Missing expected JSON property in veraPDF output. JSON: {Json}",
+                    jsonOutput.Length > 1000 ? jsonOutput.Substring(0, 1000) : jsonOutput);
+                throw new InvalidOperationException("Failed to parse veraPDF output - missing expected property", ex);
+            }
             catch (JsonException ex)
             {
                 _logger.LogError(ex, "Failed to parse veraPDF JSON output");
@@ -237,16 +295,20 @@ namespace WordToPdfConverter.Services
         /// </summary>
         private void ParseViolation(JsonElement rule, ValidationResult result)
         {
-            var status = rule.GetProperty("status").GetString();
+            // Check status - skip non-failures
+            if (!rule.TryGetProperty("status", out var statusProp))
+                return;
+
+            var status = statusProp.GetString();
             if (status != "failed")
                 return; // Only capture failures
 
             var violation = new PdfUAViolation
             {
-                Clause = rule.GetProperty("clause").GetString() ?? "",
-                TestNumber = rule.GetProperty("testNumber").GetInt32(),
+                Clause = rule.TryGetProperty("clause", out var clauseProp) ? clauseProp.GetString() ?? "" : "",
+                TestNumber = rule.TryGetProperty("testNumber", out var testNumProp) ? testNumProp.GetInt32() : 0,
                 Status = ViolationStatus.Failed,
-                Specification = rule.GetProperty("specification").GetString() ?? "ISO 14289-1:2014"
+                Specification = rule.TryGetProperty("specification", out var specProp) ? specProp.GetString() ?? "ISO 14289-1:2014" : "ISO 14289-1:2014"
             };
 
             violation.RuleId = $"{violation.Clause}-{violation.TestNumber}";
@@ -255,12 +317,27 @@ namespace WordToPdfConverter.Services
             if (rule.TryGetProperty("description", out var desc))
                 violation.Description = desc.GetString() ?? "";
 
-            // Location/context from check element
-            if (rule.TryGetProperty("check", out var checks))
+            // Location/context from checks array (use "checks" not "check")
+            if (rule.TryGetProperty("checks", out var checks))
             {
-                var checkElement = checks.ValueKind == JsonValueKind.Array
-                    ? checks.EnumerateArray().GetEnumerator().Current
-                    : checks;
+                JsonElement checkElement;
+                if (checks.ValueKind == JsonValueKind.Array)
+                {
+                    // Get first element if array is not empty
+                    var enumerator = checks.EnumerateArray();
+                    if (enumerator.Any())
+                    {
+                        checkElement = enumerator.First();
+                    }
+                    else
+                    {
+                        return; // No check elements, skip this violation
+                    }
+                }
+                else
+                {
+                    checkElement = checks;
+                }
 
                 if (checkElement.TryGetProperty("context", out var context))
                 {

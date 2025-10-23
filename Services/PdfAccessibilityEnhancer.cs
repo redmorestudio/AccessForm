@@ -148,35 +148,121 @@ namespace WordToPdfConverter.Services
             formSection.Parent = rootElement;
             formSection.Title = "Interactive Form";
             formSection.AlternateText = "Fill out this form with required information";
-            
+
             int tabIndex = 1;
             var fieldGroups = GroupRelatedFields(document.Form.Fields);
-            
+
             foreach (var group in fieldGroups)
             {
                 // Create structure for field group
                 var groupElement = new PdfStructureElement(PdfTagType.Section);
                 groupElement.Parent = formSection;
                 groupElement.Title = group.Key;
-                
+
                 foreach (PdfLoadedField field in group.Value)
                 {
                     // Create structure element for each field
                     var fieldElement = CreateFieldStructureElement(field);
                     fieldElement.Parent = groupElement;
-                    
+
                     // Set tab order
                     field.TabIndex = tabIndex++;
-                    
+
                     // Add descriptive tooltip if missing
                     EnhanceFieldWithTooltip(field);
-                    
+
                     // Add alternative text
                     AddFieldAlternativeText(field, fieldElement);
-                    
+
                     // Mark required fields
                     MarkRequiredFields(field, fieldElement);
+
+                    // Enhanced: Tag associated graphics for radio buttons and checkboxes
+                    if (field is PdfLoadedCheckBoxField || field is PdfLoadedRadioButtonListField)
+                    {
+                        TagFieldGraphics(field, fieldElement, document);
+                    }
+
+                    // Enhanced: Ensure proper object references
+                    EnsureFieldObjectReferences(field, document);
                 }
+            }
+        }
+
+        private void TagFieldGraphics(PdfLoadedField field, PdfStructureElement fieldElement, PdfLoadedDocument document)
+        {
+            // Tag any graphical elements (paths, images) associated with the field
+            if (field is PdfLoadedCheckBoxField checkBox)
+            {
+                // Tag checkbox graphics
+                var checkBoxElement = new PdfStructureElement(PdfTagType.Form);
+                checkBoxElement.Parent = fieldElement;
+                checkBoxElement.Title = "Checkbox graphic";
+                checkBoxElement.AlternateText = checkBox.Checked ? "Checked" : "Unchecked";
+                checkBoxElement.ActualText = checkBox.Checked ? "☑" : "☐";
+            }
+            else if (field is PdfLoadedRadioButtonListField radioGroup)
+            {
+                // Tag radio button graphics for each option
+                foreach (PdfLoadedRadioButtonItem item in radioGroup.Items)
+                {
+                    var radioElement = new PdfStructureElement(PdfTagType.Form);
+                    radioElement.Parent = fieldElement;
+                    radioElement.Title = $"Radio button: {item.Value}";
+                    radioElement.AlternateText = item.Selected ? $"Selected: {item.Value}" : $"Option: {item.Value}";
+                    radioElement.ActualText = item.Selected ? "◉" : "○";
+                }
+            }
+        }
+
+        private void EnsureFieldObjectReferences(PdfLoadedField field, PdfLoadedDocument document)
+        {
+            // Ensure the field has proper appearance dictionaries and object references
+            try
+            {
+                // Check if the field has valid bounds - need to cast to specific field type
+                RectangleF bounds = RectangleF.Empty;
+                bool needsBoundsUpdate = false;
+
+                if (field is PdfLoadedCheckBoxField checkBox)
+                {
+                    bounds = checkBox.Bounds;
+                    if (bounds.Width <= 0 || bounds.Height <= 0)
+                    {
+                        checkBox.Bounds = new RectangleF(bounds.X, bounds.Y, 13.8f, 13.8f);
+                        needsBoundsUpdate = true;
+                    }
+                }
+                else if (field is PdfLoadedRadioButtonListField radioField)
+                {
+                    if (radioField.Items != null && radioField.Items.Count > 0)
+                    {
+                        // Check bounds for each radio button item
+                        for (int i = 0; i < radioField.Items.Count; i++)
+                        {
+                            var item = radioField.Items[i] as PdfLoadedRadioButtonItem;
+                            if (item != null)
+                            {
+                                if (item.Bounds.Width <= 0 || item.Bounds.Height <= 0)
+                                {
+                                    item.Bounds = new RectangleF(item.Bounds.X, item.Bounds.Y, 13.8f, 13.8f);
+                                    needsBoundsUpdate = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Ensure tooltip exists (required for PDF/UA)
+                if (string.IsNullOrWhiteSpace(field.ToolTip))
+                {
+                    field.ToolTip = $"Form field: {field.Name}";
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log but don't fail - field may be read-only or have other restrictions
+                Console.WriteLine($"Could not ensure references for field {field.Name}: {ex.Message}");
             }
         }
         

@@ -31,9 +31,7 @@ namespace WordToPdfConverter.Services.Remediation.Reporting
                 Metrics = session.Metrics,
                 RemainingViolations = session.CurrentValidation?.Violations ?? new List<PdfUAViolation>(),
                 Recommendations = GenerateRecommendations(session),
-                InitialValidation = session.History.FirstOrDefault() != null
-                    ? new ValidationResult()
-                    : null,
+                InitialValidation = session.InitialValidation,
                 FinalValidation = session.CurrentValidation
             };
 
@@ -44,17 +42,19 @@ namespace WordToPdfConverter.Services.Remediation.Reporting
 
         private RemediationSummary GenerateSummary(RemediationSession session)
         {
-            var initial = session.History.FirstOrDefault();
-            var final = session.History.LastOrDefault();
+            var initialViolationCount = session.InitialValidation?.Violations.Count ?? 0;
+            var finalViolationCount = session.CurrentValidation?.Violations.Count ?? 0;
+            var initialCompliance = session.InitialValidation?.Summary.ComplianceScore ?? 0;
+            var finalCompliance = session.CurrentValidation?.Summary.ComplianceScore ?? 0;
 
             return new RemediationSummary
             {
                 TotalIterations = session.IterationCount,
                 TotalDuration = session.ElapsedTime,
-                InitialViolationCount = initial?.ViolationCount ?? 0,
-                FinalViolationCount = final?.ViolationCount ?? 0,
-                ViolationsFixed = (initial?.ViolationCount ?? 0) - (final?.ViolationCount ?? 0),
-                ComplianceImprovement = (final?.ComplianceScore ?? 0) - (initial?.ComplianceScore ?? 0),
+                InitialViolationCount = initialViolationCount,
+                FinalViolationCount = finalViolationCount,
+                ViolationsFixed = initialViolationCount - finalViolationCount,
+                ComplianceImprovement = finalCompliance - initialCompliance,
                 IsCompliant = session.IsCompliant
             };
         }

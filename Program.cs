@@ -121,8 +121,25 @@ builder.Services.AddScoped<ArtifactViolationFixService>();
 builder.Services.AddScoped<TaggedWhitespaceFixService>();
 builder.Services.AddScoped<OrphanedWhitespaceAdoptionService>();
 
+// Add form graphics tagging service (fixes path objects for radio buttons/checkboxes)
+builder.Services.AddScoped<AccessForm.Services.FormGraphicsTaggingService>();
+
 // Add PDF/UA compliance service
 builder.Services.AddScoped<PdfUAComplianceService>();
+
+// Add closed-loop remediation services
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Analysis.ViolationAnalyzer>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Decision.ExitConditionEvaluator>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Strategy.RemediationStrategySelector>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Execution.RemediationExecutor>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Tracking.ProgressTracker>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Reporting.RemediationReporter>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.RemediationOrchestrator>();
+
+// Add remediation service adapters
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Adapters.WhitespaceServiceAdapter>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Adapters.ContentServiceAdapter>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Adapters.LinkServiceAdapter>();
 
 // Add table/link accessibility cleanup service
 builder.Services.AddScoped<AccessFormServer.Services.TableLinkAccessibilityService>();
@@ -3963,6 +3980,7 @@ app.MapPost("/api/convert-with-config", async (
     ConfigurableFieldDetectionService fieldService,
     PdfCompleteRebuildService completeRebuildService,
     WordToPdfConverter.Services.PdfPreservationService pdfPreservationService,
+    WordToPdfConverter.Services.Remediation.RemediationOrchestrator remediationOrchestrator,
     ILogger<Program> logger) =>
 {
     try
@@ -4019,6 +4037,7 @@ app.MapPost("/api/convert-with-config", async (
 
         byte[] pdfBytes;
         List<WordToPdfConverter.Models.FieldDetectionResult> fields;
+        WordToPdfConverter.Services.Remediation.Models.RemediationResult remediationResult = null;
 
         if (isPdf)
         {
@@ -4032,6 +4051,28 @@ app.MapPost("/api/convert-with-config", async (
             // Process the PDF while preserving fields and their JavaScript actions
             pdfBytes = await pdfPreservationService.ProcessExistingPdfAsync(fileBytes);
             logger.LogInformation("PDF processed with all fields and calculations preserved");
+
+            // Run closed-loop remediation for PDF/UA compliance
+            logger.LogInformation("Starting closed-loop PDF/UA remediation");
+            remediationResult = await remediationOrchestrator.RemediateAsync(
+                pdfBytes,
+                WordToPdfConverter.Services.Remediation.Models.RemediationOptions.Aggressive);
+
+            if (remediationResult.Success)
+            {
+                logger.LogInformation($"Remediation successful! Compliant={remediationResult.Summary.IsCompliant}, " +
+                    $"Iterations={remediationResult.Summary.TotalIterations}, " +
+                    $"Violations Fixed={remediationResult.Summary.ViolationsFixed}");
+                pdfBytes = remediationResult.OutputPdf;
+                logger.LogInformation($"DEBUG: remediationResult.OutputPdf is {(pdfBytes == null ? "NULL" : $"{pdfBytes.Length} bytes")}");
+            }
+            else
+            {
+                logger.LogWarning($"Remediation exited: {remediationResult.ExitReason}, " +
+                    $"Remaining Violations={remediationResult.Summary.FinalViolationCount}");
+                pdfBytes = remediationResult.OutputPdf; // Use best-effort result
+                logger.LogInformation($"DEBUG: remediationResult.OutputPdf is {(pdfBytes == null ? "NULL" : $"{pdfBytes.Length} bytes")}");
+            }
         }
         else
         {
@@ -4041,6 +4082,14 @@ app.MapPost("/api/convert-with-config", async (
         }
 
         logger.LogInformation($"Field detection completed. Found {fields?.Count ?? 0} fields");
+        logger.LogInformation($"DEBUG: pdfBytes before font remediation: {(pdfBytes == null ? "NULL" : $"{pdfBytes.Length} bytes")}");
+
+        // Check if pdfBytes is null
+        if (pdfBytes == null)
+        {
+            logger.LogError("ERROR: pdfBytes is null after remediation!");
+            return Results.Problem("PDF processing failed: Output PDF is null");
+        }
 
         // ALWAYS apply font remediation for PDFs (matching Word path behavior)
         // This is required to fix base-14 font embedding issues
@@ -4094,6 +4143,22 @@ app.MapPost("/api/convert-with-config", async (
             }
         }
 
+        // Log remediation result summary for debugging
+        logger.LogInformation($"====== API RESPONSE SUMMARY ======");
+        logger.LogInformation($"RemediationResult: {(remediationResult != null ? "NOT NULL" : "NULL")}");
+        if (remediationResult != null)
+        {
+            logger.LogInformation($"  - Success: {remediationResult.Success}");
+            logger.LogInformation($"  - Iterations: {remediationResult.Summary?.TotalIterations}");
+            logger.LogInformation($"  - Compliant: {remediationResult.Summary?.IsCompliant}");
+            logger.LogInformation($"  - Violations Fixed: {remediationResult.Summary?.ViolationsFixed}");
+            logger.LogInformation($"  - Final Violations: {remediationResult.Summary?.FinalViolationCount}");
+            logger.LogInformation($"  - Exit Reason: {remediationResult.ExitReason}");
+        }
+        logger.LogInformation($"PDF Bytes: {pdfBytes?.Length ?? 0} bytes");
+        logger.LogInformation($"Fields: {fields?.Count ?? 0} total");
+        logger.LogInformation($"===================================");
+
         // Return response in expected format WITH detected fields for the frontend
         return Results.Ok(new
         {
@@ -4111,13 +4176,62 @@ app.MapPost("/api/convert-with-config", async (
             },
             report = new
             {
-                compliance = "WCAG 2.1 AA",
+                compliance = remediationResult?.Summary.IsCompliant == true ? "PDF/UA Compliant" : "WCAG 2.1 AA",
                 fieldsProcessed = fields?.Count ?? 0,
                 measuresApplied = 12,
                 aiEnhanced = config.Services.UseClaudeVision || config.Services.UseClaudeValidation,
-                accessibilityScore = 85,
-                processingTime = 0
+                accessibilityScore = (int)Math.Round(remediationResult?.FinalValidation?.Summary?.ComplianceScore ?? 85),
+                processingTime = (int)Math.Round(remediationResult?.Summary.TotalDuration.TotalSeconds ?? 0),
+                // PDF/UA specific validation data
+                pdfUACompliant = remediationResult?.Summary.IsCompliant ?? false,
+                remediationIterations = remediationResult?.Summary.TotalIterations ?? 0,
+                violationsFixed = remediationResult?.Summary.ViolationsFixed ?? 0,
+                violationsRemaining = remediationResult?.Summary.FinalViolationCount ?? 0,
+                exitReason = remediationResult?.ExitReason.ToString()
             },
+            validation = remediationResult != null ? new
+            {
+                enabled = true,
+                success = remediationResult.Success,
+                compliant = remediationResult.Summary.IsCompliant,
+                iterations = remediationResult.Summary.TotalIterations,
+                duration = remediationResult.Summary.FormattedDuration,
+                initialViolations = remediationResult.Summary.InitialViolationCount,
+                finalViolations = remediationResult.Summary.FinalViolationCount,
+                violationsFixed = remediationResult.Summary.ViolationsFixed,
+                complianceImprovement = remediationResult.Summary.ComplianceImprovement,
+                exitReason = remediationResult.ExitReason.ToString(),
+                recommendations = remediationResult.Recommendations?.Select(r => new
+                {
+                    type = r.Type.ToString(),
+                    priority = r.Priority.ToString(),
+                    description = r.Description,
+                    suggestedAction = r.SuggestedAction
+                }).ToArray(),
+                iterationHistory = remediationResult.IterationHistory?.Select(h => new
+                {
+                    iteration = h.IterationNumber,
+                    violations = h.ViolationCount,
+                    compliance = h.ComplianceScore,
+                    fixesApplied = h.FixesApplied,
+                    duration = h.Duration.TotalSeconds,
+                    phases = h.PhasesExecuted
+                }).ToArray(),
+                remainingViolations = remediationResult.RemainingViolations?.Select(v => new
+                {
+                    ruleId = v.RuleId,
+                    clause = v.Clause,
+                    description = v.Description,
+                    severity = v.Severity.ToString(),
+                    location = v.Location != null ? new
+                    {
+                        pageNumber = v.Location.PageNumber,
+                        contextDescription = v.Location.ContextDescription
+                    } : null,
+                    context = v.Context,
+                    remediationHint = v.RemediationHint
+                }).ToArray()
+            } : null,
             debugInfo = new
             {
                 fieldsDetected = fields?.Count ?? 0,

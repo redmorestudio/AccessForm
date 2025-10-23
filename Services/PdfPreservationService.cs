@@ -4,6 +4,7 @@ using Syncfusion.Pdf.Interactive;
 using Syncfusion.Drawing;
 using Microsoft.Extensions.Logging;
 using AccessFormServer.Services;
+using AccessForm.Services;
 
 namespace WordToPdfConverter.Services
 {
@@ -22,6 +23,7 @@ namespace WordToPdfConverter.Services
         private readonly TaggedWhitespaceFixService _taggedWhitespaceFixService;
         private readonly OrphanedWhitespaceAdoptionService _orphanedWhitespaceAdoptionService;
         private readonly AccessFormServer.Services.TocLinkFixServiceEnhanced _tocLinkFixService;
+        private readonly FormGraphicsTaggingService _formGraphicsTaggingService;
 
         public PdfPreservationService(
             ILogger<PdfPreservationService> logger,
@@ -33,7 +35,8 @@ namespace WordToPdfConverter.Services
             ArtifactViolationFixService artifactViolationFixService,
             TaggedWhitespaceFixService taggedWhitespaceFixService,
             OrphanedWhitespaceAdoptionService orphanedWhitespaceAdoptionService,
-            AccessFormServer.Services.TocLinkFixServiceEnhanced tocLinkFixService)
+            AccessFormServer.Services.TocLinkFixServiceEnhanced tocLinkFixService,
+            FormGraphicsTaggingService formGraphicsTaggingService = null) // Optional for backward compatibility
         {
             _logger = logger;
             _accessibilityService = accessibilityService;
@@ -45,6 +48,7 @@ namespace WordToPdfConverter.Services
             _taggedWhitespaceFixService = taggedWhitespaceFixService;
             _orphanedWhitespaceAdoptionService = orphanedWhitespaceAdoptionService;
             _tocLinkFixService = tocLinkFixService;
+            _formGraphicsTaggingService = formGraphicsTaggingService;
         }
 
         /// <summary>
@@ -165,6 +169,41 @@ namespace WordToPdfConverter.Services
                     ? $"Removed tagging from {whitespaceFixResult.ViolationsFixed} whitespace elements"
                     : "No whitespace violations found"
             });
+
+            // Step 2.5: Fix form graphics tagging (path objects for radio buttons/checkboxes)
+            if (_formGraphicsTaggingService != null)
+            {
+                _logger.LogInformation("[PDF-PRESERVATION] Step 2.5: Fixing form graphics tagging for radio buttons and checkboxes...");
+                stepStartTime = DateTime.UtcNow;
+                var graphicsTaggingResult = await _formGraphicsTaggingService.FixFormGraphicsTaggingAsync(pdfBytes);
+
+                if (graphicsTaggingResult.Success && graphicsTaggingResult.FixedPdf != null)
+                {
+                    if (graphicsTaggingResult.PathObjectsTagged > 0 || graphicsTaggingResult.ObjectReferencesFixed > 0)
+                    {
+                        _logger.LogWarning($"[PDF-PRESERVATION] ✅ Tagged {graphicsTaggingResult.PathObjectsTagged} path objects, fixed {graphicsTaggingResult.ObjectReferencesFixed} object references");
+                        pdfBytes = graphicsTaggingResult.FixedPdf;
+                    }
+                    else
+                    {
+                        _logger.LogInformation("[PDF-PRESERVATION] ✅ No untagged form graphics found");
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning($"[PDF-PRESERVATION] ⚠️  Form graphics tagging failed: {graphicsTaggingResult.ErrorMessage}, continuing");
+                }
+
+                report.Steps.Add(new Models.ProcessingStep
+                {
+                    Name = "Form Graphics Tagging",
+                    Success = graphicsTaggingResult.Success,
+                    DurationMs = (long)(DateTime.UtcNow - stepStartTime).TotalMilliseconds,
+                    Details = graphicsTaggingResult.PathObjectsTagged > 0
+                        ? $"Tagged {graphicsTaggingResult.PathObjectsTagged} path objects, fixed {graphicsTaggingResult.ObjectReferencesFixed} references"
+                        : "No form graphics issues found"
+                });
+            }
 
             // Step 3: Fix TOC link structure (create proper Link elements, add alt text)
             _logger.LogInformation("[PDF-PRESERVATION] Step 3: Fixing TOC link structure for PDF/UA compliance...");

@@ -523,9 +523,9 @@ window.accessForm = {
                         }, 100);
 
                         const file = files[0];
-                        const endpoint = '/api/process-with-passportpdf-auto';
+                        const endpoint = '/api/convert-with-config';
 
-                        // Create FormData for PassportPDF endpoint
+                        // Create FormData with PDF/UA validation enabled
                         const formData = new FormData();
                         formData.append('file', file);
 

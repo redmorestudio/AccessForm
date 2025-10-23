@@ -74,6 +74,15 @@ namespace WordToPdfConverter.Services.Remediation
                 // Save PDF to temp file for validation
                 var tempPath = await SaveToTempFileAsync(inputPdf);
 
+                // STEP 0: Run initial validation to establish baseline
+                _logger.LogInformation("\n--- INITIAL VALIDATION (Baseline) ---");
+                var initialValidation = await ValidateAsync(session, tempPath);
+                session.InitialValidation = initialValidation;
+
+                _logger.LogInformation(
+                    $"Baseline established: {initialValidation.Violations.Count} violations, " +
+                    $"{initialValidation.Summary.ComplianceScore:F1}% compliant");
+
                 // Main remediation loop
                 while (!session.IsComplete)
                 {
@@ -153,6 +162,14 @@ namespace WordToPdfConverter.Services.Remediation
                 var validation = await _veraPdfService.ValidatePdfAsync(pdfPath);
 
                 stopwatch.Stop();
+
+                // Check if validation failed
+                if (validation.Status == ValidationStatus.Failed)
+                {
+                    _logger.LogError($"PDF validation failed: {validation.ErrorMessage}");
+                    throw new InvalidOperationException(
+                        $"PDF/UA validation failed: {validation.ErrorMessage ?? "VeraPDF returned an error"}");
+                }
 
                 _logger.LogInformation(
                     $"Validation complete: {validation.Violations.Count} violations, " +
