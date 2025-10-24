@@ -77,6 +77,47 @@ After 3 bug fixes, GPT-5 is successfully generating and executing Python remedia
 2. **Wrong endpoint**: Called `/completions` instead of `/chat/completions`
 3. **Wrong parameter**: Used `max_tokens` instead of `max_completion_tokens` for gpt-5
 
+### Error-Feedback Retry Pattern
+
+**Problem**: Hardcoding API quirks in prompts (e.g., "use strings not integers") is brittle and doesn't scale
+
+**Solution**: Let GPT learn from its own failures
+
+**Implementation** (Services/Remediation/AI/GptRemediationService.cs:628-685):
+
+```csharp
+private async Task<ScriptExecutionResult> ExecuteScriptWithRetryAsync(
+    string script, byte[] pdfBytes, string category, int maxRetries = 2)
+{
+    for (int attempt = 1; attempt <= maxRetries; attempt++)
+    {
+        var result = await _scriptExecutor.ExecutePythonScriptAsync(script, pdfBytes);
+
+        if (result.Success) return result;
+
+        // On failure, ask GPT to fix the script based on the actual error
+        if (attempt < maxRetries)
+        {
+            script = await _openAiService.FixScriptFromErrorAsync(
+                originalScript: script,
+                errorMessage: result.StandardError,
+                stdout: result.StandardOutput);
+        }
+    }
+}
+```
+
+**Benefits**:
+- No hardcoded API warnings needed
+- GPT sees actual execution errors
+- Self-correcting system
+- Learns from failures dynamically
+- Scales to any Python library
+
+**Location**:
+- `OpenAIService.cs:153-219`: `FixScriptFromErrorAsync()` - feeds error back to GPT
+- `GptRemediationService.cs:628-685`: `ExecuteScriptWithRetryAsync()` - retry loop
+
 ### Prompt Engineering
 
 **Location**: `Services/Remediation/AI/GptRemediationService.cs:BuildPrompt()`

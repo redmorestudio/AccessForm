@@ -179,15 +179,16 @@ namespace WordToPdfConverter.Services.Remediation.AI
                 {
                     _logger.LogInformation($"[GPT-5-REMEDIATION] GPT-5 provided a Python script for {category}");
 
-                    // Extract and execute the script
+                    // Extract and execute the script with retry on error
                     var script = ExtractScript(gptResponse);
 
                     if (!string.IsNullOrEmpty(script) && _scriptExecutor != null)
                     {
-                        var scriptResult = await _scriptExecutor.ExecutePythonScriptAsync(
+                        var scriptResult = await ExecuteScriptWithRetryAsync(
                             script,
                             pdfBytes,
-                            $"gpt5-{category.ToLower()}-remediation");
+                            category,
+                            maxRetries: 2);
 
                         if (scriptResult.Success && scriptResult.OutputPdf != null)
                         {
@@ -209,7 +210,7 @@ namespace WordToPdfConverter.Services.Remediation.AI
                         }
                         else
                         {
-                            _logger.LogWarning($"[GPT-5-REMEDIATION] Script execution failed: {scriptResult.ErrorMessage}");
+                            _logger.LogWarning($"[GPT-5-REMEDIATION] Script execution failed after retries: {scriptResult.ErrorMessage}");
                             _logger.LogDebug($"Script output: {scriptResult.StandardOutput}");
                             _logger.LogDebug($"Script errors: {scriptResult.StandardError}");
                         }
@@ -622,6 +623,65 @@ namespace WordToPdfConverter.Services.Remediation.AI
                 return "Content";
 
             return "Other";
+        }
+
+        /// <summary>
+        /// Execute Python script with automatic retry and error-feedback correction
+        /// </summary>
+        private async Task<ScriptExecutor.ScriptExecutionResult> ExecuteScriptWithRetryAsync(
+            string script,
+            byte[] pdfBytes,
+            string category,
+            int maxRetries = 2)
+        {
+            var currentScript = script;
+            ScriptExecutor.ScriptExecutionResult result = null;
+
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
+            {
+                _logger.LogInformation($"[GPT-5-RETRY] Executing script (attempt {attempt}/{maxRetries})");
+
+                result = await _scriptExecutor.ExecutePythonScriptAsync(
+                    currentScript,
+                    pdfBytes,
+                    $"gpt5-{category.ToLower()}-attempt{attempt}");
+
+                if (result.Success)
+                {
+                    if (attempt > 1)
+                    {
+                        _logger.LogInformation($"[GPT-5-RETRY] Script succeeded on attempt {attempt} after error correction");
+                    }
+                    return result;
+                }
+
+                // If failed and we have retries left, ask GPT to fix the script
+                if (attempt < maxRetries)
+                {
+                    _logger.LogWarning($"[GPT-5-RETRY] Script failed on attempt {attempt}, asking GPT to fix it");
+                    _logger.LogDebug($"[GPT-5-RETRY] Error: {result.StandardError}");
+
+                    var fixedScript = await _openAiService.FixScriptFromErrorAsync(
+                        currentScript,
+                        result.StandardError,
+                        result.StandardOutput);
+
+                    if (string.IsNullOrEmpty(fixedScript))
+                    {
+                        _logger.LogWarning($"[GPT-5-RETRY] GPT failed to generate fixed script");
+                        break; // Can't continue without a fixed script
+                    }
+
+                    currentScript = fixedScript;
+                    _logger.LogInformation($"[GPT-5-RETRY] Received corrected script from GPT, retrying...");
+                }
+                else
+                {
+                    _logger.LogWarning($"[GPT-5-RETRY] Script failed after {maxRetries} attempts");
+                }
+            }
+
+            return result; // Return last attempt result (failure)
         }
 
         private class CategoryRemediationResult

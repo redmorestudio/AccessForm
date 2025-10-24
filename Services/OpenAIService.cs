@@ -151,6 +151,74 @@ namespace AccessFormServer.Services
         }
 
         /// <summary>
+        /// Ask GPT-5 to fix a Python script based on execution error
+        /// </summary>
+        public async Task<string> FixScriptFromErrorAsync(
+            string originalScript,
+            string errorMessage,
+            string stdout = null,
+            CancellationToken cancellationToken = default)
+        {
+            if (!_enabled || string.IsNullOrEmpty(_apiKey))
+            {
+                _logger.LogWarning("[OPENAI] Service not enabled or configured");
+                return null;
+            }
+
+            var prompt = $@"The following Python script failed to execute with an error. Please fix the script and return ONLY the corrected Python code (no markdown, no explanations).
+
+ORIGINAL SCRIPT:
+```python
+{originalScript}
+```
+
+ERROR:
+{errorMessage}
+
+{(string.IsNullOrEmpty(stdout) ? "" : $@"STDOUT:
+{stdout}
+
+")}
+Return ONLY the fixed Python script. Do not include markdown code blocks, explanations, or any other text. Just the raw Python code that will execute successfully.";
+
+            try
+            {
+                var result = await CallTextApiAsync(prompt, cancellationToken);
+
+                // Clean up response - remove markdown if GPT added it anyway
+                if (!string.IsNullOrEmpty(result))
+                {
+                    if (result.Contains("```python"))
+                    {
+                        var startIdx = result.IndexOf("```python") + 9;
+                        var endIdx = result.IndexOf("```", startIdx);
+                        if (endIdx > startIdx)
+                        {
+                            result = result.Substring(startIdx, endIdx - startIdx).Trim();
+                        }
+                    }
+                    else if (result.Contains("```"))
+                    {
+                        var startIdx = result.IndexOf("```") + 3;
+                        var endIdx = result.IndexOf("```", startIdx);
+                        if (endIdx > startIdx)
+                        {
+                            result = result.Substring(startIdx, endIdx - startIdx).Trim();
+                        }
+                    }
+                }
+
+                _logger.LogInformation("[OPENAI] Generated fixed script based on error feedback");
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[OPENAI] Error fixing script from error");
+                return null;
+            }
+        }
+
+        /// <summary>
         /// Call GPT-5 with just text (no image)
         /// </summary>
         public async Task<string> CallTextApiAsync(string prompt, CancellationToken cancellationToken = default)
