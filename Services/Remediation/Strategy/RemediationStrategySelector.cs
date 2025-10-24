@@ -177,6 +177,29 @@ namespace WordToPdfConverter.Services.Remediation.Strategy
                         services.Add(fontService);
                     break;
 
+                case ViolationCategory.Structure:
+                    var structureService = _serviceProvider.GetService(
+                        typeof(CircularRoleMappingFixService)) as IRemediationService;
+                    if (structureService != null)
+                        services.Add(structureService);
+                    break;
+
+                case ViolationCategory.FormFields:
+                    // No specialized service yet, use GPT fallback
+                    var formFieldsGptService = _serviceProvider.GetService(
+                        typeof(Adapters.GptServiceAdapter)) as IRemediationService;
+                    if (formFieldsGptService != null)
+                        services.Add(formFieldsGptService);
+                    break;
+
+                case ViolationCategory.Metadata:
+                    // Use GPT for metadata violations
+                    var metadataGptService = _serviceProvider.GetService(
+                        typeof(Adapters.GptServiceAdapter)) as IRemediationService;
+                    if (metadataGptService != null)
+                        services.Add(metadataGptService);
+                    break;
+
                 // Add other categories as we build more adapters
                 default:
                     _logger.LogWarning($"No service adapter registered for category: {category}");

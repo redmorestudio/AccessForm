@@ -634,12 +634,17 @@ namespace WordToPdfConverter.Services.Remediation.AI
             string category,
             int maxRetries = 2)
         {
+            _logger.LogWarning($"╔════════════════════════════════════════════════════════════════╗");
+            _logger.LogWarning($"║ [GPT-5-RETRY] ERROR-FEEDBACK RETRY ACTIVATED (max: {maxRetries})     ║");
+            _logger.LogWarning($"║ Category: {category,-50} ║");
+            _logger.LogWarning($"╚════════════════════════════════════════════════════════════════╝");
+
             var currentScript = script;
             ScriptResult result = null;
 
             for (int attempt = 1; attempt <= maxRetries; attempt++)
             {
-                _logger.LogInformation($"[GPT-5-RETRY] Executing script (attempt {attempt}/{maxRetries})");
+                _logger.LogWarning($"[GPT-5-RETRY] ▶ Executing script (attempt {attempt}/{maxRetries})");
 
                 result = await _scriptExecutor.ExecutePythonScriptAsync(
                     currentScript,
@@ -650,16 +655,23 @@ namespace WordToPdfConverter.Services.Remediation.AI
                 {
                     if (attempt > 1)
                     {
-                        _logger.LogInformation($"[GPT-5-RETRY] Script succeeded on attempt {attempt} after error correction");
+                        _logger.LogWarning($"[GPT-5-RETRY] ✓ Script succeeded on attempt {attempt} after error correction!");
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"[GPT-5-RETRY] ✓ Script succeeded on first attempt");
                     }
                     return result;
                 }
 
+                // Script failed - log error details
+                _logger.LogError($"[GPT-5-RETRY] ⚠ Script failed on attempt {attempt}");
+                _logger.LogError($"[GPT-5-RETRY] Error: {result.StandardError?.Substring(0, Math.Min(500, result.StandardError?.Length ?? 0))}");
+
                 // If failed and we have retries left, ask GPT to fix the script
                 if (attempt < maxRetries)
                 {
-                    _logger.LogWarning($"[GPT-5-RETRY] Script failed on attempt {attempt}, asking GPT to fix it");
-                    _logger.LogDebug($"[GPT-5-RETRY] Error: {result.StandardError}");
+                    _logger.LogWarning($"[GPT-5-RETRY] 🔧 Asking GPT to analyze error and fix script...");
 
                     var fixedScript = await _openAiService.FixScriptFromErrorAsync(
                         currentScript,
@@ -668,16 +680,16 @@ namespace WordToPdfConverter.Services.Remediation.AI
 
                     if (string.IsNullOrEmpty(fixedScript))
                     {
-                        _logger.LogWarning($"[GPT-5-RETRY] GPT failed to generate fixed script");
+                        _logger.LogError($"[GPT-5-RETRY] ⚠ GPT failed to generate fixed script - giving up");
                         break; // Can't continue without a fixed script
                     }
 
                     currentScript = fixedScript;
-                    _logger.LogInformation($"[GPT-5-RETRY] Received corrected script from GPT, retrying...");
+                    _logger.LogWarning($"[GPT-5-RETRY] ✓ Received corrected script from GPT, retrying...");
                 }
                 else
                 {
-                    _logger.LogWarning($"[GPT-5-RETRY] Script failed after {maxRetries} attempts");
+                    _logger.LogError($"[GPT-5-RETRY] ⚠ Script failed after {maxRetries} attempts - giving up");
                 }
             }
 

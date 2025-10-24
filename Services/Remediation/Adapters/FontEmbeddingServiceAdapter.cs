@@ -31,39 +31,50 @@ namespace WordToPdfConverter.Services.Remediation.Adapters
         public async Task<ServiceResult> RemediateAsync(byte[] pdfBytes)
         {
             var stopwatch = Stopwatch.StartNew();
-            var result = new ServiceResult { Success = true };
+            var result = new ServiceResult { Success = false, OutputPdf = pdfBytes };
 
             try
             {
-                _logger.LogInformation($"[{ServiceName}] Embedding all fonts for PDF ({pdfBytes.Length} bytes)");
+                _logger.LogInformation($"[FONT-SERVICE] Starting font embedding for PDF ({pdfBytes.Length} bytes)");
+                _logger.LogInformation($"[FONT-SERVICE] Strategy: Embed all fonts → Convert to PDF/A-1b");
 
-                // Use Aspose.PDF to embed all fonts
+                // Use Aspose.PDF to embed all fonts and convert to PDF/A
                 var fixedBytes = await _asposePdfService.ConvertFontsAsync(pdfBytes);
 
                 if (fixedBytes != null && fixedBytes.Length > 0)
                 {
                     result.OutputPdf = fixedBytes;
-                    result.ChangesMade = (fixedBytes.Length != pdfBytes.Length);
+                    result.ChangesMade = true;
                     result.Success = true;
+                    result.IssuesFixed = 1; // Font embedding applied
 
                     _logger.LogInformation(
-                        $"[{ServiceName}] ✓ Embedded fonts: {pdfBytes.Length} → {fixedBytes.Length} bytes");
+                        $"[FONT-SERVICE] ✓ Success: {pdfBytes.Length} → {fixedBytes.Length} bytes ({stopwatch.ElapsedMilliseconds}ms)");
+                    _logger.LogInformation($"[FONT-SERVICE] All fonts embedded, converted to PDF/A-1b");
                 }
                 else
                 {
                     result.Success = false;
                     result.ChangesMade = false;
-                    _logger.LogWarning($"[{ServiceName}] Font embedding returned no output");
+                    result.ErrorMessage = "Font embedding service returned no output";
+
+                    _logger.LogWarning($"[FONT-SERVICE] ⚠ Font embedding returned no output - may need GPT fallback");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"[{ServiceName}] Exception during font embedding");
+                _logger.LogError(ex, $"[FONT-SERVICE] ⚠ Exception during font embedding: {ex.Message}");
+                _logger.LogWarning($"[FONT-SERVICE] Font embedding failed - will fall back to GPT if needed");
+
                 result.Success = false;
                 result.ChangesMade = false;
+                result.ErrorMessage = $"Font embedding failed: {ex.Message}";
+                result.OutputPdf = pdfBytes; // Return original if failed
             }
 
             stopwatch.Stop();
+            _logger.LogInformation($"[FONT-SERVICE] Completed in {stopwatch.ElapsedMilliseconds}ms");
+
             return result;
         }
     }
