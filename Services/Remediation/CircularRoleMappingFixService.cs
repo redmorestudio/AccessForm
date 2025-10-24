@@ -100,7 +100,8 @@ namespace WordToPdfConverter.Services.Remediation
                 {
                     result.OutputPdf = outputMs.ToArray();
                     result.Success = true;
-                    result.Notes = $"Fixed {fixedCount} circular role mapping(s)";
+                    result.ChangesMade = true;
+                    result.IssuesFixed = fixedCount;
                     _logger.LogInformation($"[CIRCULAR-ROLE-FIX] Fixed {fixedCount} circular role mapping(s)");
                 }
                 else
