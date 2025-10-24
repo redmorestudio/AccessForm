@@ -628,14 +628,14 @@ namespace WordToPdfConverter.Services.Remediation.AI
         /// <summary>
         /// Execute Python script with automatic retry and error-feedback correction
         /// </summary>
-        private async Task<ScriptExecutor.ScriptResult> ExecuteScriptWithRetryAsync(
+        private async Task<ScriptResult> ExecuteScriptWithRetryAsync(
             string script,
             byte[] pdfBytes,
             string category,
             int maxRetries = 2)
         {
             var currentScript = script;
-            ScriptExecutor.ScriptResult result = null;
+            ScriptResult result = null;
 
             for (int attempt = 1; attempt <= maxRetries; attempt++)
             {

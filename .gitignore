@@ -107,3 +107,14 @@ fix_*.py
 
 # Debug files
 wwwroot/debug-raw.html
+
+# Test assets - large files
+TestAssets/jdk-21.tar.gz
+TestAssets/jdk-21.0.8.jdk/
+TestAssets/veraPDF-corpus/
+TestAssets/verapdf-installer.zip
+TestAssets/verapdf-dev.zip
+TestAssets/verapdf-extracted/
+TestAssets/verapdf-greenfield-*/
+TestAssets/verapdf-manual/
+TestAssets/verapdf-simple/
