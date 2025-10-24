@@ -181,6 +181,19 @@ ERROR:
 ")}
 Return ONLY the fixed Python script. Do not include markdown code blocks, explanations, or any other text. Just the raw Python code that will execute successfully.";
 
+            // Verbose logging - show prompt structure with truncated content
+            _logger.LogDebug("[OPENAI-PROMPT] Sending error-feedback prompt to GPT");
+            _logger.LogDebug("[OPENAI-PROMPT] - Original script: {ScriptPreview}...",
+                TruncateForLog(originalScript, 150));
+            _logger.LogDebug("[OPENAI-PROMPT] - Error message: {Error}",
+                TruncateForLog(errorMessage, 300));
+            if (!string.IsNullOrEmpty(stdout))
+            {
+                _logger.LogDebug("[OPENAI-PROMPT] - Stdout: {Stdout}",
+                    TruncateForLog(stdout, 200));
+            }
+            _logger.LogDebug("[OPENAI-PROMPT] - Prompt length: {PromptLength} chars", prompt.Length);
+
             try
             {
                 var result = await CallTextApiAsync(prompt, cancellationToken);
@@ -520,6 +533,17 @@ If all labels are correct, return: {{""corrections"": []}}";
                 });
             }
             return corrections;
+        }
+
+        /// <summary>
+        /// Truncate string for logging with ellipsis
+        /// </summary>
+        private static string TruncateForLog(string text, int maxLength)
+        {
+            if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+                return text;
+
+            return text.Substring(0, maxLength) + "... [truncated]";
         }
     }
 
