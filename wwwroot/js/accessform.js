@@ -483,13 +483,74 @@ window.accessForm = {
                     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
 
                     overlay.innerHTML = `
-                        <div style="background:white;padding:30px;border-radius:10px;text-align:center">
+                        <div style="background:white;padding:30px;border-radius:10px;text-align:center;max-width:600px;max-height:80vh;overflow-y:auto">
                             <div class="spinner-border text-primary mb-3" style="width:3rem;height:3rem" role="status">
                                 <span class="visually-hidden">Processing...</span>
                             </div>
                             <h4>Processing PDF with Closed-Loop Remediation</h4>
                             <div class="fs-1 fw-bold text-primary mt-3" id="timer-display">0:00</div>
-                            <p class="text-muted mt-2">Validating compliance and fixing errors...</p>
+                            <p class="text-muted mt-2" id="current-phase-text">Validating compliance and fixing errors...</p>
+
+                            <!-- Processing Steps Checklist -->
+                            <div class="mt-4" style="text-align:left">
+                                <h6 class="mb-3">Progress:</h6>
+                                <div id="processing-steps-list">
+                                    <div class="processing-step" data-step="Validating PDF" style="margin-bottom:8px">
+                                        <input type="checkbox" disabled style="margin-right:8px">
+                                        <span>Initial Validation</span>
+                                    </div>
+                                    <div class="processing-step" data-step="Whitespace Cleanup" style="margin-bottom:8px">
+                                        <input type="checkbox" disabled style="margin-right:8px">
+                                        <span>Whitespace Cleanup</span>
+                                    </div>
+                                    <div class="processing-step" data-step="Content Remediation" style="margin-bottom:8px">
+                                        <input type="checkbox" disabled style="margin-right:8px">
+                                        <span>Content Remediation</span>
+                                    </div>
+                                    <div class="processing-step" data-step="Structure Enhancement" style="margin-bottom:8px">
+                                        <input type="checkbox" disabled style="margin-right:8px">
+                                        <span>Structure Enhancement</span>
+                                    </div>
+                                    <div class="processing-step" data-step="Form Field Remediation" style="margin-bottom:8px">
+                                        <input type="checkbox" disabled style="margin-right:8px">
+                                        <span>Form Field Remediation</span>
+                                    </div>
+                                    <div class="processing-step" data-step="Link Structure Fixes" style="margin-bottom:8px">
+                                        <input type="checkbox" disabled style="margin-right:8px">
+                                        <span>Link Structure Fixes</span>
+                                    </div>
+                                    <div class="processing-step" data-step="Font Fixes" style="margin-bottom:8px">
+                                        <input type="checkbox" disabled style="margin-right:8px">
+                                        <span>Font & PDF/A Conversion</span>
+                                    </div>
+                                    <div class="processing-step" data-step="Table and List Structure Fixes" style="margin-bottom:8px">
+                                        <input type="checkbox" disabled style="margin-right:8px">
+                                        <span>Table and List Structure</span>
+                                    </div>
+                                    <div class="processing-step" data-step="Alternative Text" style="margin-bottom:8px">
+                                        <input type="checkbox" disabled style="margin-right:8px">
+                                        <span>Alternative Text</span>
+                                    </div>
+                                    <div class="processing-step" data-step="GPT-Powered Remediation" style="margin-bottom:8px">
+                                        <input type="checkbox" disabled style="margin-right:8px">
+                                        <span>GPT Fallback</span>
+                                    </div>
+                                    <div class="processing-step" data-step="Metadata Finalization" style="margin-bottom:8px">
+                                        <input type="checkbox" disabled style="margin-right:8px">
+                                        <span>Metadata Finalization</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Action Buttons -->
+                            <div class="mt-4" style="display:flex;gap:10px;justify-content:center">
+                                <button id="download-current-btn" class="btn btn-secondary" style="display:none">
+                                    Download Current PDF
+                                </button>
+                                <button id="cancel-processing-btn" class="btn btn-danger" style="display:none">
+                                    Cancel Processing
+                                </button>
+                            </div>
                         </div>
                     `;
 
@@ -538,6 +599,17 @@ window.accessForm = {
 
                         const result = await response.json();
 
+                        // Show buttons after 3 seconds
+                        setTimeout(() => {
+                            const downloadBtn = document.getElementById('download-current-btn');
+                            const cancelBtn = document.getElementById('cancel-processing-btn');
+                            if (downloadBtn) downloadBtn.style.display = 'inline-block';
+                            if (cancelBtn) cancelBtn.style.display = 'inline-block';
+                        }, 3000);
+
+                        // Store current PDF data for download button
+                        window.accessForm._currentProcessingPdf = null;
+
                         // Start progress polling if we have a sessionId
                         if (result && result.sessionId) {
                             console.log('Starting progress polling for session:', result.sessionId);
@@ -548,6 +620,30 @@ window.accessForm = {
                                     const progressResponse = await fetch(`/api/progress/${result.sessionId}`);
                                     if (progressResponse.ok) {
                                         const progress = await progressResponse.json();
+
+                                        // Update processing step checkboxes
+                                        if (progress.remediationPhase) {
+                                            const phaseText = progress.remediationPhase;
+                                            const currentPhaseDisplay = document.getElementById('current-phase-text');
+                                            if (currentPhaseDisplay) {
+                                                currentPhaseDisplay.textContent = phaseText;
+                                            }
+
+                                            // Mark steps as complete based on phase name
+                                            const steps = document.querySelectorAll('.processing-step');
+                                            steps.forEach(step => {
+                                                const stepName = step.getAttribute('data-step');
+                                                if (phaseText.includes(stepName) || phaseText.toLowerCase().includes(stepName.toLowerCase())) {
+                                                    const checkbox = step.querySelector('input[type="checkbox"]');
+                                                    if (checkbox) checkbox.checked = true;
+                                                }
+                                            });
+                                        }
+
+                                        // Update current PDF data if available
+                                        if (progress.currentPdfData) {
+                                            window.accessForm._currentProcessingPdf = progress.currentPdfData;
+                                        }
 
                                         // Send progress update to Blazor
                                         if (window.accessForm.dotNetHelper) {
@@ -566,6 +662,52 @@ window.accessForm = {
 
                             // Store interval for cleanup
                             window.accessForm._progressInterval = progressInterval;
+                        }
+
+                        // Wire up download button
+                        const downloadBtn = document.getElementById('download-current-btn');
+                        if (downloadBtn) {
+                            downloadBtn.onclick = () => {
+                                if (window.accessForm._currentProcessingPdf) {
+                                    // Download the current PDF
+                                    const blob = new Blob([window.accessForm._currentProcessingPdf], { type: 'application/pdf' });
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = 'current-processing-state.pdf';
+                                    a.click();
+                                    URL.revokeObjectURL(url);
+                                } else {
+                                    alert('Current PDF not available yet');
+                                }
+                            };
+                        }
+
+                        // Wire up cancel button
+                        const cancelBtn = document.getElementById('cancel-processing-btn');
+                        if (cancelBtn) {
+                            cancelBtn.onclick = () => {
+                                if (confirm('Are you sure you want to cancel processing?')) {
+                                    // Clear intervals
+                                    clearInterval(timerInterval);
+                                    if (window.accessForm._progressInterval) {
+                                        clearInterval(window.accessForm._progressInterval);
+                                    }
+
+                                    // Remove overlay
+                                    const overlayToRemove = document.getElementById('processing-overlay');
+                                    if (overlayToRemove) {
+                                        overlayToRemove.remove();
+                                    }
+
+                                    // Optionally call a cancel endpoint
+                                    if (result && result.sessionId) {
+                                        fetch(`/api/cancel/${result.sessionId}`, { method: 'POST' }).catch(err => {
+                                            console.error('Error canceling:', err);
+                                        });
+                                    }
+                                }
+                            };
                         }
 
                         // Clean up
