@@ -2,17 +2,66 @@
 window.accessForm = {
     // Track AI mode state
     _aiModeEnabled: false,
-    
+    _progressPollingInterval: null,
+    _currentSessionId: null,
+
     // Set AI mode state
     setAiMode: function(enabled) {
         console.log("Setting AI mode to:", enabled);
         this._aiModeEnabled = enabled;
     },
-    
+
     // Check if AI mode is enabled
     isAiModeEnabled: function() {
         console.log("Checking AI mode:", this._aiModeEnabled);
         return this._aiModeEnabled;
+    },
+
+    // Start polling for remediation progress
+    startProgressPolling: function(sessionId, dotNetHelper) {
+        console.log("Starting progress polling for session:", sessionId);
+        this._currentSessionId = sessionId;
+
+        // Clear any existing interval
+        if (this._progressPollingInterval) {
+            clearInterval(this._progressPollingInterval);
+        }
+
+        // Poll every 500ms
+        this._progressPollingInterval = setInterval(async () => {
+            try {
+                const response = await fetch(`/api/progress/${sessionId}`);
+                if (response.ok) {
+                    const progress = await response.json();
+                    console.log("Progress update:", progress);
+
+                    // Update UI through Blazor
+                    if (dotNetHelper) {
+                        await dotNetHelper.invokeMethodAsync('HandleProgressUpdate', JSON.stringify(progress));
+                    }
+
+                    // Stop polling if complete
+                    if (progress.isComplete) {
+                        this.stopProgressPolling();
+                    }
+                } else if (response.status === 404) {
+                    console.log("Session not found, stopping polling");
+                    this.stopProgressPolling();
+                }
+            } catch (error) {
+                console.error("Error polling progress:", error);
+            }
+        }, 500);
+    },
+
+    // Stop polling
+    stopProgressPolling: function() {
+        console.log("Stopping progress polling");
+        if (this._progressPollingInterval) {
+            clearInterval(this._progressPollingInterval);
+            this._progressPollingInterval = null;
+        }
+        this._currentSessionId = null;
     },
     // Initialize drag and drop
     initializeDragDrop: function (dotnetHelper, dropZoneId) {
@@ -488,6 +537,36 @@ window.accessForm = {
                         }
 
                         const result = await response.json();
+
+                        // Start progress polling if we have a sessionId
+                        if (result && result.sessionId) {
+                            console.log('Starting progress polling for session:', result.sessionId);
+
+                            // Poll for progress updates
+                            const progressInterval = setInterval(async () => {
+                                try {
+                                    const progressResponse = await fetch(`/api/progress/${result.sessionId}`);
+                                    if (progressResponse.ok) {
+                                        const progress = await progressResponse.json();
+
+                                        // Send progress update to Blazor
+                                        if (window.accessForm.dotNetHelper) {
+                                            await window.accessForm.dotNetHelper.invokeMethodAsync('HandleProgressUpdate', JSON.stringify(progress));
+                                        }
+
+                                        // Stop polling if complete
+                                        if (progress.isComplete) {
+                                            clearInterval(progressInterval);
+                                        }
+                                    }
+                                } catch (err) {
+                                    console.error('Error polling progress:', err);
+                                }
+                            }, 500); // Poll every 500ms
+
+                            // Store interval for cleanup
+                            window.accessForm._progressInterval = progressInterval;
+                        }
 
                         // Clean up
                         clearInterval(timerInterval);

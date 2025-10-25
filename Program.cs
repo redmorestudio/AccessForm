@@ -4570,9 +4570,10 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
         // Run closed-loop remediation for PDF/UA compliance
         logger.LogInformation("Starting closed-loop PDF/UA remediation");
         WordToPdfConverter.Services.Remediation.Models.RemediationResult remediationResult = null;
+        string sessionId = null;
         try
         {
-            var sessionId = progressService.StartSession("Starting PDF/UA remediation");
+            sessionId = progressService.StartSession("Starting PDF/UA remediation");
             progressService.UpdateProgress(sessionId, "Starting PDF/UA remediation", "Validating compliance", 60);
 
             var remediationOptions = WordToPdfConverter.Services.Remediation.Models.RemediationOptions.Aggressive;
@@ -4607,6 +4608,7 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
         // Return response in expected format
         return Results.Ok(new
         {
+            sessionId = sessionId,  // Add progress tracking session ID
             normalPdf = new
             {
                 filename = Path.GetFileNameWithoutExtension(file.FileName) + "_normal.pdf",

@@ -1019,10 +1019,17 @@
                 new ProcessingStep { Name = "Analyzing PDF structure", IsComplete = false, IsActive = false },
                 new ProcessingStep { Name = "Detecting existing form fields", IsComplete = false, IsActive = false },
                 new ProcessingStep { Name = "Preserving field calculations", IsComplete = false, IsActive = false },
-                new ProcessingStep { Name = "Starting PDF/UA validation", IsComplete = false, IsActive = false },
-                new ProcessingStep { Name = "Running remediation iterations", IsComplete = false, IsActive = false },
-                new ProcessingStep { Name = "Applying accessibility fixes", IsComplete = false, IsActive = false },
-                new ProcessingStep { Name = "GPT-5 powered remediation (if needed)", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "Initial PDF/UA validation", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "Whitespace cleanup", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "Content remediation", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "Structure enhancement", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "Form field remediation", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "Table and list fixes", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "Font and PDF/A conversion", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "Alternative text", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "Post-remediation cleanup", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "GPT fallback remediation", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "Metadata finalization", IsComplete = false, IsActive = false },
                 new ProcessingStep { Name = "Final validation", IsComplete = false, IsActive = false },
                 new ProcessingStep { Name = "Generating report", IsComplete = false, IsActive = false }
             };
@@ -1048,8 +1055,40 @@
             step.IsActive = false;
         }
 
+        // Map backend phase names to UI step names
+        var stepMapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "Validating PDF", "Initial PDF/UA validation" },
+            { "Initial validation", "Initial PDF/UA validation" },
+            { "Whitespace Cleanup", "Whitespace cleanup" },
+            { "Content Remediation", "Content remediation" },
+            { "Structure Enhancement", "Structure enhancement" },
+            { "Form Field Remediation", "Form field remediation" },
+            { "Table and List Structure Fixes", "Table and list fixes" },
+            { "Font Fixes & PDF/A Conversion", "Font and PDF/A conversion" },
+            { "Alternative Text for Images", "Alternative text" },
+            { "Post-Remediation Structural Cleanup", "Post-remediation cleanup" },
+            { "GPT-Powered Remediation", "GPT fallback remediation" },
+            { "GPT Fallback", "GPT fallback remediation" },
+            { "Metadata Finalization", "Metadata finalization" },
+            { "Final validation", "Final validation" },
+            { "Generating report", "Generating report" }
+        };
+
+        // Try to map the incoming step name to a UI step
+        string uiStepName = stepName;
+        foreach (var mapping in stepMapping)
+        {
+            if (stepName.Contains(mapping.Key, StringComparison.OrdinalIgnoreCase))
+            {
+                uiStepName = mapping.Value;
+                break;
+            }
+        }
+
         // Find and update the matching step
         var matchingStep = processingSteps.FirstOrDefault(s =>
+            s.Name.Equals(uiStepName, StringComparison.OrdinalIgnoreCase) ||
             s.Name.Contains(stepName, StringComparison.OrdinalIgnoreCase) ||
             stepName.Contains(s.Name, StringComparison.OrdinalIgnoreCase));
 
@@ -1074,11 +1113,29 @@
         // Special handling for remediation iterations
         if (stepName.Contains("Remediation Iteration"))
         {
-            var remediationStep = processingSteps.FirstOrDefault(s => s.Name.Contains("remediation iterations"));
-            if (remediationStep != null)
+            // Extract iteration details if present
+            var iterationMatch = System.Text.RegularExpressions.Regex.Match(stepName, @"Iteration (\d+)");
+            if (iterationMatch.Success)
             {
-                remediationStep.IsActive = true;
-                remediationStep.Details = details ?? stepName;
+                var iterationNum = iterationMatch.Groups[1].Value;
+                // Find the appropriate remediation step based on the phase mentioned in details
+                if (!string.IsNullOrEmpty(details))
+                {
+                    foreach (var mapping in stepMapping)
+                    {
+                        if (details.Contains(mapping.Key, StringComparison.OrdinalIgnoreCase))
+                        {
+                            var remStep = processingSteps.FirstOrDefault(s =>
+                                s.Name.Equals(mapping.Value, StringComparison.OrdinalIgnoreCase));
+                            if (remStep != null)
+                            {
+                                remStep.IsActive = true;
+                                remStep.Details = $"Iteration {iterationNum}: {details}";
+                            }
+                            break;
+                        }
+                    }
+                }
             }
         }
     }
@@ -1425,6 +1482,37 @@
         StateHasChanged();
     }
     
+    [JSInvokable]
+    public async Task HandleProgressUpdate(string progressJson)
+    {
+        try
+        {
+            using var progress = JsonDocument.Parse(progressJson);
+            var root = progress.RootElement;
+
+            // Update the appropriate processing step based on the phase
+            if (root.TryGetProperty("remediationPhase", out var phaseElement) &&
+                phaseElement.ValueKind != JsonValueKind.Null)
+            {
+                string phase = phaseElement.GetString();
+                UpdateProcessingStep(phase);
+            }
+
+            // Update message with detailed status
+            if (root.TryGetProperty("detailedStatus", out var statusElement) &&
+                statusElement.ValueKind != JsonValueKind.Null)
+            {
+                processingMessage = statusElement.GetString();
+            }
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", "Error handling progress update:", ex.Message);
+        }
+    }
+
     [JSInvokable]
     public async Task OnFileDropped(FileData fileData)
     {
