@@ -64,6 +64,8 @@ namespace WordToPdfConverter.Services.Remediation
         Annotations,      // Other annotations
         Fonts,            // Font embedding/encoding
         Language,         // Natural language specification
+        TableAndList,     // Table structure and list issues (7.2)
+        AlternateText,    // Alternative text for images and figures
         Unknown
     }
 }

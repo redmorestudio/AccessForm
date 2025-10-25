@@ -123,7 +123,33 @@ namespace WordToPdfConverter.Services.Remediation.Strategy
                 });
             }
 
-            // Phase 7: Metadata Finalization (Order: 99, MaxIter: 1)
+            // Phase 7: Table and List Structure (Order: 7, MaxIter: 2)
+            if (analysis.Categories.ContainsKey(ViolationCategory.TableAndList))
+            {
+                phases.Add(new RemediationPhase
+                {
+                    Name = "Table and List Structure Fixes",
+                    Order = 7,
+                    TargetCategory = ViolationCategory.TableAndList,
+                    MaxIterations = 2,
+                    Services = GetServicesForCategory(ViolationCategory.TableAndList)
+                });
+            }
+
+            // Phase 8: Alternative Text (Order: 8, MaxIter: 1)
+            if (analysis.Categories.ContainsKey(ViolationCategory.AlternateText))
+            {
+                phases.Add(new RemediationPhase
+                {
+                    Name = "Alternative Text for Images",
+                    Order = 8,
+                    TargetCategory = ViolationCategory.AlternateText,
+                    MaxIterations = 1,
+                    Services = GetServicesForCategory(ViolationCategory.AlternateText)
+                });
+            }
+
+            // Phase 9: Metadata Finalization (Order: 99, MaxIter: 1)
             // ALWAYS LAST - Category 1 "Handle Last"
             if (analysis.Categories.ContainsKey(ViolationCategory.Metadata) ||
                 session.IsFinalIteration)
@@ -139,6 +165,73 @@ namespace WordToPdfConverter.Services.Remediation.Strategy
             }
 
             return phases.OrderBy(p => p.Order).ToList();
+        }
+
+        /// <summary>
+        /// Builds a special cleanup strategy that runs all fix services
+        /// This is used for post-remediation cleanup to fix issues introduced during remediation
+        /// </summary>
+        public RemediationStrategy BuildCleanupStrategy()
+        {
+            var strategy = new RemediationStrategy();
+            var phases = new List<RemediationPhase>();
+
+            // Create a single cleanup phase with all fix services
+            var cleanupPhase = new RemediationPhase
+            {
+                Name = "Post-Remediation Structural Cleanup",
+                Order = 1,
+                MaxIterations = 1,
+                Services = new List<IRemediationService>()
+            };
+
+            // Add all the fix services that clean up common structural issues
+            // These are the services that fix problems often introduced during remediation
+
+            // 1. Fix artifact/tagged content conflicts (7.1 violations)
+            var artifactService = _serviceProvider.GetService(
+                typeof(Fixes.ArtifactTaggedContentFixService)) as IRemediationService;
+            if (artifactService != null)
+                cleanupPhase.Services.Add(artifactService);
+
+            // 2. Fix form widget nesting (7.18.4 violations)
+            var formWidgetService = _serviceProvider.GetService(
+                typeof(Fixes.FormWidgetNestingFixService)) as IRemediationService;
+            if (formWidgetService != null)
+                cleanupPhase.Services.Add(formWidgetService);
+
+            // 3. Fix table structure (7.2 violations)
+            var tableStructureService = _serviceProvider.GetService(
+                typeof(Fixes.TableStructureValidationService)) as IRemediationService;
+            if (tableStructureService != null)
+                cleanupPhase.Services.Add(tableStructureService);
+
+            // 4. Add table scope attributes
+            var tableScopeService = _serviceProvider.GetService(
+                typeof(Fixes.TableScopeAttributeFixService)) as IRemediationService;
+            if (tableScopeService != null)
+                cleanupPhase.Services.Add(tableScopeService);
+
+            // 5. Fix figure alt text
+            var figureAltTextService = _serviceProvider.GetService(
+                typeof(Fixes.FigureAltTextService)) as IRemediationService;
+            if (figureAltTextService != null)
+                cleanupPhase.Services.Add(figureAltTextService);
+
+            // 6. Fix PDF/UA metadata (always last in cleanup)
+            var pdfUaMetadataService = _serviceProvider.GetService(
+                typeof(Fixes.PdfUaMetadataService)) as IRemediationService;
+            if (pdfUaMetadataService != null)
+                cleanupPhase.Services.Add(pdfUaMetadataService);
+
+            // Only add phase if we have services
+            if (cleanupPhase.Services.Any())
+            {
+                phases.Add(cleanupPhase);
+            }
+
+            strategy.Phases = phases;
+            return strategy;
         }
 
         private List<IRemediationService> GetServicesForCategory(
@@ -178,14 +271,27 @@ namespace WordToPdfConverter.Services.Remediation.Strategy
                     break;
 
                 case ViolationCategory.Structure:
+                    // Add circular role mapping fix
                     var structureService = _serviceProvider.GetService(
                         typeof(CircularRoleMappingFixService)) as IRemediationService;
                     if (structureService != null)
                         services.Add(structureService);
+
+                    // Add artifact/tagged content fix
+                    var artifactService = _serviceProvider.GetService(
+                        typeof(Fixes.ArtifactTaggedContentFixService)) as IRemediationService;
+                    if (artifactService != null)
+                        services.Add(artifactService);
                     break;
 
                 case ViolationCategory.FormFields:
-                    // No specialized service yet, use GPT fallback
+                    // Add form widget nesting fix
+                    var formWidgetService = _serviceProvider.GetService(
+                        typeof(Fixes.FormWidgetNestingFixService)) as IRemediationService;
+                    if (formWidgetService != null)
+                        services.Add(formWidgetService);
+
+                    // GPT as fallback
                     var formFieldsGptService = _serviceProvider.GetService(
                         typeof(Adapters.GptServiceAdapter)) as IRemediationService;
                     if (formFieldsGptService != null)
@@ -193,11 +299,39 @@ namespace WordToPdfConverter.Services.Remediation.Strategy
                     break;
 
                 case ViolationCategory.Metadata:
-                    // Use GPT for metadata violations
+                    // Add PDF/UA metadata service
+                    var pdfUaMetadataService = _serviceProvider.GetService(
+                        typeof(Fixes.PdfUaMetadataService)) as IRemediationService;
+                    if (pdfUaMetadataService != null)
+                        services.Add(pdfUaMetadataService);
+
+                    // GPT as fallback
                     var metadataGptService = _serviceProvider.GetService(
                         typeof(Adapters.GptServiceAdapter)) as IRemediationService;
                     if (metadataGptService != null)
                         services.Add(metadataGptService);
+                    break;
+
+                case ViolationCategory.TableAndList:
+                    // Add table scope attribute fix
+                    var tableScopeService = _serviceProvider.GetService(
+                        typeof(Fixes.TableScopeAttributeFixService)) as IRemediationService;
+                    if (tableScopeService != null)
+                        services.Add(tableScopeService);
+
+                    // Add table structure validation
+                    var tableStructureService = _serviceProvider.GetService(
+                        typeof(Fixes.TableStructureValidationService)) as IRemediationService;
+                    if (tableStructureService != null)
+                        services.Add(tableStructureService);
+                    break;
+
+                case ViolationCategory.AlternateText:
+                    // Add figure alt text service
+                    var figureAltTextService = _serviceProvider.GetService(
+                        typeof(Fixes.FigureAltTextService)) as IRemediationService;
+                    if (figureAltTextService != null)
+                        services.Add(figureAltTextService);
                     break;
 
                 // Add other categories as we build more adapters

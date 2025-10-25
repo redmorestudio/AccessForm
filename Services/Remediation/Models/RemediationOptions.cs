@@ -28,6 +28,9 @@ namespace WordToPdfConverter.Services.Remediation.Models
         public string IntermediateOutputPath { get; set; } = "./remediation-temp";
         public bool GenerateDetailedReport { get; set; } = true;
 
+        // Progress tracking
+        public string ProgressSessionId { get; set; } = null;
+
         /// <summary>
         /// Default production-ready options
         /// </summary>

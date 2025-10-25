@@ -112,12 +112,13 @@ window.accessForm = {
                                     <p class="text-muted small mb-0">Advanced form field detection and optimization</p>
                                 </div>
 
+                                <!-- Progress bar disabled - using checkboxes in Blazor UI instead
                                 <div class="progress mb-3" style="height: 25px;">
                                     <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
                                          role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
                                         <span id="progress-text">0%</span>
                                     </div>
-                                </div>
+                                </div> -->
 
                                 <div class="small text-muted">
                                     Stage <span id="stage-num">1</span> of ${aiStages.length}
@@ -160,6 +161,8 @@ window.accessForm = {
                                     const currentTime = aiStages[currentStage].time * (stageProgress / 100);
                                     const overallProgress = ((completedTime + currentTime) / totalTime) * 100;
 
+                                    // Progress bar updates disabled - using checkboxes in Blazor UI instead
+                                    /*
                                     const progressBar = document.getElementById('progress-bar');
                                     if (progressBar) {
                                         progressBar.style.width = overallProgress + '%';
@@ -170,6 +173,7 @@ window.accessForm = {
                                     if (progressText) {
                                         progressText.textContent = Math.round(overallProgress) + '%';
                                     }
+                                    */
                                 }
                             }
                         }, 100);
@@ -414,116 +418,50 @@ window.accessForm = {
 
     // Trigger file input with handler (for browse button to work like drag-and-drop)
     triggerFileInputWithPassport: function (inputId) {
-        console.log('Triggering file input with PassportPDF processing');
+        console.log('[DEBUG] triggerFileInputWithPassport called with inputId:', inputId);
         const input = document.getElementById(inputId);
+        console.log('[DEBUG] Found input element:', input);
         if (input) {
+            console.log('[DEBUG] Setting onchange handler');
             input.onchange = async function (event) {
                 const files = event.target.files;
                 if (files && files.length > 0) {
-                    // Process with PassportPDF endpoint
+                    const file = files[0];
+
+                    // Create processing overlay with timer
+                    const overlay = document.createElement('div');
+                    overlay.id = 'processing-overlay';
+                    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+
+                    overlay.innerHTML = `
+                        <div style="background:white;padding:30px;border-radius:10px;text-align:center">
+                            <div class="spinner-border text-primary mb-3" style="width:3rem;height:3rem" role="status">
+                                <span class="visually-hidden">Processing...</span>
+                            </div>
+                            <h4>Processing PDF with Closed-Loop Remediation</h4>
+                            <div class="fs-1 fw-bold text-primary mt-3" id="timer-display">0:00</div>
+                            <p class="text-muted mt-2">Validating compliance and fixing errors...</p>
+                        </div>
+                    `;
+
+                    document.body.appendChild(overlay);
+
+                    // Start timer
+                    const startTime = Date.now();
+                    const timerInterval = setInterval(() => {
+                        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                        const minutes = Math.floor(elapsed / 60);
+                        const seconds = elapsed % 60;
+                        const display = document.getElementById('timer-display');
+                        if (display) {
+                            display.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                        }
+                    }, 1000);
+
                     try {
                         console.log('Using PassportPDF for processing');
-                        
-                        // Show processing indicator with timer and progress
-                        const overlay = document.createElement('div');
-                        overlay.id = 'processing-overlay';
-                        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
 
-                        // Processing stages for PassportPDF
-                        const stages = [
-                            { name: 'Uploading document', time: 2 },
-                            { name: 'Converting to PDF', time: 3 },
-                            { name: 'AI field detection', time: 8 },
-                            { name: 'Field validation', time: 4 },
-                            { name: 'Adding form fields', time: 5 },
-                            { name: 'PDF/UA compliance check', time: 3 },
-                            { name: 'Finalizing document', time: 2 }
-                        ];
-
-                        let currentStage = 0;
-                        let stageProgress = 0;
-                        const totalTime = stages.reduce((sum, s) => sum + s.time, 0);
-
-                        overlay.innerHTML = `
-                            <div style="background:white;padding:30px;border-radius:10px;text-align:center;min-width:500px;max-width:600px">
-                                <div class="spinner-border text-success mb-3" style="width:3rem;height:3rem" role="status">
-                                    <span class="visually-hidden">Processing...</span>
-                                </div>
-                                <h4>Processing with PassportPDF</h4>
-
-                                <div class="fs-1 fw-bold text-primary mt-3" id="timer-display">0:00</div>
-
-                                <div class="alert alert-success mt-3 mb-3">
-                                    <p class="mb-2">🎆 <strong>PassportPDF + Anthropic Claude</strong></p>
-                                    <p class="mb-1" id="stage-name">Initializing...</p>
-                                    <p class="text-muted small mb-0">Full PDF/UA compliance processing</p>
-                                </div>
-
-                                <div class="progress mb-3" style="height: 25px;">
-                                    <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-success"
-                                         role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
-                                        <span id="progress-text">0%</span>
-                                    </div>
-                                </div>
-
-                                <div class="small text-muted">
-                                    Stage <span id="stage-num">1</span> of ${stages.length}
-                                </div>
-                            </div>
-                        `;
-                        document.body.appendChild(overlay);
-
-                        // Start timer
-                        const startTime = Date.now();
-                        let timerInterval = setInterval(() => {
-                            const elapsed = Math.floor((Date.now() - startTime) / 1000);
-                            const minutes = Math.floor(elapsed / 60);
-                            const seconds = elapsed % 60;
-                            const display = document.getElementById('timer-display');
-                            if (display) {
-                                display.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-                            }
-                        }, 100);
-
-                        // Simulate progress through stages
-                        let progressInterval = setInterval(() => {
-                            if (currentStage < stages.length) {
-                                stageProgress += 100 / (stages[currentStage].time * 10); // Update every 100ms
-
-                                if (stageProgress >= 100) {
-                                    currentStage++;
-                                    stageProgress = 0;
-                                }
-
-                                if (currentStage < stages.length) {
-                                    // Update stage display
-                                    const stageEl = document.getElementById('stage-name');
-                                    if (stageEl) stageEl.textContent = stages[currentStage].name + '...';
-
-                                    const stageNumEl = document.getElementById('stage-num');
-                                    if (stageNumEl) stageNumEl.textContent = (currentStage + 1).toString();
-
-                                    // Calculate overall progress
-                                    const completedTime = stages.slice(0, currentStage).reduce((sum, s) => sum + s.time, 0);
-                                    const currentTime = stages[currentStage].time * (stageProgress / 100);
-                                    const overallProgress = ((completedTime + currentTime) / totalTime) * 100;
-
-                                    const progressBar = document.getElementById('progress-bar');
-                                    if (progressBar) {
-                                        progressBar.style.width = overallProgress + '%';
-                                        progressBar.setAttribute('aria-valuenow', overallProgress.toString());
-                                    }
-
-                                    const progressText = document.getElementById('progress-text');
-                                    if (progressText) {
-                                        progressText.textContent = Math.round(overallProgress) + '%';
-                                    }
-                                }
-                            }
-                        }, 100);
-
-                        const file = files[0];
-                        const endpoint = '/api/convert-with-config';
+                        const endpoint = '/api/process-with-passportpdf-auto';
 
                         // Create FormData with PDF/UA validation enabled
                         const formData = new FormData();
@@ -551,16 +489,13 @@ window.accessForm = {
 
                         const result = await response.json();
 
-                        // Clear intervals
-                        if (timerInterval) clearInterval(timerInterval);
-                        if (progressInterval) clearInterval(progressInterval);
-
-                        // Remove processing overlay
+                        // Clean up
+                        clearInterval(timerInterval);
                         const overlayToRemove = document.getElementById('processing-overlay');
                         if (overlayToRemove) {
                             overlayToRemove.remove();
                         }
-                        
+
                         if (result) {
                             console.log('PassportPDF processing successful');
                             const fileData = {
@@ -570,7 +505,7 @@ window.accessForm = {
                                 lastModified: file.lastModified,
                                 data: ''
                             };
-                            
+
                             if (window.accessForm.dotNetHelper) {
                                 await window.accessForm.dotNetHelper.invokeMethodAsync('OnFileProcessedDirectly', fileData, JSON.stringify(result));
                             } else {
@@ -581,19 +516,23 @@ window.accessForm = {
                             alert('PassportPDF processing failed. Please try again.');
                         }
                     } catch (error) {
-                        console.error('Error processing with PassportPDF:', error);
-                        
-                        // Remove processing overlay on error
+                        // Clean up on error
+                        clearInterval(timerInterval);
                         const overlayToRemove = document.getElementById('processing-overlay');
                         if (overlayToRemove) {
                             overlayToRemove.remove();
                         }
-                        
+
+                        console.error('Error processing with PassportPDF:', error);
                         alert('Error processing file: ' + error.message);
                     }
                 }
             };
+            console.log('[DEBUG] About to click input element');
             input.click();
+            console.log('[DEBUG] Input clicked');
+        } else {
+            console.error('[DEBUG] Input element not found!');
         }
     },
 
@@ -665,12 +604,13 @@ window.accessForm = {
                                         <p class="text-muted small mb-0">Advanced form field detection and optimization</p>
                                     </div>
 
+                                    <!-- Progress bar disabled - using checkboxes in Blazor UI instead
                                     <div class="progress mb-3" style="height: 25px;">
                                         <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
                                              role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
                                             <span id="progress-text">0%</span>
                                         </div>
-                                    </div>
+                                    </div> -->
 
                                     <div class="small text-muted">
                                         Stage <span id="stage-num">1</span> of ${aiStages.length}

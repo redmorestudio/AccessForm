@@ -2,6 +2,7 @@
 @using System.Text.Json
 @inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
+@inject HttpClient Http
 @implements IDisposable
 @implements IAsyncDisposable
 
@@ -158,30 +159,61 @@
                 
                 @if (isProcessing)
                 {
-                    <div class="text-center">
-                        <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;" role="status">
-                            <span class="visually-hidden">Processing...</span>
-                        </div>
-                        <h4>Processing Your Document</h4>
-                        <p class="text-muted small">AI Mode: @UseAiMode</p>
-                        <button class="btn btn-danger mt-3" @onclick="CancelProcessing">
-                            <i class="bi bi-x-circle"></i> Cancel Processing
-                        </button>
-                        @if (UseAiMode)
-                        {
-                            <div class="alert alert-info mt-3">
-                                <p class="mb-2">🤖 <strong>Anthropic Claude AI Analysis</strong></p>
-                                <p class="mb-1">Analyzing document structure and identifying form fields...</p>
-                                <p class="text-muted small">This can take up to 2 minutes for complex documents</p>
-                                <div class="fs-1 fw-bold text-primary mt-3">
-                                    ⏱️ @processingTime
+                    <div class="processing-container">
+                        <h4 class="text-center mb-4">Processing Your Document</h4>
+
+                        <!-- Processing steps checklist -->
+                        <div class="processing-steps-list mb-4">
+                            @foreach (var step in processingSteps)
+                            {
+                                <div class="processing-step d-flex align-items-center mb-2 @(step.IsActive ? "active-step" : "")">
+                                    <div class="step-checkbox me-3">
+                                        @if (step.IsComplete)
+                                        {
+                                            <i class="bi bi-check-circle-fill text-success fs-5"></i>
+                                        }
+                                        else if (step.IsActive)
+                                        {
+                                            <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                                <span class="visually-hidden">Processing...</span>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-circle text-muted fs-5"></i>
+                                        }
+                                    </div>
+                                    <div class="step-content flex-grow-1">
+                                        <div class="step-name @(step.IsComplete ? "text-success" : step.IsActive ? "text-primary fw-bold" : "text-muted")">
+                                            @step.Name
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(step.Details))
+                                        {
+                                            <small class="text-muted">@step.Details</small>
+                                        }
+                                    </div>
                                 </div>
+                            }
+                        </div>
+
+                        <!-- Timer display -->
+                        <div class="text-center mb-3">
+                            <div class="fs-2 fw-bold text-primary">
+                                ⏱️ @processingTime
                             </div>
-                        }
-                        else
-                        {
-                            <p class="text-muted">@processingMessage</p>
-                        }
+                            <p class="text-muted small mb-0">AI Mode: @UseAiMode</p>
+                        </div>
+
+                        <!-- Action buttons -->
+                        <div class="text-center">
+                            <button class="btn btn-warning btn-lg mb-2 w-75" @onclick="DownloadCurrentPdf">
+                                <span class="me-2">⬇️</span> Download Current PDF Now
+                            </button>
+                            <br/>
+                            <button class="btn btn-danger mt-2" @onclick="CancelProcessing">
+                                <i class="bi bi-x-circle"></i> Cancel Processing
+                            </button>
+                        </div>
                     </div>
                 }
                 else if (selectedFile == null)
@@ -378,10 +410,54 @@
                                                 </details>
                                             }
 
+                                            @if (processingResults.Validation.InitialViolationsDetailed.Any())
+                                            {
+                                                <details class="mt-2">
+                                                    <summary class="text-muted small" style="cursor: pointer;">View Initial Violations - Before Remediation (@processingResults.Validation.InitialViolationsDetailed.Count)</summary>
+                                                    <div class="mt-1">
+                                                        @foreach (var violation in processingResults.Validation.InitialViolationsDetailed)
+                                                        {
+                                                            <div class="card mb-2 small">
+                                                                <div class="card-body p-2">
+                                                                    <div class="d-flex justify-content-between align-items-start mb-1">
+                                                                        <strong class="text-warning">@violation.RuleId</strong>
+                                                                        <span class="badge bg-@(violation.Severity == "Critical" ? "danger" : violation.Severity == "Error" ? "warning" : "info")">@violation.Severity</span>
+                                                                    </div>
+                                                                    @if (!string.IsNullOrEmpty(violation.Clause))
+                                                                    {
+                                                                        <div class="text-muted" style="font-size: 0.85em;">Clause: @violation.Clause</div>
+                                                                    }
+                                                                    <div class="mt-1">@violation.Description</div>
+                                                                    @if (violation.Location != null)
+                                                                    {
+                                                                        <div class="mt-1 text-muted" style="font-size: 0.85em;">
+                                                                            @if (violation.Location.PageNumber.HasValue)
+                                                                            {
+                                                                                <span>📄 Page @violation.Location.PageNumber</span>
+                                                                            }
+                                                                            @if (!string.IsNullOrEmpty(violation.Location.ContextDescription))
+                                                                            {
+                                                                                <span class="ms-2">@violation.Location.ContextDescription</span>
+                                                                            }
+                                                                        </div>
+                                                                    }
+                                                                    @if (!string.IsNullOrEmpty(violation.RemediationHint))
+                                                                    {
+                                                                        <div class="mt-2 alert alert-info p-1 mb-0" style="font-size: 0.85em;">
+                                                                            <strong>💡 Hint:</strong> @violation.RemediationHint
+                                                                        </div>
+                                                                    }
+                                                                </div>
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                </details>
+                                            }
+
                                             @if (processingResults.Validation.RemainingViolations.Any())
                                             {
                                                 <details class="mt-2">
-                                                    <summary class="text-muted small" style="cursor: pointer;">View Remaining Violations (@processingResults.Validation.RemainingViolations.Count)</summary>
+                                                    <summary class="text-muted small" style="cursor: pointer;">View Remaining Violations - After Remediation (@processingResults.Validation.RemainingViolations.Count)</summary>
                                                     <div class="mt-1">
                                                         @foreach (var violation in processingResults.Validation.RemainingViolations)
                                                         {
@@ -832,10 +908,48 @@
             padding: 40px 20px;
             min-height: 300px;
         }
-        
+
         .info-card {
             margin-bottom: 20px;
         }
+    }
+
+    /* Processing steps checklist styles */
+    .processing-container {
+        padding: 20px;
+        max-width: 600px;
+        margin: 0 auto;
+    }
+
+    .processing-steps-list {
+        background: rgba(248, 249, 250, 0.5);
+        border-radius: 10px;
+        padding: 20px;
+    }
+
+    .processing-step {
+        padding: 10px 15px;
+        border-radius: 8px;
+        transition: all 0.3s ease;
+    }
+
+    .processing-step.active-step {
+        background: rgba(13, 110, 253, 0.1);
+        border-left: 3px solid #0d6efd;
+        margin-left: -3px;
+    }
+
+    .step-checkbox {
+        min-width: 28px;
+    }
+
+    .step-name {
+        font-size: 1rem;
+        transition: all 0.3s ease;
+    }
+
+    .processing-step:hover {
+        background: rgba(0, 0, 0, 0.03);
     }
 </style>
 
@@ -878,6 +992,96 @@
     private DateTime processingStartTime;
     private string processingTime = "0:00";
     private int processingSeconds = 0;
+
+    // Progress tracking
+    private string? currentSessionId = null;
+    private System.Timers.Timer? progressPollTimer;
+
+    // Processing steps checklist
+    private class ProcessingStep
+    {
+        public string Name { get; set; }
+        public bool IsComplete { get; set; }
+        public bool IsActive { get; set; }
+        public string Details { get; set; }
+    }
+
+    private List<ProcessingStep> processingSteps = new();
+
+    private void InitializeProcessingSteps(bool isPdf)
+    {
+        processingSteps.Clear();
+
+        if (isPdf)
+        {
+            processingSteps = new List<ProcessingStep>
+            {
+                new ProcessingStep { Name = "Analyzing PDF structure", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "Detecting existing form fields", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "Preserving field calculations", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "Starting PDF/UA validation", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "Running remediation iterations", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "Applying accessibility fixes", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "GPT-5 powered remediation (if needed)", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "Final validation", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "Generating report", IsComplete = false, IsActive = false }
+            };
+        }
+        else
+        {
+            processingSteps = new List<ProcessingStep>
+            {
+                new ProcessingStep { Name = "Converting Word to PDF", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "Detecting form fields", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "Applying accessibility measures", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "Generating accessible PDF", IsComplete = false, IsActive = false },
+                new ProcessingStep { Name = "Creating report", IsComplete = false, IsActive = false }
+            };
+        }
+    }
+
+    private void UpdateProcessingStep(string stepName, bool isComplete = false, string details = null)
+    {
+        // Mark all steps as not active first
+        foreach (var step in processingSteps)
+        {
+            step.IsActive = false;
+        }
+
+        // Find and update the matching step
+        var matchingStep = processingSteps.FirstOrDefault(s =>
+            s.Name.Contains(stepName, StringComparison.OrdinalIgnoreCase) ||
+            stepName.Contains(s.Name, StringComparison.OrdinalIgnoreCase));
+
+        if (matchingStep != null)
+        {
+            if (isComplete)
+            {
+                matchingStep.IsComplete = true;
+                matchingStep.IsActive = false;
+            }
+            else
+            {
+                matchingStep.IsActive = true;
+            }
+
+            if (!string.IsNullOrEmpty(details))
+            {
+                matchingStep.Details = details;
+            }
+        }
+
+        // Special handling for remediation iterations
+        if (stepName.Contains("Remediation Iteration"))
+        {
+            var remediationStep = processingSteps.FirstOrDefault(s => s.Name.Contains("remediation iterations"));
+            if (remediationStep != null)
+            {
+                remediationStep.IsActive = true;
+                remediationStep.Details = details ?? stepName;
+            }
+        }
+    }
     
     private int GetJsonInt(JsonElement element, string propertyName, int defaultValue)
     {
@@ -958,6 +1162,7 @@
         public List<RecommendationData> Recommendations { get; set; } = new();
         public List<IterationData> IterationHistory { get; set; } = new();
         public List<ViolationData> RemainingViolations { get; set; } = new();
+        public List<ViolationData> InitialViolationsDetailed { get; set; } = new();
     }
 
     private class RecommendationData
@@ -1044,10 +1249,20 @@
             }
 
             dotNetHelper = DotNetObjectReference.Create(this);
-            await JSRuntime.InvokeVoidAsync("initializeDragDrop", dotNetHelper, "dropZone");
-            // Initialize JavaScript AI mode state
-            await JSRuntime.InvokeVoidAsync("console.log", $"Initializing AI mode in JS to: {UseAiMode}");
-            await JSRuntime.InvokeVoidAsync("accessForm.setAiMode", UseAiMode);
+
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("initializeDragDrop", dotNetHelper, "dropZone");
+                // Initialize JavaScript AI mode state
+                await JSRuntime.InvokeVoidAsync("console.log", $"Initializing AI mode in JS to: {UseAiMode}");
+                await JSRuntime.InvokeVoidAsync("accessForm.setAiMode", UseAiMode);
+            }
+            catch (JSException ex)
+            {
+                // Script not loaded yet, ignore - will be called again if needed
+                await JSRuntime.InvokeVoidAsync("console.warn", $"JavaScript not ready yet: {ex.Message}");
+            }
+
             await CheckAiStatus();
 
             // Enable all AI features by default
@@ -1293,6 +1508,11 @@
         // Force UI update
         isProcessing = true;
         processingMessage = "Starting document processing...";
+
+        // Initialize processing steps based on file type
+        bool isPdf = selectedFile.Name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+        InitializeProcessingSteps(isPdf);
+
         StateHasChanged();
         await Task.Delay(100); // Give UI time to update
         
@@ -1451,7 +1671,18 @@
             await JSRuntime.InvokeVoidAsync("console.log", $"ProcessApiResponse: First 500 chars of response: {json.Substring(0, Math.Min(500, json.Length))}");
             
             var result = System.Text.Json.JsonSerializer.Deserialize<JsonElement>(json);
-            
+
+            // Check for sessionId and start progress polling
+            if (result.TryGetProperty("sessionId", out var sessionIdProp))
+            {
+                var sessionId = sessionIdProp.GetString();
+                if (!string.IsNullOrEmpty(sessionId))
+                {
+                    await JSRuntime.InvokeVoidAsync("console.log", $"Starting progress polling for session: {sessionId}");
+                    StartProgressPolling(sessionId);
+                }
+            }
+
             // Log available properties
             await JSRuntime.InvokeVoidAsync("console.log", "ProcessApiResponse: Available top-level properties:");
             foreach (var prop in result.EnumerateObject())
@@ -1743,6 +1974,34 @@
                             processingResults.Validation.RemainingViolations.Add(violationData);
                         }
                     }
+
+                    // Parse initial violations (before remediation)
+                    if (validationPropPdf.TryGetProperty("initialViolationsDetailed", out JsonElement initialViolationsPdf) && initialViolationsPdf.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var violation in initialViolationsPdf.EnumerateArray())
+                        {
+                            var violationData = new ViolationData
+                            {
+                                RuleId = GetJsonString(violation, "ruleId", ""),
+                                Clause = GetJsonString(violation, "clause", ""),
+                                Description = GetJsonString(violation, "description", ""),
+                                Severity = GetJsonString(violation, "severity", ""),
+                                Context = GetJsonString(violation, "context", null),
+                                RemediationHint = GetJsonString(violation, "remediationHint", null)
+                            };
+
+                            if (violation.TryGetProperty("location", out JsonElement locationPdf) && locationPdf.ValueKind != JsonValueKind.Null)
+                            {
+                                violationData.Location = new ViolationLocationData
+                                {
+                                    PageNumber = locationPdf.TryGetProperty("pageNumber", out var pageNumPdf) && pageNumPdf.ValueKind != JsonValueKind.Null ? pageNumPdf.GetInt32() : null,
+                                    ContextDescription = GetJsonString(locationPdf, "contextDescription", null)
+                                };
+                            }
+
+                            processingResults.Validation.InitialViolationsDetailed.Add(violationData);
+                        }
+                    }
                 }
 
                 // Parse tag structure if present (for PDF remediation)
@@ -1822,7 +2081,7 @@
     private async Task TriggerFileSelectPassport()
     {
         // Use JavaScript to trigger file selection with PassportPDF processing
-        await JSRuntime.InvokeVoidAsync("triggerFileInputWithPassport", "fileInput");
+        await JSRuntime.InvokeVoidAsync("accessForm.triggerFileInputWithPassport", "fileInput");
     }
     
     private async Task DownloadFile(string base64Data, string fileName)
@@ -1830,7 +2089,34 @@
         await JSRuntime.InvokeVoidAsync("console.log", $"DownloadFile: Attempting to download {fileName}, data length: {base64Data?.Length ?? 0}");
         await JSRuntime.InvokeVoidAsync("accessForm.downloadFile", base64Data, fileName);
     }
-    
+
+    private async Task DownloadCurrentPdf()
+    {
+        // Intelligently pick the best available PDF to download
+        if (processingResults != null)
+        {
+            // Prefer accessible PDF if available, otherwise use normal PDF
+            if (!string.IsNullOrEmpty(processingResults.AccessibleFileData))
+            {
+                await DownloadFile(processingResults.AccessibleFileData, processingResults.AccessibleFileName);
+                await JSRuntime.InvokeVoidAsync("console.log", "Downloaded accessible PDF");
+            }
+            else if (!string.IsNullOrEmpty(processingResults.NormalFileData))
+            {
+                await DownloadFile(processingResults.NormalFileData, processingResults.NormalFileName);
+                await JSRuntime.InvokeVoidAsync("console.log", "Downloaded normal PDF");
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No PDF available yet. Processing may still be initializing.");
+            }
+        }
+        else
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Processing hasn't produced any results yet. Please wait for processing to complete or check for errors.");
+        }
+    }
+
     private async Task ViewTagTree(string base64Data, string fileName)
     {
         try
@@ -2168,12 +2454,118 @@
         processingTimer?.Stop();
         processingTimer?.Dispose();
         processingTimer = null;
+
+        // Also stop progress polling
+        StopProgressPolling();
+    }
+
+    private void StartProgressPolling(string sessionId)
+    {
+        currentSessionId = sessionId;
+
+        // Stop any existing polling
+        progressPollTimer?.Dispose();
+
+        // Poll every 500ms for smoother updates
+        progressPollTimer = new System.Timers.Timer(500);
+        progressPollTimer.Elapsed += async (sender, e) =>
+        {
+            await UpdateProgressFromServer();
+        };
+        progressPollTimer.Start();
+    }
+
+    private void StopProgressPolling()
+    {
+        progressPollTimer?.Stop();
+        progressPollTimer?.Dispose();
+        progressPollTimer = null;
+        currentSessionId = null;
+    }
+
+    private async Task UpdateProgressFromServer()
+    {
+        if (string.IsNullOrEmpty(currentSessionId))
+            return;
+
+        try
+        {
+            var response = await Http.GetAsync($"/api/progress/{currentSessionId}");
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync();
+                var progress = JsonSerializer.Deserialize<JsonElement>(json);
+
+                if (progress.TryGetProperty("currentStep", out var stepProp))
+                {
+                    var currentStep = stepProp.GetString() ?? "Processing...";
+                    processingMessage = currentStep;
+
+                    // Update the checkbox steps
+                    UpdateProcessingStep(currentStep);
+
+                    // Add detailed status if available
+                    if (progress.TryGetProperty("detailedStatus", out var detailsProp))
+                    {
+                        var details = detailsProp.GetString();
+                        if (!string.IsNullOrEmpty(details))
+                        {
+                            processingMessage = $"{processingMessage} - {details}";
+                            UpdateProcessingStep(currentStep, false, details);
+                        }
+                    }
+
+                    // Add remediation info if available
+                    if (progress.TryGetProperty("remediationIteration", out var iterProp) && iterProp.ValueKind == JsonValueKind.Number)
+                    {
+                        var iteration = iterProp.GetInt32();
+                        if (progress.TryGetProperty("violationsFixed", out var fixedProp) &&
+                            progress.TryGetProperty("violationsFound", out var foundProp))
+                        {
+                            var remediationDetails = $"{fixedProp.GetInt32()}/{foundProp.GetInt32()} violations fixed";
+                            processingMessage = $"Remediation Iteration {iteration}: {remediationDetails}";
+                            UpdateProcessingStep("remediation", false, $"Iteration {iteration}: {remediationDetails}");
+                        }
+                    }
+
+                    // Handle remediation phase updates specifically
+                    if (progress.TryGetProperty("remediationPhase", out var phaseProp))
+                    {
+                        var phase = phaseProp.GetString();
+                        if (!string.IsNullOrEmpty(phase))
+                        {
+                            UpdateProcessingStep(phase);
+                        }
+                    }
+
+                    await InvokeAsync(StateHasChanged);
+                }
+
+                // Stop polling if complete
+                if (progress.TryGetProperty("isComplete", out var completeProp) && completeProp.GetBoolean())
+                {
+                    // Mark all steps as complete
+                    foreach (var step in processingSteps)
+                    {
+                        step.IsComplete = true;
+                        step.IsActive = false;
+                    }
+                    await InvokeAsync(StateHasChanged);
+                    StopProgressPolling();
+                }
+            }
+        }
+        catch
+        {
+            // Ignore errors during polling
+        }
     }
     
     public void Dispose()
     {
         dotNetHelper?.Dispose();
         processingTimer?.Dispose();
+        progressPollTimer?.Dispose();
     }
     
     private TagModificationModal tagEditorModal;

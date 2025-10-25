@@ -62,11 +62,22 @@ namespace WordToPdfConverter.Services.Remediation.Analysis
             var clause = violation.Clause ?? "";
             var desc = violation.Description?.ToLowerInvariant() ?? "";
 
-            // Structure issues (7.1)
+            // Table and List issues (7.2, 7.5, 7.6) - Check FIRST for proper categorization
+            if (clause.StartsWith("7.2") || clause.StartsWith("7.5") || clause.StartsWith("7.6") ||
+                desc.Contains("table") || desc.Contains("th") || desc.Contains("td") ||
+                desc.Contains("scope") || desc.Contains("headers"))
+                return ViolationCategory.TableAndList;
+
+            // Form fields (7.18.4 specifically for widget nesting)
+            if (clause.StartsWith("7.18.4") ||
+                (clause.StartsWith("7.18") && (desc.Contains("widget") || desc.Contains("form"))))
+                return ViolationCategory.FormFields;
+
+            // Structure issues (7.1) - Including artifact/tagged content
             if (clause.StartsWith("7.1"))
                 return ViolationCategory.Structure;
 
-            // Annotations (7.18)
+            // Annotations (7.18 - other than form fields)
             if (clause.StartsWith("7.18"))
                 return ViolationCategory.Annotations;
 
@@ -82,9 +93,10 @@ namespace WordToPdfConverter.Services.Remediation.Analysis
             if (clause.StartsWith("6.1") || clause.StartsWith("6.2"))
                 return ViolationCategory.Metadata;
 
-            // Form fields
-            if (desc.Contains("form") || desc.Contains("field"))
-                return ViolationCategory.FormFields;
+            // Alternative Text issues
+            if (desc.Contains("alt text") || desc.Contains("alternative text") ||
+                desc.Contains("figure") || clause.StartsWith("7.3"))
+                return ViolationCategory.AlternateText;
 
             // Links
             if (desc.Contains("link") || clause.StartsWith("7.18.5"))

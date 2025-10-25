@@ -151,6 +151,14 @@ builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Adapters.GptS
 // Add quick-fix services (run early)
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.CircularRoleMappingFixService>();
 
+// Add specialized PDF/UA remediation services for common end-stage violations
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.ArtifactTaggedContentFixService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.FormWidgetNestingFixService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.TableScopeAttributeFixService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.FigureAltTextService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.TableStructureValidationService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.PdfUaMetadataService>();
+
 // Add table/link accessibility cleanup service
 builder.Services.AddScoped<AccessFormServer.Services.TableLinkAccessibilityService>();
 
@@ -901,21 +909,12 @@ app.MapPost("/api/remediate-pdf", async (HttpRequest request, AccessibilityServi
         Console.WriteLine($"✅ Table/Link cleanup: {cleanupReport.OrphanedHeadersFixed} tables fixed, " +
             $"{cleanupReport.EmptyTablesRemoved} empty tables removed, {cleanupReport.LinksProcessed} links processed");
 
-        // SECOND: Generate and add alt text to images using Claude Vision
-        Console.WriteLine("\n🖼️  Generating alt text for images using Claude Vision...");
-        var imageAltTextService = new AccessFormServer.Services.ImageAltTextService(
-            app.Services.GetRequiredService<AccessFormServer.Services.AnthropicService>(),
-            app.Services.GetRequiredService<ILogger<AccessFormServer.Services.ImageAltTextService>>());
-        var altTextReport = await imageAltTextService.AddAltTextToImagesAsync(asposeDocForCleanup);
-        Console.WriteLine($"✅ Alt text generation: {altTextReport.ImagesProcessed} images processed, " +
-            $"{altTextReport.ImagesWithExistingAltText} already had alt text, {altTextReport.ImagesFailed} failed");
-
-        // Save cleaned document back to stream
+        // Save cleaned document back to stream (will add alt text after form field detection)
         var cleanedStream = new MemoryStream();
         asposeDocForCleanup.Save(cleanedStream);
         cleanedStream.Position = 0;
 
-        // Now load the cleaned PDF into Syncfusion for further processing
+        // Now load the cleaned PDF into Syncfusion for form field processing
         using var pdfToRemediate = new PdfLoadedDocument(cleanedStream);
 
         // Initialize field processing data tracking
@@ -976,11 +975,26 @@ app.MapPost("/api/remediate-pdf", async (HttpRequest request, AccessibilityServi
                 Console.WriteLine($"    ... and {accessibilityReport.Warnings.Count - 5} more");
             }
         }
-        
-        // Save remediated PDF
+
+        // Save Syncfusion-processed PDF
         using var remediatedStream = new MemoryStream();
         remediatedPdf.Save(remediatedStream);
-        var remediatedPdfBytes = remediatedStream.ToArray();
+        remediatedStream.Position = 0;
+
+        // AFTER Syncfusion form field detection: Generate alt text for actual images
+        Console.WriteLine("\n🖼️  Generating alt text for images (post-form-detection)...");
+        using var asposeDocForImages = new Aspose.Pdf.Document(remediatedStream);
+        var imageAltTextService = new AccessFormServer.Services.ImageAltTextService(
+            app.Services.GetRequiredService<AccessFormServer.Services.AnthropicService>(),
+            app.Services.GetRequiredService<ILogger<AccessFormServer.Services.ImageAltTextService>>());
+        var altTextReport = await imageAltTextService.AddAltTextToImagesAsync(asposeDocForImages);
+        Console.WriteLine($"✅ Alt text: {altTextReport.ImagesProcessed} processed, " +
+            $"{altTextReport.ImagesWithExistingAltText} had alt text, {altTextReport.ImagesFailed} failed");
+
+        // Save final PDF with alt text
+        var finalStream = new MemoryStream();
+        asposeDocForImages.Save(finalStream);
+        var remediatedPdfBytes = finalStream.ToArray();
         
         Console.WriteLine($"\n✅ Remediation complete!");
         Console.WriteLine($"  Original size: {normalPdfBytes.Length:N0} bytes");

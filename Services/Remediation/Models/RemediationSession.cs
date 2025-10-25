@@ -28,6 +28,10 @@ namespace WordToPdfConverter.Services.Remediation.Models
         public ValidationResult InitialValidation { get; set; }
         public ValidationResult CurrentValidation { get; set; }
 
+        // Last known good state (for error recovery)
+        public byte[] LastValidatedPdf { get; set; }
+        public ValidationResult LastValidation { get; set; }
+
         // Metrics
         public RemediationMetrics Metrics { get; set; } = new();
 

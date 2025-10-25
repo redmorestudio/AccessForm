@@ -85,7 +85,30 @@ namespace WordToPdfConverter.Services.Remediation.AI
                     if (e.Data != null)
                     {
                         errorBuilder.AppendLine(e.Data);
-                        _logger.LogWarning($"[SCRIPT-ERROR] {e.Data}");
+
+                        // Parse Python log level and log appropriately
+                        var line = e.Data;
+                        if (line.StartsWith("INFO:"))
+                        {
+                            _logger.LogInformation($"[SCRIPT-INFO] {line.Substring(5)}");
+                        }
+                        else if (line.StartsWith("WARNING:"))
+                        {
+                            _logger.LogWarning($"[SCRIPT-WARNING] {line.Substring(8)}");
+                        }
+                        else if (line.StartsWith("ERROR:") || line.StartsWith("CRITICAL:"))
+                        {
+                            _logger.LogError($"[SCRIPT-ERROR] {line}");
+                        }
+                        else if (line.StartsWith("DEBUG:"))
+                        {
+                            _logger.LogDebug($"[SCRIPT-DEBUG] {line.Substring(6)}");
+                        }
+                        else
+                        {
+                            // Unknown format, log as warning to be safe
+                            _logger.LogWarning($"[SCRIPT-STDERR] {line}");
+                        }
                     }
                 };
 
