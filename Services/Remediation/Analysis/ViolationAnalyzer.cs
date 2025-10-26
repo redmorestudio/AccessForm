@@ -89,8 +89,8 @@ namespace WordToPdfConverter.Services.Remediation.Analysis
             if (desc.Contains("whitespace") || desc.Contains("white space"))
                 return ViolationCategory.Whitespace;
 
-            // Metadata (6.1, 6.2)
-            if (clause.StartsWith("6.1") || clause.StartsWith("6.2"))
+            // Metadata (5 - PDF/UA identifier, 6.1, 6.2)
+            if (clause.StartsWith("5") || clause.StartsWith("6.1") || clause.StartsWith("6.2"))
                 return ViolationCategory.Metadata;
 
             // Alternative Text issues

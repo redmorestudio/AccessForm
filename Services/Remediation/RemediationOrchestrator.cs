@@ -71,10 +71,12 @@ namespace WordToPdfConverter.Services.Remediation
             var session = new RemediationSession(options)
             {
                 OriginalPdf = inputPdf,
-                CurrentPdf = inputPdf
+                CurrentPdf = inputPdf,
+                FileName = options.FileName
             };
 
-            _logger.LogInformation("=== CLOSED-LOOP REMEDIATION STARTED ===");
+            var fileInfo = !string.IsNullOrEmpty(session.FileName) ? $" [{session.FileName}]" : "";
+            _logger.LogInformation($"=== CLOSED-LOOP REMEDIATION STARTED ==={fileInfo}");
             _logger.LogInformation($"Session ID: {session.SessionId}");
             _logger.LogInformation($"Max Iterations: {options.MaxIterations}");
             _logger.LogInformation($"Max Duration: {options.MaxDuration.TotalMinutes:F1} minutes");
@@ -101,7 +103,8 @@ namespace WordToPdfConverter.Services.Remediation
                 while (!session.IsComplete)
                 {
                     session.IterationCount++;
-                    _logger.LogInformation($"\n--- ITERATION {session.IterationCount} ---");
+                    var fileLabel = !string.IsNullOrEmpty(session.FileName) ? $" [{session.FileName}]" : "";
+                    _logger.LogInformation($"\n--- ITERATION {session.IterationCount}{fileLabel} ---");
 
                     // Update progress if tracking enabled
                     if (_progressService != null && !string.IsNullOrEmpty(options.ProgressSessionId))
@@ -242,7 +245,8 @@ namespace WordToPdfConverter.Services.Remediation
                 // Generate final report
                 var result = _reporter.GenerateReport(session);
 
-                _logger.LogInformation("\n=== REMEDIATION COMPLETE ===");
+                var fileLabelEnd = !string.IsNullOrEmpty(session.FileName) ? $" [{session.FileName}]" : "";
+                _logger.LogInformation($"\n=== REMEDIATION COMPLETE ==={fileLabelEnd}");
                 _logger.LogInformation($"Exit Reason: {result.ExitReason}");
                 _logger.LogInformation($"Total Iterations: {result.Summary.TotalIterations}");
                 _logger.LogInformation($"Compliant: {result.Summary.IsCompliant}");

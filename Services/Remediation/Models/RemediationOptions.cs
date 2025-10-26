@@ -31,6 +31,9 @@ namespace WordToPdfConverter.Services.Remediation.Models
         // Progress tracking
         public string ProgressSessionId { get; set; } = null;
 
+        // Logging
+        public string FileName { get; set; } = null; // Original filename for logging
+
         /// <summary>
         /// Default production-ready options
         /// </summary>

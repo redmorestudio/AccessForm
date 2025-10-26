@@ -1,0 +1,81 @@
+{
+  "report": {
+    "buildInformation": {
+      "releaseDetails": {
+        "id": "1.26.2",
+        "version": "1.26.2",
+        "buildDate": "2024-08-15"
+      }
+    },
+    "jobs": {
+      "job": {
+        "item": {
+          "name": "sample-test.pdf",
+          "size": 12345
+        },
+        "validationReport": {
+          "profileName": "PDF/UA-1",
+          "statement": "PDF file is not compliant with Validation Profile requirements.",
+          "isCompliant": "false",
+          "details": {
+            "passedRules": 118,
+            "failedRules": 3,
+            "passedChecks": 156,
+            "failedChecks": 5,
+            "rule": [
+              {
+                "specification": "ISO 14289-1:2014",
+                "clause": "7.18.1",
+                "testNumber": 1,
+                "status": "failed",
+                "description": "The Tabs entry in the page dictionary shall be present and shall be S (Structure).",
+                "object": "PDPage",
+                "test": "Tabs_entry_is_S",
+                "check": [
+                  {
+                    "status": "failed",
+                    "context": "root/document[0]/pages[0]/page[0]",
+                    "message": "Tabs entry is not present or not equal to S"
+                  },
+                  {
+                    "status": "failed",
+                    "context": "root/document[0]/pages[0]/page[1]",
+                    "message": "Tabs entry is not present or not equal to S"
+                  }
+                ]
+              },
+              {
+                "specification": "ISO 14289-1:2014",
+                "clause": "7.21.3.2",
+                "testNumber": 2,
+                "status": "failed",
+                "description": "For any non-symbolic TrueType font, the Encoding entry shall be present.",
+                "object": "PDFont",
+                "test": "TrueType_font_encoding",
+                "check": {
+                  "status": "failed",
+                  "context": "root/document[0]/pages[0]/page[2]/contentStream[0]/operators[5]/font[0]",
+                  "message": "TrueType font missing required Encoding entry"
+                }
+              },
+              {
+                "specification": "ISO 14289-1:2014",
+                "clause": "6.2",
+                "testNumber": 3,
+                "status": "failed",
+                "description": "XMP metadata stream shall be present and contain Dublin Core schema title entry.",
+                "object": "PDDocument",
+                "test": "metadata_dc_title",
+                "check": {
+                  "status": "failed",
+                  "context": "root/document[0]",
+                  "message": "Document metadata missing dc:title entry"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

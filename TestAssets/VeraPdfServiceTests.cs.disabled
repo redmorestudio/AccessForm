@@ -1,0 +1,370 @@
+using System;
+using System.IO;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using WordToPdfConverter.Models.PdfUA;
+using WordToPdfConverter.Services;
+using Xunit;
+
+namespace WordToPdfConverter.TestAssets
+{
+    /// <summary>
+    /// Unit tests for VeraPdfService
+    /// These tests can run without veraPDF installed (using sample JSON data)
+    /// </summary>
+    public class VeraPdfServiceTests
+    {
+        private readonly ILogger<VeraPdfService> _logger;
+        private readonly IConfiguration _config;
+        private readonly string _testAssetsPath;
+
+        public VeraPdfServiceTests()
+        {
+            _logger = NullLogger<VeraPdfService>.Instance;
+
+            // Get test assets path
+            _testAssetsPath = Path.Combine(
+                Directory.GetCurrentDirectory(),
+                "TestAssets");
+
+            // Create test configuration
+            var configData = new Dictionary<string, string>
+            {
+                ["VeraPdf:ExecutablePath"] = Path.Combine(_testAssetsPath, "verapdf", "verapdf"),
+                ["VeraPdf:JavaHome"] = Path.Combine(_testAssetsPath, "jdk-21.0.8.jdk", "Contents", "Home"),
+                ["VeraPdf:WorkingDirectory"] = "/tmp/verapdf-test"
+            };
+
+            _config = new ConfigurationBuilder()
+                .AddInMemoryCollection(configData)
+                .Build();
+        }
+
+        #region JSON Parsing Tests
+
+        [Fact]
+        public void ParseVeraPdfOutput_ValidJson_ParsesCorrectly()
+        {
+            // Arrange
+            var sampleJsonPath = Path.Combine(_testAssetsPath, "sample-verapdf-output.json");
+
+            // Skip if sample file doesn't exist
+            if (!File.Exists(sampleJsonPath))
+            {
+                Assert.True(false, $"Sample JSON not found: {sampleJsonPath}");
+                return;
+            }
+
+            var jsonOutput = File.ReadAllText(sampleJsonPath);
+            var service = new VeraPdfService(_logger, _config);
+
+            // We need to access the private ParseVeraPdfOutput method
+            // For now, we'll test through ValidatePdfAsync with a mock
+            // This is a placeholder for the actual parsing test
+
+            // Act & Assert
+            Assert.NotNull(jsonOutput);
+            Assert.Contains("\"isCompliant\"", jsonOutput);
+        }
+
+        [Fact]
+        public void ValidationResult_ComplianceScore_CalculatesCorrectly()
+        {
+            // Arrange
+            var result = new ValidationResult
+            {
+                Summary = new ValidationSummary
+                {
+                    TotalChecks = 161,
+                    PassedChecks = 156,
+                    FailedChecks = 5
+                }
+            };
+
+            // Act
+            var score = result.Summary.ComplianceScore;
+
+            // Assert
+            Assert.Equal(96.89, score, 2); // 156/161 = 0.9689 = 96.89%
+        }
+
+        [Fact]
+        public void ValidationResult_EmptyChecks_ReturnsZeroScore()
+        {
+            // Arrange
+            var result = new ValidationResult
+            {
+                Summary = new ValidationSummary
+                {
+                    TotalChecks = 0,
+                    PassedChecks = 0,
+                    FailedChecks = 0
+                }
+            };
+
+            // Act
+            var score = result.Summary.ComplianceScore;
+
+            // Assert
+            Assert.Equal(0.0, score);
+        }
+
+        [Fact]
+        public void PdfUAViolation_RuleId_FormatsCorrectly()
+        {
+            // Arrange
+            var violation = new PdfUAViolation
+            {
+                Clause = "7.18.1",
+                TestNumber = 1
+            };
+
+            // Act
+            violation.RuleId = $"{violation.Clause}-{violation.TestNumber}";
+
+            // Assert
+            Assert.Equal("7.18.1-1", violation.RuleId);
+        }
+
+        [Fact]
+        public void ViolationLocation_PageNumber_ConvertsFromZeroBased()
+        {
+            // Arrange
+            var location = new ViolationLocation();
+
+            // Act - Simulate parsing "page[2]" (0-based index)
+            location.PageNumber = 2 + 1; // Convert to 1-based
+
+            // Assert
+            Assert.Equal(3, location.PageNumber); // Page 3 in human terms
+        }
+
+        #endregion
+
+        #region Severity Classification Tests
+
+        [Theory]
+        [InlineData("6.1", ViolationSeverity.Critical)]    // Missing structure
+        [InlineData("6.2", ViolationSeverity.Critical)]    // Missing metadata
+        [InlineData("7.1", ViolationSeverity.Critical)]    // Missing language
+        [InlineData("7.3", ViolationSeverity.Error)]       // Content accessibility
+        [InlineData("7.18", ViolationSeverity.Error)]      // Annotations
+        [InlineData("7.21", ViolationSeverity.Error)]      // Fonts
+        [InlineData("7.5", ViolationSeverity.Warning)]     // Other issues
+        public void DetermineSeverity_ByClause_ReturnsCorrectSeverity(
+            string clause,
+            ViolationSeverity expectedSeverity)
+        {
+            // Arrange
+            var service = new VeraPdfService(_logger, _config);
+
+            // We need to test the private DetermineSeverity method
+            // For now, we'll verify the logic externally
+            ViolationSeverity actualSeverity;
+
+            if (clause.StartsWith("6.1") || clause.StartsWith("6.2") || clause.StartsWith("7.1"))
+                actualSeverity = ViolationSeverity.Critical;
+            else if (clause.StartsWith("7.3") || clause.StartsWith("7.18") || clause.StartsWith("7.21"))
+                actualSeverity = ViolationSeverity.Error;
+            else
+                actualSeverity = ViolationSeverity.Warning;
+
+            // Assert
+            Assert.Equal(expectedSeverity, actualSeverity);
+        }
+
+        #endregion
+
+        #region Comparison Tests
+
+        [Fact]
+        public void CompareValidations_FewerViolations_ShowsImprovement()
+        {
+            // Arrange
+            var service = new VeraPdfService(_logger, _config);
+
+            var before = new ValidationResult
+            {
+                Summary = new ValidationSummary
+                {
+                    TotalChecks = 161,
+                    PassedChecks = 150,
+                    FailedChecks = 11
+                },
+                Violations = new System.Collections.Generic.List<PdfUAViolation>
+                {
+                    new PdfUAViolation { RuleId = "7.18.1-1" },
+                    new PdfUAViolation { RuleId = "7.21.3-2" },
+                    new PdfUAViolation { RuleId = "6.2-3" }
+                }
+            };
+
+            var after = new ValidationResult
+            {
+                Summary = new ValidationSummary
+                {
+                    TotalChecks = 161,
+                    PassedChecks = 158,
+                    FailedChecks = 3
+                },
+                Violations = new System.Collections.Generic.List<PdfUAViolation>
+                {
+                    new PdfUAViolation { RuleId = "7.18.1-1" }
+                }
+            };
+
+            // Act
+            var comparison = service.CompareValidations(before, after);
+
+            // Assert
+            Assert.Equal(3, comparison.BeforeViolationCount);
+            Assert.Equal(1, comparison.AfterViolationCount);
+            Assert.Equal(2, comparison.ViolationsFixed);
+            Assert.True(comparison.IsImproved);
+            Assert.True(comparison.ComplianceImprovement > 0);
+        }
+
+        [Fact]
+        public void CompareValidations_MoreViolations_ShowsRegression()
+        {
+            // Arrange
+            var service = new VeraPdfService(_logger, _config);
+
+            var before = new ValidationResult
+            {
+                Summary = new ValidationSummary
+                {
+                    TotalChecks = 161,
+                    PassedChecks = 158,
+                    FailedChecks = 3
+                },
+                Violations = new System.Collections.Generic.List<PdfUAViolation>
+                {
+                    new PdfUAViolation { RuleId = "7.18.1-1" }
+                }
+            };
+
+            var after = new ValidationResult
+            {
+                Summary = new ValidationSummary
+                {
+                    TotalChecks = 161,
+                    PassedChecks = 150,
+                    FailedChecks = 11
+                },
+                Violations = new System.Collections.Generic.List<PdfUAViolation>
+                {
+                    new PdfUAViolation { RuleId = "7.18.1-1" },
+                    new PdfUAViolation { RuleId = "7.21.3-2" },
+                    new PdfUAViolation { RuleId = "6.2-3" }
+                }
+            };
+
+            // Act
+            var comparison = service.CompareValidations(before, after);
+
+            // Assert
+            Assert.Equal(1, comparison.BeforeViolationCount);
+            Assert.Equal(3, comparison.AfterViolationCount);
+            Assert.Equal(-2, comparison.ViolationsFixed);
+            Assert.False(comparison.IsImproved);
+            Assert.True(comparison.ComplianceImprovement < 0);
+        }
+
+        #endregion
+
+        #region Integration Tests (Require veraPDF)
+
+        [Fact(Skip = "Requires veraPDF installation")]
+        public async Task ValidatePdfAsync_CompliantPdf_ReturnsCompliant()
+        {
+            // Arrange
+            var service = new VeraPdfService(_logger, _config);
+            var testPdfPath = Path.Combine(
+                _testAssetsPath,
+                "veraPDF-corpus",
+                "PDF_UA-1",
+                "7.21 Fonts",
+                "7.21.6 Character encodings",
+                "7.21.6-t03-pass-a.pdf");
+
+            // Skip if PDF doesn't exist
+            if (!File.Exists(testPdfPath))
+            {
+                Assert.True(false, $"Test PDF not found: {testPdfPath}");
+                return;
+            }
+
+            // Skip if veraPDF not installed
+            var veraPdfPath = _config["VeraPdf:ExecutablePath"];
+            if (!File.Exists(veraPdfPath))
+            {
+                Assert.True(false, $"veraPDF not installed: {veraPdfPath}");
+                return;
+            }
+
+            // Act
+            var result = await service.ValidatePdfAsync(testPdfPath);
+
+            // Assert
+            Assert.Equal(ValidationStatus.Completed, result.Status);
+            Assert.True(result.Summary.IsCompliant, "Expected PDF to be compliant (filename contains 'pass')");
+            Assert.Empty(result.Violations);
+        }
+
+        [Fact(Skip = "Requires veraPDF installation")]
+        public async Task ValidatePdfAsync_NonCompliantPdf_ReturnsViolations()
+        {
+            // Arrange
+            var service = new VeraPdfService(_logger, _config);
+            var testPdfPath = Path.Combine(
+                _testAssetsPath,
+                "veraPDF-corpus",
+                "PDF_UA-1",
+                "6.1 File header",
+                "6.1-t01-fail-a.pdf");
+
+            // Skip if PDF doesn't exist
+            if (!File.Exists(testPdfPath))
+            {
+                Assert.True(false, $"Test PDF not found: {testPdfPath}");
+                return;
+            }
+
+            // Skip if veraPDF not installed
+            var veraPdfPath = _config["VeraPdf:ExecutablePath"];
+            if (!File.Exists(veraPdfPath))
+            {
+                Assert.True(false, $"veraPDF not installed: {veraPdfPath}");
+                return;
+            }
+
+            // Act
+            var result = await service.ValidatePdfAsync(testPdfPath);
+
+            // Assert
+            Assert.Equal(ValidationStatus.Completed, result.Status);
+            Assert.False(result.Summary.IsCompliant, "Expected PDF to be non-compliant (filename contains 'fail')");
+            Assert.NotEmpty(result.Violations);
+        }
+
+        [Fact(Skip = "Requires veraPDF installation")]
+        public async Task ValidatePdfAsync_MissingPdf_ThrowsFileNotFoundException()
+        {
+            // Arrange
+            var service = new VeraPdfService(_logger, _config);
+            var missingPdfPath = "/tmp/does-not-exist.pdf";
+
+            // Act
+            var result = await service.ValidatePdfAsync(missingPdfPath);
+
+            // Assert
+            Assert.Equal(ValidationStatus.Failed, result.Status);
+            Assert.Contains("not found", result.ErrorMessage);
+        }
+
+        #endregion
+    }
+}

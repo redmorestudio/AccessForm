@@ -993,9 +993,7 @@
     private string processingTime = "0:00";
     private int processingSeconds = 0;
 
-    // Progress tracking
-    private string? currentSessionId = null;
-    private System.Timers.Timer? progressPollTimer;
+    // Progress tracking - removed polling mechanism
 
     // Processing steps checklist
     private class ProcessingStep
@@ -1764,11 +1762,7 @@
             if (result.TryGetProperty("sessionId", out var sessionIdProp))
             {
                 var sessionId = sessionIdProp.GetString();
-                if (!string.IsNullOrEmpty(sessionId))
-                {
-                    await JSRuntime.InvokeVoidAsync("console.log", $"Starting progress polling for session: {sessionId}");
-                    StartProgressPolling(sessionId);
-                }
+                // Progress polling removed
             }
 
             // Log available properties
@@ -2543,117 +2537,15 @@
         processingTimer?.Dispose();
         processingTimer = null;
 
-        // Also stop progress polling
-        StopProgressPolling();
+        // Progress polling removed
     }
 
-    private void StartProgressPolling(string sessionId)
-    {
-        currentSessionId = sessionId;
-
-        // Stop any existing polling
-        progressPollTimer?.Dispose();
-
-        // Poll every 500ms for smoother updates
-        progressPollTimer = new System.Timers.Timer(500);
-        progressPollTimer.Elapsed += async (sender, e) =>
-        {
-            await UpdateProgressFromServer();
-        };
-        progressPollTimer.Start();
-    }
-
-    private void StopProgressPolling()
-    {
-        progressPollTimer?.Stop();
-        progressPollTimer?.Dispose();
-        progressPollTimer = null;
-        currentSessionId = null;
-    }
-
-    private async Task UpdateProgressFromServer()
-    {
-        if (string.IsNullOrEmpty(currentSessionId))
-            return;
-
-        try
-        {
-            var response = await Http.GetAsync($"/api/progress/{currentSessionId}");
-            if (response.IsSuccessStatusCode)
-            {
-                var json = await response.Content.ReadAsStringAsync();
-                var progress = JsonSerializer.Deserialize<JsonElement>(json);
-
-                if (progress.TryGetProperty("currentStep", out var stepProp))
-                {
-                    var currentStep = stepProp.GetString() ?? "Processing...";
-                    processingMessage = currentStep;
-
-                    // Update the checkbox steps
-                    UpdateProcessingStep(currentStep);
-
-                    // Add detailed status if available
-                    if (progress.TryGetProperty("detailedStatus", out var detailsProp))
-                    {
-                        var details = detailsProp.GetString();
-                        if (!string.IsNullOrEmpty(details))
-                        {
-                            processingMessage = $"{processingMessage} - {details}";
-                            UpdateProcessingStep(currentStep, false, details);
-                        }
-                    }
-
-                    // Add remediation info if available
-                    if (progress.TryGetProperty("remediationIteration", out var iterProp) && iterProp.ValueKind == JsonValueKind.Number)
-                    {
-                        var iteration = iterProp.GetInt32();
-                        if (progress.TryGetProperty("violationsFixed", out var fixedProp) &&
-                            progress.TryGetProperty("violationsFound", out var foundProp))
-                        {
-                            var remediationDetails = $"{fixedProp.GetInt32()}/{foundProp.GetInt32()} violations fixed";
-                            processingMessage = $"Remediation Iteration {iteration}: {remediationDetails}";
-                            UpdateProcessingStep("remediation", false, $"Iteration {iteration}: {remediationDetails}");
-                        }
-                    }
-
-                    // Handle remediation phase updates specifically
-                    if (progress.TryGetProperty("remediationPhase", out var phaseProp))
-                    {
-                        var phase = phaseProp.GetString();
-                        if (!string.IsNullOrEmpty(phase))
-                        {
-                            UpdateProcessingStep(phase);
-                        }
-                    }
-
-                    await InvokeAsync(StateHasChanged);
-                }
-
-                // Stop polling if complete
-                if (progress.TryGetProperty("isComplete", out var completeProp) && completeProp.GetBoolean())
-                {
-                    // Mark all steps as complete
-                    foreach (var step in processingSteps)
-                    {
-                        step.IsComplete = true;
-                        step.IsActive = false;
-                    }
-                    await InvokeAsync(StateHasChanged);
-                    StopProgressPolling();
-                }
-            }
-        }
-        catch
-        {
-            // Ignore errors during polling
-        }
-    }
+    // Progress polling methods removed - no longer needed
     
     public void Dispose()
     {
         dotNetHelper?.Dispose();
         processingTimer?.Dispose();
-        progressPollTimer?.Dispose();
     }
     
     private TagModificationModal tagEditorModal;

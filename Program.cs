@@ -154,6 +154,7 @@ builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.CircularRoleM
 // Add specialized PDF/UA remediation services for common end-stage violations
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.ArtifactTaggedContentFixService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.FormWidgetNestingFixService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.FormRoleAttributeFixService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.TableScopeAttributeFixService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.FigureAltTextService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.TableStructureValidationService>();
@@ -4122,6 +4123,7 @@ app.MapPost("/api/convert-with-config", async (
             {
                 var remediationOptions = WordToPdfConverter.Services.Remediation.Models.RemediationOptions.Aggressive;
                 remediationOptions.ProgressSessionId = sessionId;
+                remediationOptions.FileName = file.FileName;
                 remediationResult = await remediationOrchestrator.RemediateAsync(
                     pdfBytes,
                     remediationOptions);
@@ -4578,6 +4580,7 @@ app.MapPost("/api/process-with-passportpdf-auto", async (
 
             var remediationOptions = WordToPdfConverter.Services.Remediation.Models.RemediationOptions.Aggressive;
             remediationOptions.ProgressSessionId = sessionId;
+            remediationOptions.FileName = file.FileName;
             remediationResult = await remediationOrchestrator.RemediateAsync(
                 pdfBytes,
                 remediationOptions);

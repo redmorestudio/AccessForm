@@ -219,6 +219,21 @@ namespace WordToPdfConverter.Services
 
                 var job = jobs[0];
 
+                // Check for taskException (VeraPDF crashed)
+                if (job.TryGetProperty("taskException", out var taskException))
+                {
+                    var exceptionMsg = taskException.TryGetProperty("exceptionMessage", out var msgProp)
+                        ? msgProp.GetString()
+                        : "Unknown VeraPDF error";
+
+                    _logger.LogError($"VeraPDF validation failed with exception: {exceptionMsg}");
+
+                    result.Status = ValidationStatus.Failed;
+                    result.ErrorMessage = $"PDF validation failed: {exceptionMsg}";
+                    result.Summary.IsCompliant = false;
+                    return;
+                }
+
                 if (!job.TryGetProperty("validationResult", out var validationResults))
                 {
                     throw new InvalidOperationException("Invalid veraPDF output: missing 'validationResult' property");
@@ -318,41 +333,71 @@ namespace WordToPdfConverter.Services
                 violation.Description = desc.GetString() ?? "";
 
             // Location/context from checks array (use "checks" not "check")
+            // IMPORTANT: Each check represents an occurrence of the violation
+            // We must create a separate violation for each occurrence
             if (rule.TryGetProperty("checks", out var checks))
             {
-                JsonElement checkElement;
                 if (checks.ValueKind == JsonValueKind.Array)
                 {
-                    // Get first element if array is not empty
-                    var enumerator = checks.EnumerateArray();
-                    if (enumerator.Any())
-                    {
-                        checkElement = enumerator.First();
-                    }
-                    else
+                    // Process ALL checks, not just the first one
+                    var checkArray = checks.EnumerateArray().ToList();
+                    if (!checkArray.Any())
                     {
                         return; // No check elements, skip this violation
+                    }
+
+                    // Create a violation for each occurrence
+                    foreach (var checkElement in checkArray)
+                    {
+                        var violationInstance = new PdfUAViolation
+                        {
+                            Clause = violation.Clause,
+                            TestNumber = violation.TestNumber,
+                            Status = violation.Status,
+                            Specification = violation.Specification,
+                            RuleId = violation.RuleId,
+                            Description = violation.Description
+                        };
+
+                        if (checkElement.TryGetProperty("context", out var context))
+                        {
+                            violationInstance.Context = context.GetString() ?? "";
+                            ParseLocation(context.GetString() ?? "", violationInstance.Location);
+                        }
+
+                        if (checkElement.TryGetProperty("message", out var message))
+                            violationInstance.ErrorMessage = message.GetString() ?? "";
+
+                        // Determine severity based on clause
+                        violationInstance.Severity = DetermineSeverity(violationInstance.Clause);
+
+                        result.Violations.Add(violationInstance);
                     }
                 }
                 else
                 {
-                    checkElement = checks;
-                }
+                    // Single check element
+                    if (checks.TryGetProperty("context", out var context))
+                    {
+                        violation.Context = context.GetString() ?? "";
+                        ParseLocation(context.GetString() ?? "", violation.Location);
+                    }
 
-                if (checkElement.TryGetProperty("context", out var context))
-                {
-                    violation.Context = context.GetString() ?? "";
-                    ParseLocation(context.GetString() ?? "", violation.Location);
-                }
+                    if (checks.TryGetProperty("message", out var message))
+                        violation.ErrorMessage = message.GetString() ?? "";
 
-                if (checkElement.TryGetProperty("message", out var message))
-                    violation.ErrorMessage = message.GetString() ?? "";
+                    // Determine severity based on clause
+                    violation.Severity = DetermineSeverity(violation.Clause);
+
+                    result.Violations.Add(violation);
+                }
             }
-
-            // Determine severity based on clause
-            violation.Severity = DetermineSeverity(violation.Clause);
-
-            result.Violations.Add(violation);
+            else
+            {
+                // No checks property - add violation anyway with basic info
+                violation.Severity = DetermineSeverity(violation.Clause);
+                result.Violations.Add(violation);
+            }
         }
 
         /// <summary>

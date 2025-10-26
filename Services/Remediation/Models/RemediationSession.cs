@@ -13,6 +13,7 @@ namespace WordToPdfConverter.Services.Remediation.Models
         public Guid SessionId { get; set; } = Guid.NewGuid();
         public DateTime StartTime { get; set; } = DateTime.UtcNow;
         public RemediationOptions Options { get; set; }
+        public string FileName { get; set; } // Original filename for logging
 
         // Current state
         public byte[] CurrentPdf { get; set; }

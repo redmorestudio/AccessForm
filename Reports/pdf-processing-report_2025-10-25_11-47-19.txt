@@ -1,0 +1,54 @@
+╔══════════════════════════════════════════════════════════════════════╗
+║                    PDF PROCESSING REPORT                             ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+⏱️  Processing Time: 8.29 seconds
+   Started:  2025-10-25 18:47:11
+   Finished: 2025-10-25 18:47:19
+
+📊 DOCUMENT STATISTICS
+─────────────────────────────────────────────────────────────────────
+Input PDF:
+  • File size: 188.4 KB
+  • Pages: 2
+  • PDF version: Syncfusion.Pdf.PdfFileStructure
+  • Form fields: 48
+
+Output PDF:
+  • File size: 593.3 KB (+404.9 KB, +214.9%)
+  • Pages: 2
+  • PDF version: 
+  • Form fields: 0
+
+🔧 ISSUES FOUND & FIXED
+─────────────────────────────────────────────────────────────────────
+  • Artifact violations: 150 found, 335 fixed
+  • Font issues: 0 found, 0 fixed
+  • Tag structure issues: 0 found, 0 fixed
+  • Metadata issues: 0 found, 0 fixed
+
+♿ ACCESSIBILITY ENHANCEMENTS
+─────────────────────────────────────────────────────────────────────
+  • PDF/UA compliant: ⚠️  No
+  • Tagged PDF: ✅ Yes
+  • Language set: ✅ en-US
+  • Alt text added: 0
+  • Tooltips added: 0
+  • Reading order fixed: No
+
+⚙️  PROCESSING STEPS
+─────────────────────────────────────────────────────────────────────
+  1. ❌ Orphaned Whitespace Adoption (867ms)
+     No orphaned whitespace found
+  2. ✅ Artifact Violation Fix (1256ms)
+     Fixed 335 violations
+  3. ✅ Tagged Whitespace Fix (168ms)
+     No whitespace violations found
+  4. ✅ Form Graphics Tagging (336ms)
+     Tagged 85 path objects, fixed 15 references
+  5. ✅ TOC Structure Remediation (33ms)
+     Fixed 0 TOC elements, 0 link structures
+  6. ✅ Post-PassportPDF Artifact Fix (1872ms)
+     No violations found
+
+╚══════════════════════════════════════════════════════════════════════╝
