@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading.Tasks;
 using iText.Kernel.Pdf;
 using iText.Kernel.XMP;
+using iText.Kernel.XMP.Impl;
 using iText.Kernel.XMP.Properties;
 using Microsoft.Extensions.Logging;
 using WordToPdfConverter.Services.Remediation.Models;
@@ -100,68 +101,80 @@ namespace WordToPdfConverter.Services.Remediation.Fixes
         {
             try
             {
-                var xmpMeta = XMPMetaFactory.ParseFromBuffer(pdfDoc.GetXmpMetadata());
+                XMPMeta xmpMeta = null;
 
+                // Try to get existing XMP metadata
+                try
+                {
+                    var existingXmp = pdfDoc.GetXmpMetadata();
+                    if (existingXmp != null && existingXmp.Length > 0)
+                    {
+                        xmpMeta = XMPMetaFactory.ParseFromBuffer(existingXmp);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug($"[PDFUA-METADATA] Could not parse existing XMP: {ex.Message}");
+                }
+
+                // Create new XMP if parsing failed or no XMP exists
                 if (xmpMeta == null)
                 {
-                    // Create new XMP metadata
                     _logger.LogInformation("[PDFUA-METADATA] Creating new XMP metadata");
                     xmpMeta = XMPMetaFactory.Create();
+                }
+
+                // Register PDF/UA namespace
+                const string PDFUA_NS = "http://www.aiim.org/pdfua/ns/id/";
+                const string PDFUA_PREFIX = "pdfuaid";
+
+                try
+                {
+                    XMPMetaFactory.GetSchemaRegistry().RegisterNamespace(PDFUA_NS, PDFUA_PREFIX);
+                }
+                catch
+                {
+                    // Namespace might already be registered
                 }
 
                 // Check for existing PDF/UA identifier
                 var hasUaIdentifier = false;
                 try
                 {
-                    var partValue = xmpMeta.GetPropertyInteger(
-                        "http://www.aiim.org/pdfua/ns/id/",
-                        "pdfuaid:part");
+                    var partValue = xmpMeta.GetPropertyInteger(PDFUA_NS, "part");
                     hasUaIdentifier = partValue != null && partValue == 1;
+
+                    if (hasUaIdentifier)
+                    {
+                        _logger.LogInformation("[PDFUA-METADATA] PDF/UA identifier already present");
+                        return false;
+                    }
                 }
                 catch
                 {
-                    // Property doesn't exist
+                    // Property doesn't exist - we'll add it
                 }
 
-                if (!hasUaIdentifier)
-                {
-                    _logger.LogInformation("[PDFUA-METADATA] Adding PDF/UA-1 identifier");
+                _logger.LogInformation("[PDFUA-METADATA] Adding PDF/UA-1 identifier to XMP metadata");
 
-                    // Register namespace if needed
-                    try
-                    {
-                        XMPMetaFactory.GetSchemaRegistry().RegisterNamespace(
-                            "http://www.aiim.org/pdfua/ns/id/",
-                            "pdfuaid");
-                    }
-                    catch
-                    {
-                        // Namespace might already be registered
-                    }
+                // Set PDF/UA-1 part identifier
+                // This creates the RDF structure:
+                // <rdf:Description rdf:about="" xmlns:pdfuaid="http://www.aiim.org/pdfua/ns/id/">
+                //   <pdfuaid:part>1</pdfuaid:part>
+                // </rdf:Description>
+                xmpMeta.SetPropertyInteger(PDFUA_NS, "part", 1);
 
-                    // Set PDF/UA-1 identifier
-                    xmpMeta.SetPropertyInteger(
-                        "http://www.aiim.org/pdfua/ns/id/",
-                        "pdfuaid:part",
-                        1);
+                _logger.LogInformation("[PDFUA-METADATA] Set pdfuaid:part = 1");
 
-                    // Set revision if needed
-                    xmpMeta.SetProperty(
-                        "http://www.aiim.org/pdfua/ns/id/",
-                        "pdfuaid:rev",
-                        "2008");
+                // Save updated XMP metadata to document
+                pdfDoc.SetXmpMetadata(xmpMeta);
 
-                    // Save updated XMP
-                    pdfDoc.SetXmpMetadata(xmpMeta);
-                    return true;
-                }
-
-                _logger.LogInformation("[PDFUA-METADATA] PDF/UA identifier already present");
-                return false;
+                _logger.LogInformation("[PDFUA-METADATA] Successfully added PDF/UA-1 conformance metadata");
+                return true;
             }
             catch (Exception ex)
             {
-                _logger.LogWarning($"[PDFUA-METADATA] Error setting PDF/UA identifier: {ex.Message}");
+                _logger.LogError(ex, "[PDFUA-METADATA] Failed to set PDF/UA identifier");
                 return false;
             }
         }
