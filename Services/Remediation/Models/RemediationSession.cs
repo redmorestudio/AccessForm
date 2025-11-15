@@ -33,8 +33,16 @@ namespace WordToPdfConverter.Services.Remediation.Models
         public byte[] LastValidatedPdf { get; set; }
         public ValidationResult LastValidation { get; set; }
 
+        // Best PDF state (highest compliance achieved)
+        public byte[] BestPdf { get; set; }
+        public ValidationResult BestValidation { get; set; }
+        public int BestIterationNumber { get; set; } = 0;
+
         // Metrics
         public RemediationMetrics Metrics { get; set; } = new();
+
+        // Metadata for tracking additional session state
+        public Dictionary<string, object> Metadata { get; set; } = new();
 
         // Computed properties
         public TimeSpan ElapsedTime => DateTime.UtcNow - StartTime;
@@ -84,6 +92,21 @@ namespace WordToPdfConverter.Services.Remediation.Models
         public double ComplianceImprovement { get; set; }
         public double AverageFixRate { get; set; }
         public double EfficiencyScore { get; set; }
+
+        // Cost tracking
+        public decimal TotalCost { get; set; }
+        public Dictionary<string, decimal> CostsByService { get; set; } = new();
+        public Dictionary<string, TokenUsage> TokensByService { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Token usage for a service
+    /// </summary>
+    public class TokenUsage
+    {
+        public int InputTokens { get; set; }
+        public int OutputTokens { get; set; }
+        public int TotalTokens => InputTokens + OutputTokens;
     }
 
     /// <summary>

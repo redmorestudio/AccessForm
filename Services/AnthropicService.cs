@@ -13,26 +13,32 @@ namespace AccessFormServer.Services
     {
         private readonly HttpClient _httpClient;
         private readonly ILogger<AnthropicService> _logger;
+        private readonly CostTrackingService _costTracking;
         private readonly string _apiKey;
 
-        public AnthropicService(HttpClient httpClient, IConfiguration configuration, ILogger<AnthropicService> logger)
+        public AnthropicService(
+            HttpClient httpClient,
+            IConfiguration configuration,
+            ILogger<AnthropicService> logger,
+            CostTrackingService costTracking)
         {
             _httpClient = httpClient;
             _logger = logger;
+            _costTracking = costTracking;
             _apiKey = configuration["ApiKeys:Anthropic"] ?? throw new ArgumentNullException("Anthropic API key not configured");
-            
+
             _httpClient.BaseAddress = new Uri("https://api.anthropic.com/");
             _httpClient.DefaultRequestHeaders.Add("x-api-key", _apiKey);
             _httpClient.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
             _httpClient.Timeout = TimeSpan.FromSeconds(300); // 5 minutes timeout for Claude API
         }
 
-        public async Task<string> AnalyzeFormFieldsAsync(string extractedText)
+        public async Task<string> AnalyzeFormFieldsAsync(string extractedText, string sessionId = null)
         {
             try
             {
                 _logger.LogInformation("Analyzing form fields with Anthropic");
-                
+
                 var request = new
                 {
                     model = "claude-3-opus-20240229",
@@ -42,7 +48,7 @@ namespace AccessFormServer.Services
                         new
                         {
                             role = "user",
-                            content = $@"Analyze this form content and identify all form fields. 
+                            content = $@"Analyze this form content and identify all form fields.
                             For each field, provide:
                             - Field name
                             - Field type (text, checkbox, radio, dropdown, date, signature, etc.)
@@ -50,33 +56,36 @@ namespace AccessFormServer.Services
                             - Any validation rules
                             - Accessibility label suggestions
                             - Tab order recommendation
-                            
+
                             Format your response as JSON with an array of field objects.
-                            
+
                             Form content:
                             {extractedText}"
                         }
                     }
                 };
-                
+
                 var json = JsonSerializer.Serialize(request);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
-                
+
                 var response = await _httpClient.PostAsync("v1/messages", content);
-                
+
                 if (response.IsSuccessStatusCode)
                 {
                     var responseContent = await response.Content.ReadAsStringAsync();
                     _logger.LogInformation($"=== CLAUDE RAW RESPONSE ===");
                     _logger.LogInformation($"Response length: {responseContent.Length} characters");
-                    
+
                     // Log first 1000 chars of response
                     var preview = responseContent.Length > 1000 ? responseContent.Substring(0, 1000) + "..." : responseContent;
                     _logger.LogInformation($"Response preview: {preview}");
-                    
+
                     var responseJson = JsonDocument.Parse(responseContent);
-                    
-                    if (responseJson.RootElement.TryGetProperty("content", out var contentArray) && 
+
+                    // Record cost from usage data
+                    RecordApiCost(responseJson.RootElement, sessionId);
+
+                    if (responseJson.RootElement.TryGetProperty("content", out var contentArray) &&
                         contentArray.GetArrayLength() > 0)
                     {
                         var firstContent = contentArray[0];
@@ -95,7 +104,7 @@ namespace AccessFormServer.Services
                             return claudeText;
                         }
                     }
-                    
+
                     _logger.LogWarning("Could not extract text from Claude response, returning raw JSON");
                     return responseContent;
                 }
@@ -224,7 +233,36 @@ namespace AccessFormServer.Services
             }
         }
         
-        public async Task<string> AnalyzeImageForAltText(byte[] imageBytes)
+        private void RecordApiCost(JsonElement responseRoot, string sessionId = null)
+        {
+            try
+            {
+                if (responseRoot.TryGetProperty("usage", out var usage))
+                {
+                    var inputTokens = usage.TryGetProperty("input_tokens", out var inTok) ? inTok.GetInt32() : 0;
+                    var outputTokens = usage.TryGetProperty("output_tokens", out var outTok) ? outTok.GetInt32() : 0;
+
+                    var cost = (inputTokens * CostTrackingService.Pricing.CLAUDE_SONNET_45_INPUT) +
+                               (outputTokens * CostTrackingService.Pricing.CLAUDE_SONNET_45_OUTPUT);
+
+                    if (!string.IsNullOrEmpty(sessionId))
+                    {
+                        _costTracking.RecordSessionCost(sessionId, "Anthropic Claude Sonnet 4.5", inputTokens, outputTokens, cost);
+                    }
+                    else
+                    {
+                        // Fallback to legacy recording for backwards compatibility
+                        _costTracking.RecordCostAsync("Anthropic Claude", cost).Wait();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to parse usage and record cost");
+            }
+        }
+
+        public async Task<string> AnalyzeImageForAltText(byte[] imageBytes, string sessionId = null)
         {
             try
             {
@@ -260,16 +298,24 @@ namespace AccessFormServer.Services
                                     type = "text",
                                     text = @"You are an accessibility expert generating alt-text for images in PDF documents.
                                     Analyze this image and provide a concise, descriptive alt-text that would help someone using a screen reader understand what the image contains.
-                                    
+
+                                    CRITICAL INSTRUCTIONS:
+                                    1. **EXTRACT ALL TEXT**: If there is ANY readable text in the image (labels, captions, titles, numbers, etc.), you MUST include it verbatim in the alt text.
+                                    2. Start your response with any text found in the image, followed by a description.
+                                    3. If it's a form field, button, or interactive element, include the exact label text.
+
                                     Guidelines:
-                                    - Be descriptive but concise (typically 125 characters or less)
-                                    - Focus on the essential information conveyed by the image
-                                    - If it's a logo, identify the organization if possible
-                                    - If it's a diagram or chart, describe its purpose and key information
-                                    - If it's decorative, you can say 'Decorative image' or describe it briefly
+                                    - Be descriptive but include ALL text visible in the image
+                                    - Include any text, numbers, dates, or labels exactly as they appear
+                                    - If it's a logo with text, include the company/organization name
+                                    - If it's a diagram or chart, include all labels and key data points
+                                    - For buttons or form elements, include the exact button text
+                                    - If purely decorative with no text, say 'Decorative image'
                                     - Do not start with 'Image of' or 'Picture of'
-                                    
-                                    Respond with ONLY the alt-text, nothing else."
+
+                                    Your response will be prefixed with '[Auto-generated] ' to indicate it was machine-generated.
+
+                                    Respond with ONLY the alt-text content, nothing else."
                                 },
                                 new
                                 {
@@ -297,8 +343,11 @@ namespace AccessFormServer.Services
 
                 using var doc = JsonDocument.Parse(responseJson);
                 var root = doc.RootElement;
-                
-                if (root.TryGetProperty("content", out var contentArray) && 
+
+                // Record cost from usage data
+                RecordApiCost(root, sessionId);
+
+                if (root.TryGetProperty("content", out var contentArray) &&
                     contentArray.GetArrayLength() > 0)
                 {
                     var firstContent = contentArray[0];

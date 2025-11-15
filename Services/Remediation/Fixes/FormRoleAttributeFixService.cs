@@ -25,7 +25,7 @@ namespace WordToPdfConverter.Services.Remediation.Fixes
         public string ServiceName => "Form Role Attribute Fix";
         public ViolationCategory TargetCategory => ViolationCategory.FormFields;
         public int Priority => 5; // Critical priority for form accessibility
-        public bool IsRequired => false; // Only run when form violations detected
+        public bool IsRequired => true; // Always run to catch Form Role violations
 
         public FormRoleAttributeFixService(ILogger<FormRoleAttributeFixService> logger)
         {
@@ -141,14 +141,18 @@ namespace WordToPdfConverter.Services.Remediation.Fixes
                     if (!elemDict.ContainsKey(PdfName.A))
                     {
                         // Form element without attributes - check if it needs Role
-                        // Per 7.18.4-2: Form without Role attribute must have only one child (OBJR)
+                        // Per 7.18.4-2: Form without Role attribute must have ONLY one child (OBJR)
+                        // If it doesn't meet this exception, it needs a Role attribute
                         var kids = element.GetKids();
 
-                        if (kids != null && (kids.Count > 1 || (kids.Count == 1 && !IsOnlyChildOBJR(kids))))
+                        // Check if it meets the exception: exactly one child that is an OBJR
+                        var meetsException = (kids != null && kids.Count == 1 && IsOnlyChildOBJR(kids));
+
+                        if (!meetsException)
                         {
-                            // Violation: Form without Role has multiple children or non-OBJR child
+                            // Violation: Form without Role doesn't meet the single-OBJR exception
                             // Fix: Add Role="Form" attribute
-                            _logger.LogInformation($"[FORM-ROLE-FIX] Adding Role attribute to Form element");
+                            _logger.LogInformation($"[FORM-ROLE-FIX] Adding Role attribute to Form element (kids count: {kids?.Count ?? 0})");
 
                             // Create attributes dictionary with Role
                             var attrDict = new PdfDictionary();

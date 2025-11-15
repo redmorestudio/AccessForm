@@ -47,6 +47,7 @@ namespace AccessFormServer.Services
             _temperature = _configuration.GetValue<float>("AiServices:OpenAI:Temperature", 0.0f);
 
             _httpClient = httpClientFactory?.CreateClient() ?? new HttpClient();
+            _httpClient.Timeout = TimeSpan.FromSeconds(180); // 3 minutes timeout for GPT-5 API
 
             if (_enabled && !string.IsNullOrEmpty(_apiKey))
             {
@@ -61,6 +62,51 @@ namespace AccessFormServer.Services
             }
         }
 
+        private void RecordApiCost(JsonElement responseRoot, string model, string sessionId = null)
+        {
+            try
+            {
+                if (responseRoot.TryGetProperty("usage", out var usage))
+                {
+                    var promptTokens = usage.TryGetProperty("prompt_tokens", out var pTok) ? pTok.GetInt32() : 0;
+                    var completionTokens = usage.TryGetProperty("completion_tokens", out var cTok) ? cTok.GetInt32() : 0;
+
+                    // Determine pricing based on model
+                    decimal inputPrice, outputPrice;
+                    string serviceName;
+
+                    if (model.Contains("gpt-4o"))
+                    {
+                        inputPrice = CostTrackingService.Pricing.GPT4O_INPUT;
+                        outputPrice = CostTrackingService.Pricing.GPT4O_OUTPUT;
+                        serviceName = "OpenAI GPT-4o";
+                    }
+                    else // gpt-5 or default
+                    {
+                        inputPrice = CostTrackingService.Pricing.GPT5_INPUT;
+                        outputPrice = CostTrackingService.Pricing.GPT5_OUTPUT;
+                        serviceName = "OpenAI GPT-5";
+                    }
+
+                    var cost = (promptTokens * inputPrice) + (completionTokens * outputPrice);
+
+                    if (!string.IsNullOrEmpty(sessionId))
+                    {
+                        _costTracking.RecordSessionCost(sessionId, serviceName, promptTokens, completionTokens, cost);
+                    }
+                    else
+                    {
+                        // Fallback to legacy recording
+                        _costTracking.RecordCostAsync(serviceName, cost).Wait();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to parse usage and record cost");
+            }
+        }
+
         /// <summary>
         /// Call GPT-5 with vision capabilities - send image + text prompt
         /// </summary>
@@ -68,6 +114,7 @@ namespace AccessFormServer.Services
             string textPrompt,
             byte[] imageBytes,
             string imageFormat = "png",
+            string sessionId = null,
             CancellationToken cancellationToken = default)
         {
             if (!_enabled || string.IsNullOrEmpty(_apiKey))
@@ -119,6 +166,9 @@ namespace AccessFormServer.Services
                 var responseJson = await response.Content.ReadAsStringAsync();
                 var responseObj = JsonDocument.Parse(responseJson);
 
+                // Record actual cost from usage data
+                RecordApiCost(responseObj.RootElement, _model, sessionId);
+
                 // GPT-5 response format
                 if (responseObj.RootElement.TryGetProperty("choices", out var choices))
                 {
@@ -130,10 +180,6 @@ namespace AccessFormServer.Services
                             if (message.TryGetProperty("content", out var contentProp))
                             {
                                 var result = contentProp.GetString();
-
-                                // Track cost (estimated)
-                                await _costTracking.RecordCostAsync("OpenAI-GPT5", 0.03m);
-
                                 return result;
                             }
                         }
@@ -179,6 +225,29 @@ ERROR:
 {stdout}
 
 ")}
+⚠️ CRITICAL PIKEPDF REQUIREMENTS TO FIX THIS ERROR:
+
+1. PDF DICTIONARY KEYS MUST START WITH '/' - This is usually the root cause:
+   ❌ WRONG: viewer_preferences['DisplayDocTitle'] = True
+   ✅ RIGHT: viewer_preferences['/DisplayDocTitle'] = True
+
+   ❌ WRONG: pdf.Root.ViewerPreferences = pikepdf.Dictionary(DisplayDocTitle=True)
+   ✅ RIGHT: pdf.Root['/ViewerPreferences'] = pikepdf.Dictionary({{'/DisplayDocTitle': True}})
+
+2. BOOLEAN VALUES:
+   ❌ WRONG: pikepdf.Boolean(True) - pikepdf.Boolean does NOT exist!
+   ❌ WRONG: pikepdf.Name('/True') - Names are not booleans!
+   ✅ RIGHT: True - Use Python's built-in True/False directly
+
+3. METADATA VALUES MUST BE STRINGS:
+   ❌ WRONG: meta['pdfuaid:part'] = 1
+   ✅ RIGHT: meta['pdfuaid:part'] = '1'
+
+4. Common patterns to fix:
+   - If error says 'PDF Dictionary keys must begin with /', add '/' to ALL dictionary keys
+   - If error says 'pikepdf.Boolean', replace with Python True/False
+   - If error says type error for metadata, convert numbers to strings with quotes
+
 Return ONLY the fixed Python script. Do not include markdown code blocks, explanations, or any other text. Just the raw Python code that will execute successfully.";
 
             // Verbose logging - show prompt structure with truncated content
@@ -196,7 +265,7 @@ Return ONLY the fixed Python script. Do not include markdown code blocks, explan
 
             try
             {
-                var result = await CallTextApiAsync(prompt, cancellationToken);
+                var result = await CallTextApiAsync(prompt, model: null, sessionId: null, cancellationToken: cancellationToken);
 
                 // Clean up response - remove markdown if GPT added it anyway
                 if (!string.IsNullOrEmpty(result))
@@ -232,9 +301,9 @@ Return ONLY the fixed Python script. Do not include markdown code blocks, explan
         }
 
         /// <summary>
-        /// Call GPT-5 with just text (no image)
+        /// Call GPT with just text (no image)
         /// </summary>
-        public async Task<string> CallTextApiAsync(string prompt, CancellationToken cancellationToken = default)
+        public async Task<string> CallTextApiAsync(string prompt, string model = null, string sessionId = null, string systemMessage = null, CancellationToken cancellationToken = default)
         {
             if (!_enabled || string.IsNullOrEmpty(_apiKey))
             {
@@ -242,19 +311,25 @@ Return ONLY the fixed Python script. Do not include markdown code blocks, explan
                 return null;
             }
 
+            // Use provided model or fall back to configured default
+            var modelToUse = model ?? _model;
+
             try
             {
+                // Build messages array with optional system message
+                var messagesList = new List<object>();
+
+                if (!string.IsNullOrEmpty(systemMessage))
+                {
+                    messagesList.Add(new { role = "system", content = systemMessage });
+                }
+
+                messagesList.Add(new { role = "user", content = prompt });
+
                 var requestBody = new
                 {
-                    model = _model,
-                    messages = new[]
-                    {
-                        new
-                        {
-                            role = "user",
-                            content = prompt
-                        }
-                    },
+                    model = modelToUse,
+                    messages = messagesList.ToArray(),
                     max_completion_tokens = _maxTokens,
                     temperature = _temperature
                 };
@@ -277,6 +352,16 @@ Return ONLY the fixed Python script. Do not include markdown code blocks, explan
                 var responseJson = await response.Content.ReadAsStringAsync();
                 var responseObj = JsonDocument.Parse(responseJson);
 
+                // Track cost for the model actually used
+                var modelUsed = modelToUse;
+                if (responseObj.RootElement.TryGetProperty("model", out var modelProp))
+                {
+                    modelUsed = modelProp.GetString();
+                }
+
+                // Record actual cost from usage data
+                RecordApiCost(responseObj.RootElement, modelUsed, sessionId);
+
                 if (responseObj.RootElement.TryGetProperty("choices", out var choices))
                 {
                     var firstChoice = choices.EnumerateArray().FirstOrDefault();
@@ -287,10 +372,6 @@ Return ONLY the fixed Python script. Do not include markdown code blocks, explan
                             if (message.TryGetProperty("content", out var contentProp))
                             {
                                 var result = contentProp.GetString();
-
-                                // Track cost
-                                await _costTracking.RecordCostAsync("OpenAI-GPT5", 0.01m);
-
                                 return result;
                             }
                         }
@@ -329,7 +410,7 @@ Return ONLY the fixed Python script. Do not include markdown code blocks, explan
                 _ => throw new ArgumentException($"Unknown validation stage: {stage}")
             };
 
-            var responseText = await CallVisionApiAsync(prompt, annotatedImageBytes, "png", cancellationToken);
+            var responseText = await CallVisionApiAsync(prompt, annotatedImageBytes, imageFormat: "png", sessionId: null, cancellationToken: cancellationToken);
 
             if (string.IsNullOrEmpty(responseText))
             {

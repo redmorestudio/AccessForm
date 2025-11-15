@@ -25,6 +25,16 @@ namespace WordToPdfConverter.Services.Remediation.Decision
         {
             reason = ExitReason.NotSet;
 
+            // Check for validation failure FIRST - don't treat as success
+            if (validation.Status == ValidationStatus.Failed)
+            {
+                _logger.LogError(
+                    $"❌ VeraPDF validation FAILED: {validation.ErrorMessage ?? "Unknown error"}");
+                _logger.LogError("PDF is corrupt or unparseable - remediation made things worse!");
+                reason = ExitReason.FatalError;
+                return true;
+            }
+
             // Success condition - fully compliant
             if (validation.Summary.IsCompliant)
             {
@@ -34,7 +44,8 @@ namespace WordToPdfConverter.Services.Remediation.Decision
             }
 
             // Zero violations - exit immediately (nothing to fix)
-            if (validation.Violations.Count == 0)
+            // BUT only if validation actually succeeded
+            if (validation.Violations.Count == 0 && validation.Status == ValidationStatus.Completed)
             {
                 _logger.LogInformation("✅ No violations found - document already compliant");
                 reason = ExitReason.Success;
@@ -101,8 +112,18 @@ namespace WordToPdfConverter.Services.Remediation.Decision
             var recent = session.History.TakeLast(threshold + 1).ToList();
             var violationCounts = recent.Select(h => h.ViolationCount).ToList();
 
-            // If all counts are the same, we're stagnant
-            return violationCounts.Distinct().Count() == 1;
+            // CRITICAL FIX: Check violation counts, not reported fixes
+            // If violations haven't changed but fixes were reported, we're stuck
+            var allSame = violationCounts.Distinct().Count() == 1;
+
+            if (allSame && recent.Any(h => h.FixesApplied > 0))
+            {
+                _logger.LogWarning(
+                    $"[STAGNATION-DETECTED] Fixes claimed but violations unchanged: " +
+                    $"{violationCounts.First()} violations for {threshold + 1} iterations");
+            }
+
+            return allSame;
         }
 
         private bool IsRegressing(RemediationSession session)

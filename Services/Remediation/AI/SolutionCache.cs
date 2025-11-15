@@ -94,12 +94,13 @@ def fix_form_widget_violations(input_path, output_path):
             logger.info(f'Found Form element at depth {depth}')
 
             # Fix 1: Add Role attribute if missing
+            # IMPORTANT: Dictionary keys must have '/' prefix!
             if '/A' not in elem:
-                elem.A = pikepdf.Dictionary()
+                elem['/A'] = pikepdf.Dictionary()
 
-            if isinstance(elem.A, pikepdf.Dictionary):
-                if '/Role' not in elem.A or str(elem.A.Role) != '/Form':
-                    elem.A.Role = pikepdf.Name('/Form')
+            if isinstance(elem['/A'], pikepdf.Dictionary):
+                if '/Role' not in elem['/A'] or str(elem['/A']['/Role']) != '/Form':
+                    elem['/A']['/Role'] = pikepdf.Name('/Form')
                     fixed_count += 1
                     logger.info('Added Role=/Form attribute')
 
@@ -165,9 +166,10 @@ def add_alt_text(input_path, output_path):
             return
 
         # Add alt text to Figures
+        # IMPORTANT: Dictionary keys must have '/' prefix!
         if '/S' in elem and str(elem.S) == '/Figure':
             if '/Alt' not in elem:
-                elem.Alt = 'Decorative image'
+                elem['/Alt'] = 'Decorative image'
 
         # Process children
         if '/K' in elem:
@@ -226,8 +228,15 @@ add_alt_text(INPUT_PDF, OUTPUT_PDF)
         /// Store a successful GPT solution for future use
         /// </summary>
         public void StoreGptSolution(string violationPattern, string category,
-            string solution, SolutionType type)
+            string solution, SolutionType type, bool actuallyWorked = false)
         {
+            // CRITICAL FIX: Only cache solutions that actually reduced violations
+            if (!actuallyWorked)
+            {
+                _logger.LogWarning($"[SOLUTION-CACHE] Not caching solution for '{category}' - didn't reduce violations");
+                return;
+            }
+
             var key = GenerateKey(violationPattern);
 
             if (_cache.TryGetValue(key, out var existing))
@@ -235,6 +244,7 @@ add_alt_text(INPUT_PDF, OUTPUT_PDF)
                 existing.SuccessCount++;
                 existing.LastUsed = DateTime.UtcNow;
                 existing.SuccessRate = Math.Min(1.0, existing.SuccessRate + 0.05);
+                _logger.LogInformation($"[SOLUTION-CACHE] Updated existing solution '{key}' - success count: {existing.SuccessCount}");
             }
             else
             {
@@ -248,6 +258,7 @@ add_alt_text(INPUT_PDF, OUTPUT_PDF)
                     SuccessRate = 0.70,
                     LastUsed = DateTime.UtcNow
                 });
+                _logger.LogInformation($"[SOLUTION-CACHE] Cached new working solution for '{category}'");
             }
 
             // Persist to disk after storing new solution

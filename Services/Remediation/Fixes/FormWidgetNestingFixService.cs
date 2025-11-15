@@ -114,7 +114,13 @@ namespace WordToPdfConverter.Services.Remediation.Fixes
 
             try
             {
-                // rootTag is null, we'll use FindOrCreateFormElement which handles the root correctly
+                // Get the actual root tag from the document if not provided
+                var actualRootTag = rootTag ?? pdfDoc.GetStructTreeRoot().GetKids()[0] as PdfStructElem;
+                if (actualRootTag == null)
+                {
+                    _logger.LogWarning($"[FORM-WIDGET-FIX] Cannot find document root structure element");
+                    return 0;
+                }
 
                 // Get all widget annotations for this field
                 var widgets = field.GetWidgets();
@@ -137,10 +143,10 @@ namespace WordToPdfConverter.Services.Remediation.Fixes
                         _logger.LogInformation($"[FORM-WIDGET-FIX] Widget {field.GetFieldName()} not in structure tree");
 
                         // Create or find Form structure element
-                        var formElement = await FindOrCreateFormElement(null);
+                        var formElement = await FindOrCreateFormElement(actualRootTag);
 
                         // Add widget to Form structure
-                        if (await AddWidgetToFormElement(widget, formElement, pdfDoc))
+                        if (formElement != null && await AddWidgetToFormElement(widget, formElement, pdfDoc))
                         {
                             fixedCount++;
                             _logger.LogInformation($"[FORM-WIDGET-FIX] Added widget to Form structure");
@@ -149,16 +155,16 @@ namespace WordToPdfConverter.Services.Remediation.Fixes
                     else
                     {
                         // Widget is in structure tree, check if parent is Form
-                        var parent = await GetStructureParent(widgetObj, null);
+                        var parent = await GetStructureParent(widgetObj, actualRootTag);
 
                         if (parent != null && !IsFormElement(parent))
                         {
                             _logger.LogInformation($"[FORM-WIDGET-FIX] Widget {field.GetFieldName()} not nested in Form");
 
                             // Move widget to Form structure
-                            var formElement = await FindOrCreateFormElement(null);
+                            var formElement = await FindOrCreateFormElement(actualRootTag);
 
-                            if (await MoveWidgetToFormElement(widget, parent, formElement, pdfDoc))
+                            if (formElement != null && await MoveWidgetToFormElement(widget, parent, formElement, pdfDoc))
                             {
                                 fixedCount++;
                                 _logger.LogInformation($"[FORM-WIDGET-FIX] Moved widget to Form structure");
@@ -181,7 +187,13 @@ namespace WordToPdfConverter.Services.Remediation.Fixes
 
             try
             {
-                // We won't use rootTag directly, we'll work with the structure tree root
+                // Get the actual root tag from the document if not provided
+                var actualRootTag = rootTag ?? pdfDoc.GetStructTreeRoot().GetKids()[0] as PdfStructElem;
+                if (actualRootTag == null)
+                {
+                    _logger.LogWarning($"[FORM-WIDGET-FIX] Cannot find document root structure element");
+                    return 0;
+                }
 
                 // Get all pages
                 for (int i = 1; i <= pdfDoc.GetNumberOfPages(); i++)
@@ -200,26 +212,28 @@ namespace WordToPdfConverter.Services.Remediation.Fixes
                             if (structParent == null)
                             {
                                 // Widget not in structure tree
-                                // Pass null to indicate we should work with the document's root
-                                var formElement = await FindOrCreateFormElement(null);
+                                var formElement = await FindOrCreateFormElement(actualRootTag);
 
-                                // Create structure parent index
-                                var nextParentIndex = GetNextStructParentIndex(pdfDoc);
-                                widgetObj.Put(PdfName.StructParent, new PdfNumber(nextParentIndex));
-
-                                // Add to parent tree
-                                var parentTreeDict = pdfDoc.GetStructTreeRoot().GetPdfObject().GetAsDictionary(PdfName.ParentTree);
-                                if (parentTreeDict != null)
+                                if (formElement != null)
                                 {
-                                    var nums = parentTreeDict.GetAsArray(PdfName.Nums);
-                                    if (nums == null)
+                                    // Create structure parent index
+                                    var nextParentIndex = GetNextStructParentIndex(pdfDoc);
+                                    widgetObj.Put(PdfName.StructParent, new PdfNumber(nextParentIndex));
+
+                                    // Add to parent tree
+                                    var parentTreeDict = pdfDoc.GetStructTreeRoot().GetPdfObject().GetAsDictionary(PdfName.ParentTree);
+                                    if (parentTreeDict != null)
                                     {
-                                        nums = new PdfArray();
-                                        parentTreeDict.Put(PdfName.Nums, nums);
+                                        var nums = parentTreeDict.GetAsArray(PdfName.Nums);
+                                        if (nums == null)
+                                        {
+                                            nums = new PdfArray();
+                                            parentTreeDict.Put(PdfName.Nums, nums);
+                                        }
+                                        nums.Add(new PdfNumber(nextParentIndex));
+                                        nums.Add(formElement.GetPdfObject());
+                                        fixedCount++;
                                     }
-                                    nums.Add(new PdfNumber(nextParentIndex));
-                                    nums.Add(formElement.GetPdfObject());
-                                    fixedCount++;
                                 }
                             }
                         }

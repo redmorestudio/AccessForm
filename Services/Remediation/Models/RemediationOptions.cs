@@ -26,6 +26,9 @@ namespace WordToPdfConverter.Services.Remediation.Models
         // Reporting
         public bool SaveIntermediatePdfs { get; set; } = false;
         public string IntermediateOutputPath { get; set; } = "./remediation-temp";
+        public bool SaveBestPdf { get; set; } = true;  // Always save best PDF by default
+        public string BestPdfOutputPath { get; set; } = "./remediation-best";
+        public bool ReturnBestPdf { get; set; } = true;  // Return best PDF instead of current in final result
         public bool GenerateDetailedReport { get; set; } = true;
 
         // Progress tracking
@@ -41,7 +44,7 @@ namespace WordToPdfConverter.Services.Remediation.Models
         {
             MaxIterations = 5,
             MaxDuration = TimeSpan.FromMinutes(15),
-            AcceptableComplianceScore = 0.95,
+            AcceptableComplianceScore = null,  // Don't stop until 100% compliant
             ValidateBetweenPhases = true,
             DetectStagnation = true,
             StagnationThreshold = 2,

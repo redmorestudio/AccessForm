@@ -365,6 +365,9 @@ namespace AccessFormServer.Services
                     { "Times-Roman", "Arial" },
                     { "TimesRoman", "Arial" },
                     { "Times", "Arial" },
+                    { "TimesNewRomanPSMT", "Arial" },  // Fix 7.21.4.1-1 violations
+                    { "TimesNewRoman", "Arial" },
+                    { "Times New Roman", "Arial" },
                     { "OpenSansRegular", "Arial" },
                     { "OpenSans-Regular", "Arial" },
                     { "OpenSans", "Arial" },

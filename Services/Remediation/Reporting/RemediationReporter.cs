@@ -20,19 +20,42 @@ namespace WordToPdfConverter.Services.Remediation.Reporting
 
         public RemediationResult GenerateReport(RemediationSession session)
         {
+            // Determine which PDF to return based on options and quality
+            byte[] outputPdf = session.CurrentPdf;
+            ValidationResult finalValidation = session.CurrentValidation;
+
+            if (session.Options.ReturnBestPdf &&
+                session.BestPdf != null &&
+                session.BestValidation != null)
+            {
+                // Use best PDF if it's better than current
+                var currentScore = session.CurrentValidation?.Summary.ComplianceScore ?? 0;
+                var bestScore = session.BestValidation.Summary.ComplianceScore;
+
+                if (bestScore > currentScore)
+                {
+                    outputPdf = session.BestPdf;
+                    finalValidation = session.BestValidation;
+
+                    _logger.LogInformation(
+                        $"📊 Using best PDF from iteration {session.BestIterationNumber} " +
+                        $"({bestScore:F1}% vs current {currentScore:F1}%)");
+                }
+            }
+
             var result = new RemediationResult
             {
                 Success = session.IsCompliant,
                 ExitReason = session.ExitReason,
-                OutputPdf = session.CurrentPdf,
+                OutputPdf = outputPdf,
                 Summary = GenerateSummary(session),
                 PhaseResults = session.AllPhaseResults,
                 IterationHistory = session.History,
                 Metrics = session.Metrics,
-                RemainingViolations = session.CurrentValidation?.Violations ?? new List<PdfUAViolation>(),
+                RemainingViolations = finalValidation?.Violations ?? new List<PdfUAViolation>(),
                 Recommendations = GenerateRecommendations(session),
                 InitialValidation = session.InitialValidation,
-                FinalValidation = session.CurrentValidation
+                FinalValidation = finalValidation
             };
 
             LogSummary(result);

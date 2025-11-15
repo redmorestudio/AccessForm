@@ -118,3 +118,28 @@ TestAssets/verapdf-extracted/
 TestAssets/verapdf-greenfield-*/
 TestAssets/verapdf-manual/
 TestAssets/verapdf-simple/
+
+# State assets - city documents and batch processing data
+StateAssets/
+StateAssets_archived*/
+
+# Batch processing outputs
+batch_progress.json
+smart_progress*.json
+spider_log*.txt
+spider_summary*.txt
+*_summary_*.txt
+*_analysis.txt
+*.out
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Temporary PDF files
+*-remediated.pdf
+test-*.pdf
+remediation-*/
+
+# Batch processing scripts (keep in repo but ignore outputs)
+# Reports are tracked selectively

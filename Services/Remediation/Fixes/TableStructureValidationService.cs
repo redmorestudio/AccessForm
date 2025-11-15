@@ -75,6 +75,12 @@ namespace WordToPdfConverter.Services.Remediation.Fixes
 
                             // Phase 4: Ensure all TH/TD are in TR
                             fixedCount += await FixOrphanedCells(elem);
+
+                            // Phase 5: Convert Span elements in TR to TD (7.2-10 violation)
+                            fixedCount += await ConvertSpanToTD(elem);
+
+                            // Phase 6: Balance column counts across table rows (7.2-42 violation)
+                            fixedCount += await BalanceTableColumns(elem);
                         }
                     }
                 }
@@ -375,6 +381,252 @@ namespace WordToPdfConverter.Services.Remediation.Fixes
             }
 
             return await Task.FromResult(fixedCount);
+        }
+
+        private async Task<int> ConvertSpanToTD(PdfStructElem element)
+        {
+            var fixedCount = 0;
+
+            try
+            {
+                var role = element.GetRole();
+                if (role != null && role.GetValue() == "TR")
+                {
+                    // Check immediate children of TR for Span elements
+                    var children = element.GetKids();
+                    if (children != null)
+                    {
+                        var spansToConvert = new List<PdfStructElem>();
+
+                        foreach (var child in children)
+                        {
+                            if (child is PdfStructElem childElem)
+                            {
+                                var childRole = childElem.GetRole();
+                                if (childRole != null)
+                                {
+                                    var childRoleValue = childRole.GetValue();
+
+                                    // Found a Span element in a TR - this violates 7.2-10
+                                    if (childRoleValue == "Span" || childRoleValue == "SPAN")
+                                    {
+                                        spansToConvert.Add(childElem);
+                                    }
+                                    // Also check for other invalid children (not TH/TD)
+                                    else if (childRoleValue != "TH" && childRoleValue != "TD" &&
+                                             childRoleValue != "th" && childRoleValue != "td")
+                                    {
+                                        _logger.LogWarning($"[TABLE-STRUCTURE] Found invalid child '{childRoleValue}' in TR");
+                                        spansToConvert.Add(childElem);
+                                    }
+                                }
+                            }
+                        }
+
+                        // Convert each Span to TD
+                        if (spansToConvert.Count > 0)
+                        {
+                            _logger.LogInformation($"[TABLE-STRUCTURE] Found {spansToConvert.Count} Span elements in TR, converting to TD");
+
+                            foreach (var span in spansToConvert)
+                            {
+                                try
+                                {
+                                    // Change the role from Span to TD
+                                    var spanRole = span.GetRole()?.GetValue();
+                                    _logger.LogDebug($"[TABLE-STRUCTURE] Converting {spanRole} to TD");
+
+                                    // Set the new role to TD
+                                    span.SetRole(PdfName.TD);
+
+                                    // Copy any important attributes from Span to TD
+                                    // (MCIDs, content items, etc. are preserved automatically)
+
+                                    fixedCount++;
+                                    _logger.LogInformation($"[TABLE-STRUCTURE] Converted {spanRole} to TD");
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogWarning($"[TABLE-STRUCTURE] Failed to convert Span to TD: {ex.Message}");
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Recursively check children
+                var kids = element.GetKids();
+                if (kids != null)
+                {
+                    foreach (var kid in kids.ToList())
+                    {
+                        if (kid is PdfStructElem childElem)
+                        {
+                            fixedCount += await ConvertSpanToTD(childElem);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"[TABLE-STRUCTURE] Error converting Span to TD: {ex.Message}");
+            }
+
+            return await Task.FromResult(fixedCount);
+        }
+
+        private async Task<int> BalanceTableColumns(PdfStructElem element)
+        {
+            var fixedCount = 0;
+
+            try
+            {
+                var role = element.GetRole();
+                if (role != null && IsTableElement(role))
+                {
+                    _logger.LogDebug("[TABLE-STRUCTURE] Checking table for column count balance");
+
+                    // Get all TR elements in the table
+                    var rows = new List<(PdfStructElem row, int columnCount)>();
+                    await CollectTableRows(element, rows);
+
+                    if (rows.Count == 0)
+                        return 0;
+
+                    // Find the maximum column count
+                    var maxColumns = rows.Max(r => r.columnCount);
+
+                    if (maxColumns == 0)
+                        return 0;
+
+                    _logger.LogInformation($"[TABLE-STRUCTURE] Table has {rows.Count} rows, max {maxColumns} columns");
+
+                    // Check if all rows have the same column count
+                    var allSame = rows.All(r => r.columnCount == maxColumns);
+                    if (allSame)
+                    {
+                        _logger.LogDebug("[TABLE-STRUCTURE] All rows have consistent column counts");
+                        return 0;
+                    }
+
+                    // Balance rows by adding empty TD cells
+                    var doc = element.GetPdfObject().GetIndirectReference()?.GetDocument();
+                    foreach (var (row, columnCount) in rows)
+                    {
+                        if (columnCount < maxColumns)
+                        {
+                            var cellsToAdd = maxColumns - columnCount;
+                            _logger.LogInformation($"[TABLE-STRUCTURE] Row has {columnCount} columns, adding {cellsToAdd} empty cells");
+
+                            for (int i = 0; i < cellsToAdd; i++)
+                            {
+                                var emptyTD = new PdfStructElem(doc, PdfName.TD);
+                                row.AddKid(emptyTD);
+                            }
+
+                            fixedCount++;
+                        }
+                    }
+
+                    if (fixedCount > 0)
+                    {
+                        _logger.LogInformation($"[TABLE-STRUCTURE] Balanced {fixedCount} rows to {maxColumns} columns");
+                    }
+                }
+
+                // Recursively check children
+                var kids = element.GetKids();
+                if (kids != null)
+                {
+                    foreach (var kid in kids.ToList())
+                    {
+                        if (kid is PdfStructElem childElem)
+                        {
+                            fixedCount += await BalanceTableColumns(childElem);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"[TABLE-STRUCTURE] Error balancing table columns: {ex.Message}");
+            }
+
+            return await Task.FromResult(fixedCount);
+        }
+
+        private async Task CollectTableRows(PdfStructElem element, List<(PdfStructElem row, int columnCount)> rows)
+        {
+            var children = element.GetKids();
+            if (children == null)
+                return;
+
+            foreach (var child in children)
+            {
+                if (child is PdfStructElem childElem)
+                {
+                    var childRole = childElem.GetRole();
+                    if (childRole != null)
+                    {
+                        var roleValue = childRole.GetValue();
+
+                        // If it's a TR, count its columns
+                        if (roleValue == "TR")
+                        {
+                            var columnCount = CountColumns(childElem);
+                            rows.Add((childElem, columnCount));
+                        }
+                        // If it's a table section (THead, TBody, TFoot), recurse into it
+                        else if (IsTableSectionElement(childRole))
+                        {
+                            await CollectTableRows(childElem, rows);
+                        }
+                    }
+                }
+            }
+
+            await Task.CompletedTask;
+        }
+
+        private int CountColumns(PdfStructElem row)
+        {
+            var count = 0;
+            var children = row.GetKids();
+
+            if (children == null)
+                return 0;
+
+            foreach (var child in children)
+            {
+                if (child is PdfStructElem childElem)
+                {
+                    var childRole = childElem.GetRole();
+                    if (childRole != null)
+                    {
+                        var roleValue = childRole.GetValue();
+
+                        // Count TH and TD elements
+                        if (roleValue == "TH" || roleValue == "TD")
+                        {
+                            // Check for ColSpan attribute
+                            var colSpan = 1;
+                            var attributes = childElem.GetAttributes(false);
+                            if (attributes != null && attributes is PdfDictionary attrDict)
+                            {
+                                var colSpanAttr = attrDict.GetAsNumber(new PdfName("ColSpan"));
+                                if (colSpanAttr != null)
+                                {
+                                    colSpan = colSpanAttr.IntValue();
+                                }
+                            }
+
+                            count += colSpan;
+                        }
+                    }
+                }
+            }
+
+            return count;
         }
 
         private async Task<PdfStructElem> FindOrCreateNearestTable(PdfStructElem element)

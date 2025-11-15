@@ -148,6 +148,7 @@ namespace WordToPdfConverter.Services.Remediation.AI
 
                 string gptResponse = null;
                 bool usedCache = false;
+                int violationsBeforeFix = violations.Count;
 
                 // Check solution cache first
                 if (_solutionCache != null && violations.Any())
@@ -161,23 +162,73 @@ namespace WordToPdfConverter.Services.Remediation.AI
                     }
                 }
 
-                // If no cached solution, build prompt and call GPT-5
+                // If no cached solution, build prompt and call GPT with two-tier strategy
                 if (!usedCache)
                 {
+                    var systemMessage = BuildSystemMessage();
                     var prompt = BuildRemediationPrompt(category, violations);
-                    gptResponse = await _openAiService.CallTextApiAsync(prompt);
+
+                    // TIER 1: Try GPT-4o first (fast, cheap)
+                    _logger.LogInformation($"[GPT-REMEDIATION] Attempting GPT-4o for {category}");
+                    int maxApiRetries = 2;
+
+                    for (int attempt = 0; attempt < maxApiRetries; attempt++)
+                    {
+                        try
+                        {
+                            gptResponse = await _openAiService.CallTextApiAsync(prompt, model: "gpt-4o", sessionId: null, systemMessage: systemMessage);
+                            if (!string.IsNullOrEmpty(gptResponse))
+                            {
+                                _logger.LogInformation($"[GPT-4o-REMEDIATION] ✓ GPT-4o succeeded for {category}");
+                                break; // Success
+                            }
+
+                            if (attempt < maxApiRetries - 1)
+                            {
+                                _logger.LogWarning($"[GPT-4o-REMEDIATION] Empty response from GPT-4o for {category}, retrying ({attempt + 1}/{maxApiRetries})");
+                                await Task.Delay(2000);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, $"[GPT-4o-REMEDIATION] API call failed for {category} (attempt {attempt + 1}/{maxApiRetries})");
+
+                            if (attempt < maxApiRetries - 1)
+                            {
+                                await Task.Delay(2000);
+                            }
+                        }
+                    }
+
+                    // TIER 2: Fallback to o1-preview if GPT-4o failed (empty response or exceptions after all retries)
+                    if (string.IsNullOrEmpty(gptResponse))
+                    {
+                        _logger.LogWarning($"[GPT-REMEDIATION] GPT-4o failed, escalating to o1-preview for {category}");
+                        try
+                        {
+                            gptResponse = await _openAiService.CallTextApiAsync(prompt, model: "o1-preview", sessionId: null, systemMessage: systemMessage);
+                            if (!string.IsNullOrEmpty(gptResponse))
+                            {
+                                _logger.LogInformation($"[O1-REMEDIATION] ✓ o1-preview succeeded after GPT-4o failure for {category}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, $"[O1-REMEDIATION] o1-preview fallback also failed for {category}");
+                        }
+                    }
                 }
 
                 if (string.IsNullOrEmpty(gptResponse))
                 {
-                    _logger.LogWarning($"[GPT-5-REMEDIATION] Empty response from GPT-5 for {category}");
+                    _logger.LogWarning($"[GPT-REMEDIATION] Empty response from all models for {category}");
                     return result;
                 }
 
                 // Detect response type (script or JSON instructions)
                 if (IsScriptResponse(gptResponse))
                 {
-                    _logger.LogInformation($"[GPT-5-REMEDIATION] GPT-5 provided a Python script for {category}");
+                    _logger.LogInformation($"[GPT-REMEDIATION] Received Python script for {category}");
 
                     // Extract and execute the script with retry on error
                     var script = ExtractScript(gptResponse);
@@ -194,23 +245,18 @@ namespace WordToPdfConverter.Services.Remediation.AI
                         {
                             result.OutputPdf = scriptResult.OutputPdf;
                             result.Success = true;
-                            result.FixedCount = violations.Count; // Estimate
-                            _logger.LogInformation($"[GPT-5-REMEDIATION] Script executed successfully");
 
-                            // Store successful solution in cache for future use
-                            if (!usedCache && _solutionCache != null && violations.Any())
-                            {
-                                _solutionCache.StoreGptSolution(
-                                    violations.First().Description,
-                                    category,
-                                    script,
-                                    SolutionCache.SolutionType.PythonScript);
-                                _logger.LogInformation("[GPT-5-REMEDIATION] Stored successful solution in cache");
-                            }
+                            // CRITICAL FIX: Don't assume violations were fixed
+                            // The orchestrator will validate and determine actual fix count
+                            result.FixedCount = 0; // Unknown until validation
+                            _logger.LogInformation($"[GPT-REMEDIATION] Script executed successfully, awaiting validation to confirm fixes");
+
+                            // NOTE: Don't cache here - let the orchestrator cache only if validation confirms fixes
+                            // The orchestrator now handles caching based on actual violation reduction
                         }
                         else
                         {
-                            _logger.LogWarning($"[GPT-5-REMEDIATION] Script execution failed after retries: {scriptResult.ErrorMessage}");
+                            _logger.LogWarning($"[GPT-REMEDIATION] Script execution failed after retries: {scriptResult.ErrorMessage}");
                             _logger.LogDebug($"Script output: {scriptResult.StandardOutput}");
                             _logger.LogDebug($"Script errors: {scriptResult.StandardError}");
                         }
@@ -244,123 +290,199 @@ namespace WordToPdfConverter.Services.Remediation.AI
             }
         }
 
+        private string BuildSystemMessage()
+        {
+            return @"You are an expert PDF/UA accessibility specialist with deep knowledge of pikepdf, PDF internal structure, and accessibility standards.
+
+**CRITICAL TECHNICAL REQUIREMENTS FOR PIKEPDF:**
+
+1. **PDF Dictionary Keys MUST start with '/'**:
+   ❌ WRONG: viewer_preferences['DisplayDocTitle'] = True
+   ✅ RIGHT: viewer_preferences['/DisplayDocTitle'] = True
+
+   ❌ WRONG: pdf.Root.ViewerPreferences = pikepdf.Dictionary(DisplayDocTitle=True)
+   ✅ RIGHT: pdf.Root['/ViewerPreferences'] = pikepdf.Dictionary({'/DisplayDocTitle': True})
+
+2. **Boolean Values**: Use Python True/False directly
+   ❌ WRONG: pikepdf.Boolean(True) - Does NOT exist!
+   ✅ RIGHT: True
+
+3. **Metadata Values MUST be Strings**:
+   ❌ WRONG: meta['pdfuaid:part'] = 1
+   ✅ RIGHT: meta['pdfuaid:part'] = '1'
+
+4. **Use PascalCase**: pdf.Root (NOT pdf.root)
+
+5. **File Paths**: ALWAYS use INPUT_PDF and OUTPUT_PDF constants (they are pre-defined)
+
+6. **XMP Namespaces**: Use register_xml_namespace() NOT register_namespace()
+
+**YOUR GOAL:**
+Create Python scripts that fix PDF/UA violations efficiently and reliably. Scripts must:
+- Work on ANY document with similar violations (not document-specific)
+- Use iteration and pattern matching (never hardcode page numbers or specific content)
+- Preserve document functionality (especially form fields)
+- Be robust to different PDF structures
+
+**RESPONSE FORMAT:**
+Return ONLY a Python script in a ```python code block. No explanations, no markdown outside the code block.";
+        }
+
         private string BuildRemediationPrompt(string category, List<PdfUAViolation> violations)
         {
             var sb = new StringBuilder();
 
-            sb.AppendLine("You are a PDF/UA compliance expert using GPT-5. Analyze these violations and provide remediation.");
+            // Analyze violation patterns
+            var violationPatterns = AnalyzeViolationPatterns(violations);
+            var uniqueRules = violations.Select(v => v.RuleId).Distinct().ToList();
+            var affectedPages = violations.Select(v => v.Location?.PageNumber ?? 0).Distinct().Count();
+
+            sb.AppendLine($"**REMEDIATION TASK: {category} Violations**");
             sb.AppendLine();
-            sb.AppendLine($"VIOLATION CATEGORY: {category}");
-            sb.AppendLine($"TOTAL VIOLATIONS: {violations.Count}");
+            sb.AppendLine($"**GOAL**: Reduce {violations.Count} PDF/UA violations to zero by creating a pikepdf Python script.");
+            sb.AppendLine();
+            sb.AppendLine($"**CONTEXT**:");
+            sb.AppendLine($"- Total Violations: {violations.Count}");
+            sb.AppendLine($"- Unique Rules: {uniqueRules.Count} ({string.Join(", ", uniqueRules.Take(5))}{(uniqueRules.Count > 5 ? "..." : "")})");
+            sb.AppendLine($"- Affected Pages: {affectedPages}");
             sb.AppendLine();
 
-            // Special handling for Form/Widget violations
-            bool hasFormViolations = violations.Any(v =>
-                v.Description.Contains("Form element") ||
-                v.Description.Contains("widget") ||
-                v.Description.Contains("Role attribute") ||
-                v.RuleId.Contains("7.18"));
-
-            if (hasFormViolations)
+            // Provide pattern analysis
+            if (violationPatterns.Count > 0)
             {
-                sb.AppendLine("⚠️ FORM/WIDGET VIOLATION DETECTED - SPECIAL INSTRUCTIONS:");
-                sb.AppendLine("This is a common PDF/UA violation where Form elements lack proper Role attributes");
-                sb.AppendLine("or don't have correct widget annotation references (per Table 348 & Table 340).");
-                sb.AppendLine();
-                sb.AppendLine("The fix typically involves:");
-                sb.AppendLine("1. Ensuring each Form tag has a Role='/Form' attribute");
-                sb.AppendLine("2. Ensuring Form tags contain proper widget annotation references");
-                sb.AppendLine("3. Fixing the parent-child relationship between Form tags and widgets");
-                sb.AppendLine();
-                sb.AppendLine("Please provide a Python script using pikepdf that:");
-                sb.AppendLine("- Iterates through all Form tags in the structure tree");
-                sb.AppendLine("- Adds Role='/Form' attribute if missing");
-                sb.AppendLine("- Ensures proper widget references as children");
-                sb.AppendLine("- Maintains the existing form field functionality");
+                sb.AppendLine($"**VIOLATION PATTERNS** (most common first):");
+                foreach (var pattern in violationPatterns.Take(5))
+                {
+                    sb.AppendLine($"- {pattern.Pattern} ({pattern.Count} occurrences)");
+                }
                 sb.AppendLine();
             }
 
-            sb.AppendLine("VIOLATION DETAILS:");
-
-            foreach (var violation in violations.Take(10)) // Limit to first 10 for context
+            // Provide category-specific guidance
+            sb.AppendLine($"**SUCCESS CRITERIA FOR {category.ToUpper()}**:");
+            switch (category)
             {
-                sb.AppendLine($"- Rule: {violation.RuleId}");
-                sb.AppendLine($"  Description: {violation.Description}");
-                sb.AppendLine($"  Context: {violation.Context}");
-                sb.AppendLine($"  Location: Page {violation.Location?.PageNumber ?? 0}, {violation.Location?.ContextDescription}");
+                case "FormFields":
+                    sb.AppendLine("- Each Form tag MUST have Role='/Form' attribute in structure tree");
+                    sb.AppendLine("- Form tags must reference their widget annotations correctly");
+                    sb.AppendLine("- PRESERVE all /AcroForm entries and widget functionality");
+                    sb.AppendLine("- Do NOT modify pdf.Root.AcroForm or widget annotations");
+                    break;
+                case "Metadata":
+                    sb.AppendLine("- Set PDF/UA identifier in XMP metadata (pdfuaid:part='1')");
+                    sb.AppendLine("- Ensure document title is set and DisplayDocTitle=True");
+                    sb.AppendLine("- Set /MarkInfo dictionary with /Marked=True");
+                    break;
+                case "Structure":
+                    sb.AppendLine("- Fix structure tree hierarchy and tag relationships");
+                    sb.AppendLine("- Ensure all content is properly tagged");
+                    sb.AppendLine("- Remove or fix improperly nested tags");
+                    break;
+                case "Fonts":
+                    sb.AppendLine("- Ensure all fonts are embedded");
+                    sb.AppendLine("- Fix font encoding issues");
+                    sb.AppendLine("- Validate font descriptors");
+                    break;
+                case "Whitespace":
+                    sb.AppendLine("- Tag whitespace as artifacts");
+                    sb.AppendLine("- Remove improper Span tags around whitespace");
+                    sb.AppendLine("- Use /Artifact for non-content whitespace");
+                    break;
+                case "Content":
+                    sb.AppendLine("- Add alt text to images and figures");
+                    sb.AppendLine("- Fix heading hierarchy");
+                    sb.AppendLine("- Ensure links have accessible names");
+                    break;
+                case "Links":
+                    sb.AppendLine("- Add /Contents attribute to link annotations");
+                    sb.AppendLine("- Ensure link annotations are properly tagged");
+                    sb.AppendLine("- Provide accessible link text");
+                    break;
+                default:
+                    sb.AppendLine("- Fix all reported violations for this category");
+                    break;
+            }
+            sb.AppendLine();
+
+            // Sample violations for context (show up to 20 for better pattern understanding)
+            sb.AppendLine($"**SAMPLE VIOLATIONS** ({Math.Min(20, violations.Count)} of {violations.Count}):");
+            foreach (var violation in violations.Take(20))
+            {
+                var pageInfo = violation.Location?.PageNumber > 0 ? $" [Page {violation.Location.PageNumber}]" : "";
+                sb.AppendLine($"- {violation.RuleId}: {violation.Description}{pageInfo}");
+            }
+            sb.AppendLine();
+
+            // Emphasize outcome and reusability
+            sb.AppendLine("**SCRIPT REQUIREMENTS**:");
+            sb.AppendLine("1. Use pikepdf library exclusively");
+            sb.AppendLine("2. Open PDF with: pdf = pikepdf.open(INPUT_PDF)");
+            sb.AppendLine("3. Save PDF with: pdf.save(OUTPUT_PDF)");
+            sb.AppendLine("4. Make script GENERAL - it will be cached and reused");
+            sb.AppendLine("5. Iterate over ALL matching elements (never hardcode specific pages/elements)");
+            sb.AppendLine("6. Handle missing or malformed structures gracefully");
+            sb.AppendLine();
+
+            // Category-specific critical warnings
+            if (category == "FormFields")
+            {
+                sb.AppendLine("⚠️ **CRITICAL FOR FORM FIELDS**:");
+                sb.AppendLine("- ONLY modify structure tree (/StructTreeRoot), NOT AcroForm");
+                sb.AppendLine("- Do NOT touch pdf.Root.AcroForm or widget annotations");
+                sb.AppendLine("- Form fields must remain functional after remediation");
                 sb.AppendLine();
             }
 
-            sb.AppendLine("You have TWO options for remediation:");
-            sb.AppendLine();
-            sb.AppendLine("OPTION 1: Provide a Python script that fixes these violations");
-            sb.AppendLine("The script will have access to:");
-            sb.AppendLine("- INPUT_PDF: path to input PDF file");
-            sb.AppendLine("- OUTPUT_PDF: path where the fixed PDF should be saved");
-            sb.AppendLine("- Libraries: pikepdf, PyPDF2, reportlab, pypdf");
-            sb.AppendLine();
-            sb.AppendLine("⚠️ CRITICAL pikepdf API REQUIREMENTS - FAILURE TO FOLLOW WILL CAUSE SCRIPT TO CRASH:");
-            sb.AppendLine();
-            sb.AppendLine("1. METADATA VALUES MUST BE STRINGS:");
-            sb.AppendLine("   ❌ WRONG: meta['pdfuaid:part'] = 1  (TypeError: Setting pdfuaid:part to 1 with type <class 'int'>)");
-            sb.AppendLine("   ✅ RIGHT: meta['pdfuaid:part'] = '1'  (String value required!)");
-            sb.AppendLine();
-            sb.AppendLine("   ❌ WRONG: want_part = 1; meta['pdfuaid:part'] = want_part");
-            sb.AppendLine("   ✅ RIGHT: want_part = '1'; meta['pdfuaid:part'] = want_part");
-            sb.AppendLine();
-            sb.AppendLine("2. Use PascalCase: pdf.Root (NOT pdf.root)");
-            sb.AppendLine("3. Use register_xml_namespace() NOT register_namespace()");
-            sb.AppendLine();
-            sb.AppendLine("Working example - fixing PDF/UA metadata (FOLLOW THIS PATTERN EXACTLY):");
-            sb.AppendLine("```python");
-            sb.AppendLine("import pikepdf");
-            sb.AppendLine();
-            sb.AppendLine("pdf = pikepdf.open(INPUT_PDF)");
-            sb.AppendLine();
-            sb.AppendLine("# Get or create metadata");
-            sb.AppendLine("with pdf.open_metadata() as meta:");
-            sb.AppendLine("    # Register namespace (use register_xml_namespace, NOT register_namespace)");
-            sb.AppendLine("    meta.register_xml_namespace('pdfuaid', 'http://www.aiim.org/pdfua/ns/id/')");
-            sb.AppendLine("    ");
-            sb.AppendLine("    # CRITICAL: ALL metadata values MUST be STRINGS!");
-            sb.AppendLine("    # Use QUOTES around numbers to make them strings");
-            sb.AppendLine("    want_part = '1'  # STRING not integer! '1' not 1");
-            sb.AppendLine("    meta['pdfuaid:part'] = want_part  # Now assigning a STRING");
-            sb.AppendLine("    ");
-            sb.AppendLine("    # Or assign directly as string:");
-            sb.AppendLine("    meta['pdfuaid:conformance'] = 'A'  # String value");
-            sb.AppendLine("    meta['dc:title'] = 'Accessible Document'  # String value");
-            sb.AppendLine();
-            sb.AppendLine("# Access catalog with pdf.Root (PascalCase!)");
-            sb.AppendLine("if '/MarkInfo' not in pdf.Root:");
-            sb.AppendLine("    pdf.Root.MarkInfo = pdf.make_indirect(pikepdf.Dictionary(Marked=True))");
-            sb.AppendLine();
-            sb.AppendLine("pdf.save(OUTPUT_PDF)");
-            sb.AppendLine("```");
-            sb.AppendLine();
-            sb.AppendLine("OPTION 2: Provide JSON instructions for simple fixes:");
-            sb.AppendLine(@"{
-  ""instructions"": [
-    {
-      ""action"": ""add_tag|modify_tag|remove_tag|set_attribute|fix_structure"",
-      ""target"": ""specific element or pattern to target"",
-      ""details"": {
-        ""tag_name"": ""tag to add/modify"",
-        ""attributes"": {""key"": ""value""},
-        ""content"": ""content if needed""
-      },
-      ""reasoning"": ""why this fix resolves the violation""
-    }
-  ]
-}");
-
-            sb.AppendLine();
-            sb.AppendLine("For complex tag tree manipulations, structure fixes, or when you need precise control,");
-            sb.AppendLine("please provide a Python script. For simple metadata or attribute changes, use JSON.");
-            sb.AppendLine();
-            sb.AppendLine("Focus on fixes that will resolve the most violations with minimal changes.");
+            sb.AppendLine("**OUTPUT**: Provide ONLY a Python script in a ```python code block. No explanations.");
 
             return sb.ToString();
+        }
+
+        private List<ViolationPattern> AnalyzeViolationPatterns(List<PdfUAViolation> violations)
+        {
+            // Group violations by common patterns
+            var patterns = new Dictionary<string, int>();
+
+            foreach (var violation in violations)
+            {
+                // Extract key pattern from description
+                var description = violation.Description ?? "";
+                var pattern = ExtractPattern(description);
+
+                if (patterns.ContainsKey(pattern))
+                    patterns[pattern]++;
+                else
+                    patterns[pattern] = 1;
+            }
+
+            return patterns
+                .OrderByDescending(p => p.Value)
+                .Select(p => new ViolationPattern { Pattern = p.Key, Count = p.Value })
+                .ToList();
+        }
+
+        private string ExtractPattern(string description)
+        {
+            // Extract meaningful pattern from violation description
+            // This is a simple heuristic - could be improved with NLP
+
+            // Remove specific details like page numbers, element names, etc.
+            description = System.Text.RegularExpressions.Regex.Replace(description, @"\bpage\s+\d+\b", "page X", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            description = System.Text.RegularExpressions.Regex.Replace(description, @"\belement\s+\d+\b", "element X", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            description = System.Text.RegularExpressions.Regex.Replace(description, @"'[^']*'", "'...'");
+
+            // Take first sentence or first 100 chars
+            var firstSentence = description.Split('.')[0];
+            if (firstSentence.Length > 100)
+                firstSentence = firstSentence.Substring(0, 100) + "...";
+
+            return firstSentence.Trim();
+        }
+
+        private class ViolationPattern
+        {
+            public string Pattern { get; set; }
+            public int Count { get; set; }
         }
 
         private List<RemediationInstruction> ParseRemediationInstructions(string gptResponse)

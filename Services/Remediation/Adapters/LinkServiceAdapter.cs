@@ -13,6 +13,8 @@ namespace WordToPdfConverter.Services.Remediation.Adapters
     {
         private readonly ILogger<LinkServiceAdapter> _logger;
         private readonly TocLinkFixServiceEnhanced _tocLinkService;
+        private readonly WordToPdfConverter.Services.Remediation.Fixes.CrossReferenceLinkService _crossRefService;
+        private readonly WordToPdfConverter.Services.Remediation.Fixes.LinkAltTextService _linkAltTextService;
 
         public string ServiceName => "Link Structure Fixes";
         public ViolationCategory TargetCategory => ViolationCategory.Links;
@@ -21,33 +23,60 @@ namespace WordToPdfConverter.Services.Remediation.Adapters
 
         public LinkServiceAdapter(
             ILogger<LinkServiceAdapter> logger,
-            TocLinkFixServiceEnhanced tocLinkService)
+            TocLinkFixServiceEnhanced tocLinkService,
+            WordToPdfConverter.Services.Remediation.Fixes.CrossReferenceLinkService crossRefService,
+            WordToPdfConverter.Services.Remediation.Fixes.LinkAltTextService linkAltTextService)
         {
             _logger = logger;
             _tocLinkService = tocLinkService;
+            _crossRefService = crossRefService;
+            _linkAltTextService = linkAltTextService;
         }
 
         public async Task<ServiceResult> RemediateAsync(byte[] pdfBytes)
         {
             var stopwatch = Stopwatch.StartNew();
             var result = new ServiceResult { Success = true };
+            var totalFixed = 0;
 
             try
             {
+                // Phase 1: Fix TOC links
                 var linkResult = await _tocLinkService.FixTocLinksAsync(pdfBytes);
 
                 if (linkResult.Success && linkResult.FixedPdf != null)
                 {
                     result.OutputPdf = linkResult.FixedPdf;
-                    result.IssuesFixed = linkResult.FixedLinks;
-                    result.IssuesFound = linkResult.FixedLinks;
+                    totalFixed += linkResult.FixedLinks;
                     result.ChangesMade = linkResult.FixedLinks > 0;
                 }
                 else
                 {
                     result.OutputPdf = pdfBytes;
-                    result.ChangesMade = false;
                 }
+
+                // Phase 2: Add cross-reference alt text (higher priority - runs first)
+                var crossRefResult = await _crossRefService.RemediateAsync(result.OutputPdf);
+
+                if (crossRefResult.Success && crossRefResult.OutputPdf != null)
+                {
+                    result.OutputPdf = crossRefResult.OutputPdf;
+                    totalFixed += crossRefResult.IssuesFixed;
+                    result.ChangesMade = result.ChangesMade || crossRefResult.ChangesMade;
+                }
+
+                // Phase 3: Add general alt text to remaining links
+                var altTextResult = await _linkAltTextService.RemediateAsync(result.OutputPdf);
+
+                if (altTextResult.Success && altTextResult.OutputPdf != null)
+                {
+                    result.OutputPdf = altTextResult.OutputPdf;
+                    totalFixed += altTextResult.IssuesFixed;
+                    result.ChangesMade = result.ChangesMade || altTextResult.ChangesMade;
+                }
+
+                result.IssuesFixed = totalFixed;
+                result.IssuesFound = totalFixed;
             }
             catch (Exception ex)
             {

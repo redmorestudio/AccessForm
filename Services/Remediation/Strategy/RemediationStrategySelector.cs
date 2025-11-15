@@ -71,15 +71,15 @@ namespace WordToPdfConverter.Services.Remediation.Strategy
                 });
             }
 
-            // Phase 3: Structure Enhancement (Order: 3, MaxIter: 1)
+            // Phase 1.5: Structure Enhancement (Order: 2, MaxIter: 2) - Moved earlier to fix 7.1-3 violations
             if (analysis.Categories.ContainsKey(ViolationCategory.Structure))
             {
                 phases.Add(new RemediationPhase
                 {
                     Name = "Structure Enhancement",
-                    Order = 3,
+                    Order = 2, // Changed from 3 - run earlier to fix content marking issues (same as Content)
                     TargetCategory = ViolationCategory.Structure,
-                    MaxIterations = 1,
+                    MaxIterations = 2, // Increased from 1 to handle edge cases
                     Services = GetServicesForCategory(ViolationCategory.Structure)
                 });
             }
@@ -107,6 +107,19 @@ namespace WordToPdfConverter.Services.Remediation.Strategy
                     TargetCategory = ViolationCategory.Links,
                     MaxIterations = 2,
                     Services = GetServicesForCategory(ViolationCategory.Links)
+                });
+            }
+
+            // Phase 5b: Annotation Fixes (Order: 5, MaxIter: 2)
+            if (analysis.Categories.ContainsKey(ViolationCategory.Annotations))
+            {
+                phases.Add(new RemediationPhase
+                {
+                    Name = "Annotation Content Fixes",
+                    Order = 5,
+                    TargetCategory = ViolationCategory.Annotations,
+                    MaxIterations = 2,
+                    Services = GetServicesForCategory(ViolationCategory.Annotations)
                 });
             }
 
@@ -194,31 +207,55 @@ namespace WordToPdfConverter.Services.Remediation.Strategy
             if (artifactService != null)
                 cleanupPhase.Services.Add(artifactService);
 
-            // 2. Fix form widget nesting (7.18.4 violations)
+            // 1.5. Fix content by specific index (7.1-3 violations for specific content[33] etc)
+            var contentIndexService = _serviceProvider.GetService(
+                typeof(Fixes.ContentIndexArtifactFixService)) as IRemediationService;
+            if (contentIndexService != null)
+                cleanupPhase.Services.Add(contentIndexService);
+
+            // 2. Fix unmarked XObject content (7.1-3 violations)
+            var unmarkedXObjectService = _serviceProvider.GetService(
+                typeof(Fixes.UnmarkedXObjectContentFixService)) as IRemediationService;
+            if (unmarkedXObjectService != null)
+                cleanupPhase.Services.Add(unmarkedXObjectService);
+
+            // 3. Fix form widget nesting (7.18.4 violations)
             var formWidgetService = _serviceProvider.GetService(
                 typeof(Fixes.FormWidgetNestingFixService)) as IRemediationService;
             if (formWidgetService != null)
                 cleanupPhase.Services.Add(formWidgetService);
 
-            // 3. Fix table structure (7.2 violations)
+            // 4. Fix form role attributes (7.18.4-2 violations)
+            var formRoleService = _serviceProvider.GetService(
+                typeof(Fixes.FormRoleAttributeFixService)) as IRemediationService;
+            if (formRoleService != null)
+                cleanupPhase.Services.Add(formRoleService);
+
+            // 5. Remove empty form elements (7.18.4-2 violations)
+            var emptyFormService = _serviceProvider.GetService(
+                typeof(Fixes.EmptyFormElementRemovalService)) as IRemediationService;
+            if (emptyFormService != null)
+                cleanupPhase.Services.Add(emptyFormService);
+
+            // 6. Fix table structure (7.2 violations)
             var tableStructureService = _serviceProvider.GetService(
                 typeof(Fixes.TableStructureValidationService)) as IRemediationService;
             if (tableStructureService != null)
                 cleanupPhase.Services.Add(tableStructureService);
 
-            // 4. Add table scope attributes
+            // 7. Add table scope attributes
             var tableScopeService = _serviceProvider.GetService(
                 typeof(Fixes.TableScopeAttributeFixService)) as IRemediationService;
             if (tableScopeService != null)
                 cleanupPhase.Services.Add(tableScopeService);
 
-            // 5. Fix figure alt text
+            // 8. Fix figure alt text
             var figureAltTextService = _serviceProvider.GetService(
                 typeof(Fixes.FigureAltTextService)) as IRemediationService;
             if (figureAltTextService != null)
                 cleanupPhase.Services.Add(figureAltTextService);
 
-            // 6. Fix PDF/UA metadata (always last in cleanup)
+            // 9. Fix PDF/UA metadata (always last in cleanup)
             var pdfUaMetadataService = _serviceProvider.GetService(
                 typeof(Fixes.PdfUaMetadataService)) as IRemediationService;
             if (pdfUaMetadataService != null)
@@ -250,6 +287,12 @@ namespace WordToPdfConverter.Services.Remediation.Strategy
                     break;
 
                 case ViolationCategory.Content:
+                    // Add unmarked XObject content fix (for 7.1-3 violations)
+                    var unmarkedXObjectService = _serviceProvider.GetService(
+                        typeof(Fixes.UnmarkedXObjectContentFixService)) as IRemediationService;
+                    if (unmarkedXObjectService != null)
+                        services.Add(unmarkedXObjectService);
+
                     var contentService = _serviceProvider.GetService(
                         typeof(Adapters.ContentServiceAdapter)) as IRemediationService;
                     if (contentService != null)
@@ -263,7 +306,22 @@ namespace WordToPdfConverter.Services.Remediation.Strategy
                         services.Add(linkService);
                     break;
 
+                case ViolationCategory.Annotations:
+                    // Annotations (7.18.1) use the same link service adapter
+                    var annotationService = _serviceProvider.GetService(
+                        typeof(Adapters.LinkServiceAdapter)) as IRemediationService;
+                    if (annotationService != null)
+                        services.Add(annotationService);
+                    break;
+
                 case ViolationCategory.Fonts:
+                    // Add CIDSet fix service first (fixes 7.21.4.2-2 violations)
+                    var cidSetService = _serviceProvider.GetService(
+                        typeof(Fixes.FontCIDSetFixService)) as IRemediationService;
+                    if (cidSetService != null)
+                        services.Add(cidSetService);
+
+                    // Then add font embedding service (handles general font embedding)
                     var fontService = _serviceProvider.GetService(
                         typeof(Adapters.FontEmbeddingServiceAdapter)) as IRemediationService;
                     if (fontService != null)
@@ -276,6 +334,12 @@ namespace WordToPdfConverter.Services.Remediation.Strategy
                         typeof(CircularRoleMappingFixService)) as IRemediationService;
                     if (structureService != null)
                         services.Add(structureService);
+
+                    // Add content index artifact fix (for specific content[33] violations)
+                    var contentIndexService = _serviceProvider.GetService(
+                        typeof(Fixes.ContentIndexArtifactFixService)) as IRemediationService;
+                    if (contentIndexService != null)
+                        services.Add(contentIndexService);
 
                     // Add artifact/tagged content fix
                     var artifactService = _serviceProvider.GetService(
@@ -290,6 +354,18 @@ namespace WordToPdfConverter.Services.Remediation.Strategy
                         typeof(Fixes.FormWidgetNestingFixService)) as IRemediationService;
                     if (formWidgetService != null)
                         services.Add(formWidgetService);
+
+                    // Add form role attribute fix
+                    var formRoleService = _serviceProvider.GetService(
+                        typeof(Fixes.FormRoleAttributeFixService)) as IRemediationService;
+                    if (formRoleService != null)
+                        services.Add(formRoleService);
+
+                    // Add empty form element removal fix
+                    var emptyFormService = _serviceProvider.GetService(
+                        typeof(Fixes.EmptyFormElementRemovalService)) as IRemediationService;
+                    if (emptyFormService != null)
+                        services.Add(emptyFormService);
 
                     // GPT as fallback
                     var formFieldsGptService = _serviceProvider.GetService(

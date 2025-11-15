@@ -192,6 +192,59 @@ namespace WordToPdfConverter.Services.Remediation.AI
         /// </summary>
         private string PrepareScript(string script, string inputPath, string outputPath)
         {
+            // CRITICAL FIX: Replace common placeholder patterns that GPT might use
+            // GPT sometimes uses these literal strings instead of variables
+            script = script.Replace("'INPUT_PDF_PATH.pdf'", "INPUT_PDF");
+            script = script.Replace("\"INPUT_PDF_PATH.pdf\"", "INPUT_PDF");
+            script = script.Replace("'OUTPUT_PDF_PATH.pdf'", "OUTPUT_PDF");
+            script = script.Replace("\"OUTPUT_PDF_PATH.pdf\"", "OUTPUT_PDF");
+            script = script.Replace("INPUT_PDF_PATH.pdf", "INPUT_PDF");
+            script = script.Replace("OUTPUT_PDF_PATH.pdf", "OUTPUT_PDF");
+
+            // Also handle variations
+            script = script.Replace("'input.pdf'", "INPUT_PDF");
+            script = script.Replace("\"input.pdf\"", "INPUT_PDF");
+            script = script.Replace("'output.pdf'", "OUTPUT_PDF");
+            script = script.Replace("\"output.pdf\"", "OUTPUT_PDF");
+
+            // CRITICAL FIX: Strip any lines that reassign INPUT_PDF or OUTPUT_PDF
+            // GPT often generates scripts that overwrite these constants with placeholder values
+            // We need to remove these lines to prevent FileNotFoundError
+            var scriptLines = script.Split('\n');
+            var filteredLines = new List<string>();
+            int strippedCount = 0;
+
+            foreach (var line in scriptLines)
+            {
+                var trimmedLine = line.Trim();
+
+                // Skip lines that assign to INPUT_PDF or OUTPUT_PDF
+                // Match patterns like:
+                //   INPUT_PDF = 'something.pdf'
+                //   INPUT_PDF = "path/to/file.pdf"
+                //   INPUT_PDF = r'/path/to/file.pdf'
+                // Note: trimmedLine already has whitespace removed, so no need to match leading spaces
+                if (System.Text.RegularExpressions.Regex.IsMatch(trimmedLine,
+                    "^(INPUT_PDF|OUTPUT_PDF)\\s*=\\s*['\"]") ||
+                    System.Text.RegularExpressions.Regex.IsMatch(trimmedLine,
+                    "^(INPUT_PDF|OUTPUT_PDF)\\s*=\\s*r['\"]"))
+                {
+                    _logger.LogWarning($"[SCRIPT-CLEANUP] Stripped problematic line: {trimmedLine.Substring(0, Math.Min(60, trimmedLine.Length))}");
+                    strippedCount++;
+                    continue; // Skip this line
+                }
+
+                filteredLines.Add(line);
+            }
+
+            if (strippedCount > 0)
+            {
+                _logger.LogInformation($"[SCRIPT-CLEANUP] Removed {strippedCount} INPUT_PDF/OUTPUT_PDF reassignment(s) from GPT script");
+            }
+
+            // Use the cleaned script
+            script = string.Join('\n', filteredLines);
+
             var sb = new StringBuilder();
 
             // Always add essential imports (needed for error handling)
@@ -213,6 +266,9 @@ namespace WordToPdfConverter.Services.Remediation.AI
             sb.AppendLine($"INPUT_PDF = r'{inputPath}'");
             sb.AppendLine($"OUTPUT_PDF = r'{outputPath}'");
             sb.AppendLine();
+
+            _logger.LogInformation($"[SCRIPT-EXECUTOR] INPUT_PDF = {inputPath}");
+            _logger.LogInformation($"[SCRIPT-EXECUTOR] OUTPUT_PDF = {outputPath}");
 
             // Add the main script
             sb.AppendLine("try:");

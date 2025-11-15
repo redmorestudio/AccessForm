@@ -2,10 +2,12 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using WordToPdfConverter.Models.PdfUA;
 using WordToPdfConverter.Services;
+using AccessFormServer.Services;
 using WordToPdfConverter.Services.Remediation.Analysis;
 using WordToPdfConverter.Services.Remediation.Decision;
 using WordToPdfConverter.Services.Remediation.Execution;
@@ -32,6 +34,7 @@ namespace WordToPdfConverter.Services.Remediation
         private readonly RemediationReporter _reporter;
         private readonly GptRemediationService _gptService;
         private readonly ProcessingProgressService _progressService;
+        private readonly CostTrackingService _costTracking;
 
         public RemediationOrchestrator(
             ILogger<RemediationOrchestrator> logger,
@@ -42,6 +45,7 @@ namespace WordToPdfConverter.Services.Remediation
             ExitConditionEvaluator exitEvaluator,
             ProgressTracker progressTracker,
             RemediationReporter reporter,
+            CostTrackingService costTracking,
             ProcessingProgressService progressService = null,
             GptRemediationService gptService = null)
         {
@@ -53,6 +57,7 @@ namespace WordToPdfConverter.Services.Remediation
             _exitEvaluator = exitEvaluator;
             _progressTracker = progressTracker;
             _reporter = reporter;
+            _costTracking = costTracking;
             _progressService = progressService;
             _gptService = gptService;
         }
@@ -60,7 +65,7 @@ namespace WordToPdfConverter.Services.Remediation
         /// <summary>
         /// Main entry point for closed-loop remediation
         /// </summary>
-        public async Task<RemediationResult> RemediateAsync(
+        public async Task<WordToPdfConverter.Services.Remediation.Models.RemediationResult> RemediateAsync(
             byte[] inputPdf,
             RemediationOptions options = null)
         {
@@ -81,6 +86,9 @@ namespace WordToPdfConverter.Services.Remediation
             _logger.LogInformation($"Max Iterations: {options.MaxIterations}");
             _logger.LogInformation($"Max Duration: {options.MaxDuration.TotalMinutes:F1} minutes");
 
+            // Start cost tracking for this remediation session
+            _costTracking.StartSession(session.SessionId.ToString());
+
             try
             {
                 // Save PDF to temp file for validation
@@ -95,9 +103,17 @@ namespace WordToPdfConverter.Services.Remediation
                 session.LastValidatedPdf = await File.ReadAllBytesAsync(tempPath);
                 session.LastValidation = initialValidation;
 
+                // Initialize best PDF tracking with baseline
+                session.BestPdf = session.LastValidatedPdf;
+                session.BestValidation = initialValidation;
+                session.BestIterationNumber = 0;
+
                 _logger.LogInformation(
                     $"Baseline established: {initialValidation.Violations.Count} violations, " +
                     $"{initialValidation.Summary.ComplianceScore:F1}% compliant");
+
+                // Save baseline as initial "best" PDF
+                await SaveBestPdfAsync(session);
 
                 // Main remediation loop
                 while (!session.IsComplete)
@@ -124,6 +140,23 @@ namespace WordToPdfConverter.Services.Remediation
                     // Store as last good validation (in case next iteration fails)
                     session.LastValidatedPdf = session.CurrentPdf;
                     session.LastValidation = validation;
+
+                    // Track best PDF if this is better than what we've seen
+                    if (session.BestValidation == null ||
+                        validation.Summary.ComplianceScore > session.BestValidation.Summary.ComplianceScore)
+                    {
+                        session.BestPdf = session.CurrentPdf;
+                        session.BestValidation = validation;
+                        session.BestIterationNumber = session.IterationCount;
+
+                        _logger.LogInformation(
+                            $"🏆 New best PDF found at iteration {session.IterationCount}: " +
+                            $"{validation.Summary.ComplianceScore:F1}% compliant " +
+                            $"({validation.Violations.Count} violations)");
+
+                        // Save the best PDF to disk
+                        await SaveBestPdfAsync(session);
+                    }
 
                     // Step 2: Check exit conditions
                     if (_exitEvaluator.ShouldExit(validation, session, out var exitReason))
@@ -189,18 +222,38 @@ namespace WordToPdfConverter.Services.Remediation
                     }
 
                     // Step 7: If violations remain AND GPT is available, try AI-powered remediation
-                    // Invoke GPT when: no progress was made OR violations still exist
-                    bool shouldUseGpt = _gptService != null &&
-                        ((!execution.Success || !execution.Phases.Any(p => p.ServiceResults.Any(s => s.ChangesMade))) ||
-                         (validation.Violations.Count > 0));
+                    // GPT is invoked as a FINAL SWEEP before metadata finalization,
+                    // catching any violations that standard remediation couldn't handle.
+                    // This makes GPT a true "last resort" safety net, not just a stagnation bailout.
+                    bool hasViolations = validation.Violations.Count > 0;
+                    bool standardRemediationMadeProgress = execution.Success && execution.Phases.Any(p => p.ServiceResults.Any(s => s.ChangesMade));
+                    bool shouldUseGpt = _gptService != null && hasViolations;
+
+                    if (hasViolations && standardRemediationMadeProgress)
+                    {
+                        _logger.LogInformation($"Standard remediation made progress, but {validation.Violations.Count} violations remain - trying GPT final sweep");
+                    }
+                    else if (hasViolations && !standardRemediationMadeProgress)
+                    {
+                        _logger.LogInformation($"Standard remediation stalled with {validation.Violations.Count} violations - trying GPT fallback");
+                    }
 
                     if (shouldUseGpt)
                     {
                         _logger.LogInformation("\n--- GPT FALLBACK REMEDIATION ---");
                         _logger.LogInformation($"Violations remaining: {validation.Violations.Count}, attempting GPT-powered fixes");
 
+                        // Track pre-GPT violation count
+                        var violationsBeforeGpt = validation.Violations.Count;
+
                         try
                         {
+                            // Initialize GPT attempt tracking
+                            if (!session.Metadata.ContainsKey("GptAttempts"))
+                                session.Metadata["GptAttempts"] = 0;
+                            if (!session.Metadata.ContainsKey("GptLastViolationCount"))
+                                session.Metadata["GptLastViolationCount"] = violationsBeforeGpt;
+
                             // Set violations context and use GPT to fix remaining violations
                             _gptService.SetViolations(validation.Violations);
                             var gptResult = await _gptService.RemediateAsync(
@@ -209,7 +262,7 @@ namespace WordToPdfConverter.Services.Remediation
                             if (gptResult.Success && gptResult.ChangesMade)
                             {
                                 _logger.LogInformation(
-                                    $"✓ GPT fixed {gptResult.IssuesFixed}/{gptResult.IssuesFound} violations");
+                                    $"✓ GPT claims to have fixed {gptResult.IssuesFixed}/{gptResult.IssuesFound} violations");
 
                                 // Update execution result to include GPT changes
                                 execution.OutputPdf = gptResult.OutputPdf;
@@ -220,15 +273,71 @@ namespace WordToPdfConverter.Services.Remediation
                                     OutputPdf = gptResult.OutputPdf,
                                     ServiceResults = { gptResult }
                                 });
+
+                                // CRITICAL FIX: Validate GPT's claims by re-validating the PDF
+                                // Save GPT output to temp file and validate
+                                var postGptTempPath = await SaveToTempFileAsync(gptResult.OutputPdf);
+                                var postGptValidation = await ValidateAsync(session, postGptTempPath);
+
+                                var actuallyFixed = Math.Max(0, violationsBeforeGpt - postGptValidation.Violations.Count);
+
+                                if (postGptValidation.Violations.Count >= violationsBeforeGpt)
+                                {
+                                    // GPT didn't actually help
+                                    _logger.LogWarning(
+                                        $"[GPT-STAGNATION] GPT claimed {gptResult.IssuesFixed} fixes but violations unchanged: " +
+                                        $"{violationsBeforeGpt} → {postGptValidation.Violations.Count}");
+
+                                    // Increment stagnation counter
+                                    session.Metadata["GptAttempts"] = (int)session.Metadata["GptAttempts"] + 1;
+
+                                    // Check for GPT stagnation (3 failed attempts)
+                                    if ((int)session.Metadata["GptAttempts"] >= 3)
+                                    {
+                                        _logger.LogError(
+                                            "[GPT-STAGNATION] GPT failed to make progress after 3 attempts - stopping");
+                                        session.ExitReason = ExitReason.NoProgress;
+                                        session.Complete(postGptValidation);
+                                        break;
+                                    }
+                                }
+                                else
+                                {
+                                    // GPT actually helped!
+                                    _logger.LogInformation(
+                                        $"[GPT-VALIDATION] ✓ GPT actually fixed {actuallyFixed} violations " +
+                                        $"({violationsBeforeGpt} → {postGptValidation.Violations.Count})");
+
+                                    // Reset stagnation counter
+                                    session.Metadata["GptAttempts"] = 0;
+                                    session.Metadata["GptLastViolationCount"] = postGptValidation.Violations.Count;
+
+                                    // Update the service result with actual fix count
+                                    gptResult.IssuesFixed = actuallyFixed;
+
+                                    // CRITICAL FIX: Cache the solution now that we know it works
+                                    // This is handled by the GPT service's solution cache
+                                    // We don't need to do anything here - the validation proves it worked
+                                }
+
+                                // Clean up temp file
+                                try { File.Delete(postGptTempPath); } catch { }
                             }
                             else
                             {
                                 _logger.LogWarning("GPT remediation made no changes");
+
+                                // Increment stagnation counter even if GPT returns no changes
+                                session.Metadata["GptAttempts"] = (int)session.Metadata["GptAttempts"] + 1;
                             }
                         }
                         catch (Exception gptEx)
                         {
                             _logger.LogError(gptEx, "GPT remediation failed, continuing with standard output");
+
+                            // Increment stagnation counter on exception
+                            if (session.Metadata.ContainsKey("GptAttempts"))
+                                session.Metadata["GptAttempts"] = (int)session.Metadata["GptAttempts"] + 1;
                         }
                     }
 
@@ -242,6 +351,9 @@ namespace WordToPdfConverter.Services.Remediation
                     tempPath = await SaveToTempFileAsync(session.CurrentPdf);
                 }
 
+                // Aggregate costs into session metrics
+                AggregateSessionCosts(session);
+
                 // Generate final report
                 var result = _reporter.GenerateReport(session);
 
@@ -250,6 +362,20 @@ namespace WordToPdfConverter.Services.Remediation
                 _logger.LogInformation($"Exit Reason: {result.ExitReason}");
                 _logger.LogInformation($"Total Iterations: {result.Summary.TotalIterations}");
                 _logger.LogInformation($"Compliant: {result.Summary.IsCompliant}");
+
+                // Log best PDF information
+                if (session.BestPdf != null && session.BestValidation != null)
+                {
+                    _logger.LogInformation(
+                        $"Best PDF achieved at iteration {session.BestIterationNumber}: " +
+                        $"{session.BestValidation.Summary.ComplianceScore:F1}% compliant " +
+                        $"({session.BestValidation.Violations.Count} violations)");
+
+                    if (options.SaveBestPdf)
+                    {
+                        _logger.LogInformation($"Best PDF saved to: {options.BestPdfOutputPath}");
+                    }
+                }
 
                 return result;
             }
@@ -260,6 +386,9 @@ namespace WordToPdfConverter.Services.Remediation
                 session.ExitReason = ExitReason.FatalError;
                 session.Complete(session.LastValidation ?? session.InitialValidation);
 
+                // Aggregate costs even on failure
+                AggregateSessionCosts(session);
+
                 var result = _reporter.GenerateReport(session);
                 result.Success = false;
                 result.OutputPdf = session.LastValidatedPdf ?? session.OriginalPdf; // Use last good PDF
@@ -268,7 +397,38 @@ namespace WordToPdfConverter.Services.Remediation
             }
         }
 
-        private async Task<ValidationResult> ValidateAsync(
+        private void AggregateSessionCosts(RemediationSession session)
+        {
+            try
+            {
+                var costSummary = _costTracking.GetSessionSummary(session.SessionId.ToString());
+                if (costSummary != null)
+                {
+                    session.Metrics.TotalCost = costSummary.TotalCost;
+
+                    foreach (var service in costSummary.ServiceBreakdown)
+                    {
+                        session.Metrics.CostsByService[service.Key] = service.Value.TotalCost;
+                        session.Metrics.TokensByService[service.Key] = new TokenUsage
+                        {
+                            InputTokens = service.Value.TotalInputTokens,
+                            OutputTokens = service.Value.TotalOutputTokens
+                        };
+                    }
+
+                    _logger.LogInformation($"💰 Total remediation cost: ${session.Metrics.TotalCost:F4}");
+                }
+
+                // End the cost tracking session
+                _costTracking.EndSession(session.SessionId.ToString());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to aggregate session costs");
+            }
+        }
+
+        private async Task<WordToPdfConverter.Models.PdfUA.ValidationResult> ValidateAsync(
             RemediationSession session,
             string pdfPath)
         {
@@ -282,12 +442,13 @@ namespace WordToPdfConverter.Services.Remediation
 
                 stopwatch.Stop();
 
-                // Check if validation failed
+                // Check if validation failed - log but DON'T throw
+                // Let the exit evaluator handle the failure
                 if (validation.Status == ValidationStatus.Failed)
                 {
                     _logger.LogError($"PDF validation failed: {validation.ErrorMessage}");
-                    throw new InvalidOperationException(
-                        $"PDF/UA validation failed: {validation.ErrorMessage ?? "VeraPDF returned an error"}");
+                    _logger.LogWarning("Validation failure indicates PDF corruption - will use last good PDF");
+                    return validation;
                 }
 
                 _logger.LogInformation(
@@ -299,7 +460,7 @@ namespace WordToPdfConverter.Services.Remediation
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Validation failed");
+                _logger.LogError(ex, "Validation failed with exception");
                 throw;
             }
         }
@@ -313,6 +474,128 @@ namespace WordToPdfConverter.Services.Remediation
             await System.IO.File.WriteAllBytesAsync(tempPath, pdfBytes);
 
             return tempPath;
+        }
+
+        private async Task SaveBestPdfAsync(RemediationSession session)
+        {
+            if (!session.Options.SaveBestPdf || session.BestPdf == null)
+                return;
+
+            try
+            {
+                // Create output directory if it doesn't exist
+                var outputDir = session.Options.BestPdfOutputPath;
+                if (!Directory.Exists(outputDir))
+                {
+                    Directory.CreateDirectory(outputDir);
+                }
+
+                // Generate filename with iteration number and timestamp
+                var timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+                var baseFileName = !string.IsNullOrEmpty(session.FileName)
+                    ? Path.GetFileNameWithoutExtension(session.FileName)
+                    : "document";
+
+                var fileName = $"{baseFileName}_best_iter{session.BestIterationNumber}_{timestamp}.pdf";
+                var outputPath = Path.Combine(outputDir, fileName);
+
+                await File.WriteAllBytesAsync(outputPath, session.BestPdf);
+
+                _logger.LogInformation(
+                    $"💾 Best PDF saved to: {outputPath} " +
+                    $"({session.BestValidation.Summary.ComplianceScore:F1}% compliant)");
+
+                // Save violation report alongside the PDF
+                await SaveViolationReportAsync(session, outputDir, baseFileName, timestamp);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to save best PDF to disk");
+            }
+        }
+
+        private async Task SaveViolationReportAsync(RemediationSession session, string outputDir, string baseFileName, string timestamp)
+        {
+            try
+            {
+                var reportFileName = $"{baseFileName}_best_iter{session.BestIterationNumber}_{timestamp}_violations.txt";
+                var reportPath = Path.Combine(outputDir, reportFileName);
+
+                var report = new StringBuilder();
+                report.AppendLine($"PDF/UA Violation Report");
+                report.AppendLine($"=======================");
+                report.AppendLine($"Document: {session.FileName ?? "Unknown"}");
+                report.AppendLine($"Iteration: {session.BestIterationNumber}");
+                report.AppendLine($"Timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                report.AppendLine($"Compliance Score: {session.BestValidation.Summary.ComplianceScore:F1}%");
+                report.AppendLine($"Total Violations: {session.BestValidation.Violations.Count}");
+                report.AppendLine();
+
+                // Add cost breakdown if available
+                if (session.Metrics.TotalCost > 0)
+                {
+                    report.AppendLine($"COST BREAKDOWN");
+                    report.AppendLine($"==============");
+                    report.AppendLine($"Total Cost: ${session.Metrics.TotalCost:F4}");
+
+                    if (session.Metrics.CostsByService.Any())
+                    {
+                        foreach (var service in session.Metrics.CostsByService.OrderBy(s => s.Key))
+                        {
+                            var tokens = session.Metrics.TokensByService.ContainsKey(service.Key)
+                                ? session.Metrics.TokensByService[service.Key]
+                                : null;
+
+                            if (tokens != null)
+                            {
+                                report.AppendLine($"  - {service.Key}: ${service.Value:F4} " +
+                                    $"({tokens.InputTokens:N0} input, {tokens.OutputTokens:N0} output tokens)");
+                            }
+                            else
+                            {
+                                report.AppendLine($"  - {service.Key}: ${service.Value:F4}");
+                            }
+                        }
+                    }
+                    report.AppendLine();
+                }
+
+                if (session.BestValidation.Violations.Any())
+                {
+                    // Group violations by category
+                    var violationsByCategory = session.BestValidation.Violations
+                        .GroupBy(v => v.RuleId?.Split('-').FirstOrDefault() ?? "Unknown")
+                        .OrderBy(g => g.Key);
+
+                    foreach (var group in violationsByCategory)
+                    {
+                        report.AppendLine($"Category: {group.Key} ({group.Count()} violations)");
+                        report.AppendLine(new string('-', 50));
+
+                        foreach (var violation in group)
+                        {
+                            report.AppendLine($"  Rule: {violation.RuleId}");
+                            report.AppendLine($"  Description: {violation.Description}");
+                            if (!string.IsNullOrEmpty(violation.Context))
+                                report.AppendLine($"  Context: {violation.Context}");
+                            if (violation.Location != null)
+                                report.AppendLine($"  Location: Page {violation.Location.PageNumber}");
+                            report.AppendLine();
+                        }
+                    }
+                }
+                else
+                {
+                    report.AppendLine("✅ No violations found - PDF is fully compliant!");
+                }
+
+                await File.WriteAllTextAsync(reportPath, report.ToString());
+                _logger.LogInformation($"📄 Violation report saved to: {reportPath}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to save violation report");
+            }
         }
     }
 }

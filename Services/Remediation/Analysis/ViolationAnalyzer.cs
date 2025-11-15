@@ -44,7 +44,12 @@ namespace WordToPdfConverter.Services.Remediation.Analysis
                 $"Structure={analysis.Categories.GetValueOrDefault(ViolationCategory.Structure)?.Count ?? 0}, " +
                 $"Content={analysis.Categories.GetValueOrDefault(ViolationCategory.Content)?.Count ?? 0}, " +
                 $"Whitespace={analysis.Categories.GetValueOrDefault(ViolationCategory.Whitespace)?.Count ?? 0}, " +
-                $"Metadata={analysis.Categories.GetValueOrDefault(ViolationCategory.Metadata)?.Count ?? 0}");
+                $"Metadata={analysis.Categories.GetValueOrDefault(ViolationCategory.Metadata)?.Count ?? 0}, " +
+                $"TableAndList={analysis.Categories.GetValueOrDefault(ViolationCategory.TableAndList)?.Count ?? 0}, " +
+                $"Fonts={analysis.Categories.GetValueOrDefault(ViolationCategory.Fonts)?.Count ?? 0}, " +
+                $"Links={analysis.Categories.GetValueOrDefault(ViolationCategory.Links)?.Count ?? 0}, " +
+                $"Annotations={analysis.Categories.GetValueOrDefault(ViolationCategory.Annotations)?.Count ?? 0}, " +
+                $"Unknown={analysis.Categories.GetValueOrDefault(ViolationCategory.Unknown)?.Count ?? 0}");
 
             return await Task.FromResult(analysis);
         }
@@ -62,11 +67,23 @@ namespace WordToPdfConverter.Services.Remediation.Analysis
             var clause = violation.Clause ?? "";
             var desc = violation.Description?.ToLowerInvariant() ?? "";
 
+            // DEBUG: Log classification to diagnose categorization issues
+            var descPreview = desc.Length > 50 ? desc.Substring(0, 50) + "..." : desc;
+            _logger.LogInformation($"[CLASSIFY] Clause='{clause}', Desc='{descPreview}', RuleId='{violation.RuleId}'");
+
             // Table and List issues (7.2, 7.5, 7.6) - Check FIRST for proper categorization
-            if (clause.StartsWith("7.2") || clause.StartsWith("7.5") || clause.StartsWith("7.6") ||
-                desc.Contains("table") || desc.Contains("th") || desc.Contains("td") ||
-                desc.Contains("scope") || desc.Contains("headers"))
+            // NOTE: Explicitly exclude 7.21 (fonts), 7.22, etc. - only 7.2.X is tables
+            var isTableClause = (clause == "7.2" ||
+                                (clause.StartsWith("7.2.") && !clause.StartsWith("7.21") && !clause.StartsWith("7.22"))) ||
+                                clause.StartsWith("7.5") || clause.StartsWith("7.6");
+            var isTableDesc = desc.Contains("table") || desc.Contains(" th ") || desc.Contains(" td ") ||
+                             desc.Contains("scope") || desc.Contains("headers");
+
+            if (isTableClause || isTableDesc)
+            {
+                _logger.LogInformation($"[CLASSIFY] → TableAndList");
                 return ViolationCategory.TableAndList;
+            }
 
             // Form fields (7.18.4 specifically for widget nesting)
             if (clause.StartsWith("7.18.4") ||
@@ -74,16 +91,23 @@ namespace WordToPdfConverter.Services.Remediation.Analysis
                 return ViolationCategory.FormFields;
 
             // Structure issues (7.1) - Including artifact/tagged content
-            if (clause.StartsWith("7.1"))
+            // NOTE: Use exact match for 7.1 to avoid matching 7.18, 7.19, etc.
+            if (clause.StartsWith("7.1.") || clause == "7.1")
                 return ViolationCategory.Structure;
 
             // Annotations (7.18 - other than form fields)
             if (clause.StartsWith("7.18"))
+            {
+                _logger.LogInformation($"[CLASSIFY] → Annotations");
                 return ViolationCategory.Annotations;
+            }
 
             // Content issues (7.3)
             if (clause.StartsWith("7.3"))
+            {
+                _logger.LogInformation($"[CLASSIFY] → Content");
                 return ViolationCategory.Content;
+            }
 
             // Whitespace
             if (desc.Contains("whitespace") || desc.Contains("white space"))
@@ -104,12 +128,19 @@ namespace WordToPdfConverter.Services.Remediation.Analysis
 
             // Fonts (7.21)
             if (clause.StartsWith("7.21") || desc.Contains("font"))
+            {
+                _logger.LogInformation($"[CLASSIFY] → Fonts");
                 return ViolationCategory.Fonts;
+            }
 
             // Language
             if (desc.Contains("language") || desc.Contains("lang"))
+            {
+                _logger.LogInformation($"[CLASSIFY] → Language");
                 return ViolationCategory.Language;
+            }
 
+            _logger.LogInformation($"[CLASSIFY] → Unknown");
             return ViolationCategory.Unknown;
         }
 

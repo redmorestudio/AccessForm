@@ -94,6 +94,9 @@ builder.Services.AddScoped<WordToPdfConverter.Services.MultiStageValidationServi
 builder.Services.AddHttpClient();
 builder.Services.AddHttpContextAccessor();
 
+// Add Aspose PDF Cloud service for font embedding (avoids macOS GDI+ issues)
+builder.Services.AddScoped<AccessFormServer.Services.AsposePdfCloudService>();
+
 // Configure HttpClient for Blazor components with base address
 builder.Services.AddScoped(sp =>
 {
@@ -136,6 +139,9 @@ builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Tracking.Prog
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Reporting.RemediationReporter>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.RemediationOrchestrator>();
 
+// Add remediation REST API services
+builder.Services.AddSingleton<WordToPdfConverter.Services.Remediation.Api.RemediationSessionManager>();
+
 // Add remediation service adapters
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Adapters.WhitespaceServiceAdapter>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Adapters.ContentServiceAdapter>();
@@ -153,8 +159,12 @@ builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.CircularRoleM
 
 // Add specialized PDF/UA remediation services for common end-stage violations
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.ArtifactTaggedContentFixService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.ContentIndexArtifactFixService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.FormWidgetNestingFixService>();
+
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.FormRoleAttributeFixService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.EmptyFormElementRemovalService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.UnmarkedXObjectContentFixService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.TableScopeAttributeFixService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.FigureAltTextService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.TableStructureValidationService>();
@@ -172,6 +182,13 @@ builder.Services.AddSingleton<WordToPdfConverter.Services.ProcessingProgressServ
 // Add TOC link fix service (creates proper Link elements for TOC annotations)
 // Enhanced version with better orphan handling and parent tree management
 builder.Services.AddScoped<AccessFormServer.Services.TocLinkFixServiceEnhanced>();
+
+// Add link remediation services (AI-powered accessible link descriptions)
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.CrossReferenceLinkService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.LinkAltTextService>();
+
+// Add font remediation services
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.FontCIDSetFixService>();
 
 // Add comprehensive PDF field and tag editor service
 builder.Services.AddScoped<PdfFieldTagEditorService>();
@@ -1045,6 +1062,295 @@ app.MapPost("/api/remediate-pdf", async (HttpRequest request, AccessibilityServi
         Console.WriteLine($"❌ Remediation error: {ex.Message}");
         Console.WriteLine($"Stack trace: {ex.StackTrace}");
         return Results.Problem($"PDF remediation failed: {ex.Message}");
+    }
+});
+
+// ===========================================================================================
+// REMEDIATION REST API V2 - Closed-loop remediation with real-time status
+// ===========================================================================================
+
+// POST /api/v2/remediation/start - Start a new remediation session
+app.MapPost("/api/v2/remediation/start", async (
+    HttpRequest request,
+    WordToPdfConverter.Services.Remediation.Api.RemediationSessionManager sessionManager,
+    IServiceProvider serviceProvider,
+    ILogger<Program> logger) =>
+{
+    try
+    {
+        if (!request.Form.Files.Any())
+        {
+            return Results.BadRequest(new { error = "No PDF file uploaded" });
+        }
+
+        var file = request.Form.Files[0];
+        if (!file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.BadRequest(new { error = "Please upload a PDF file" });
+        }
+
+        // Parse remediation options from form or use defaults
+        var options = WordToPdfConverter.Services.Remediation.Models.RemediationOptions.Production;
+
+        if (int.TryParse(request.Form["maxIterations"], out int maxIter))
+            options.MaxIterations = maxIter;
+
+        if (int.TryParse(request.Form["maxDurationMinutes"], out int maxDur))
+            options.MaxDuration = TimeSpan.FromMinutes(maxDur);
+
+        if (double.TryParse(request.Form["acceptableComplianceScore"], out double score))
+            options.AcceptableComplianceScore = score;
+
+        if (bool.TryParse(request.Form["detectStagnation"], out bool detectStag))
+            options.DetectStagnation = detectStag;
+
+        if (bool.TryParse(request.Form["stopOnRegression"], out bool stopReg))
+            options.StopOnRegression = stopReg;
+
+        options.FileName = file.FileName;
+
+        // Read PDF bytes
+        byte[] pdfBytes;
+        using (var memStream = new MemoryStream())
+        {
+            await file.CopyToAsync(memStream);
+            pdfBytes = memStream.ToArray();
+        }
+
+        // Create session
+        var sessionId = sessionManager.CreateSession(file.FileName, options);
+
+        logger.LogInformation($"[REMEDIATION-API] Starting session {sessionId} for {file.FileName}");
+
+        // Start remediation in background
+        var task = Task.Run(async () =>
+        {
+            using (var scope = serviceProvider.CreateScope())
+            {
+                var orchestrator = scope.ServiceProvider.GetRequiredService<WordToPdfConverter.Services.Remediation.RemediationOrchestrator>();
+
+                try
+                {
+                    var result = await orchestrator.RemediateAsync(pdfBytes, options);
+                    sessionManager.CompleteSession(sessionId, result);
+                    return result;
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, $"[REMEDIATION-API] Session {sessionId} failed");
+                    sessionManager.FailSession(sessionId, ex.Message);
+                    throw;
+                }
+            }
+        });
+
+        // Update session with task
+        sessionManager.UpdateSession(sessionId, null, task);
+
+        return Results.Ok(new
+        {
+            sessionId,
+            status = "started",
+            fileName = file.FileName,
+            message = "Remediation started. Use GET /api/v2/remediation/status/{sessionId} to check progress"
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[REMEDIATION-API] Failed to start remediation");
+        return Results.Problem($"Failed to start remediation: {ex.Message}");
+    }
+});
+
+// GET /api/v2/remediation/status/{sessionId} - Get current status of a remediation session
+app.MapGet("/api/v2/remediation/status/{sessionId}", (
+    string sessionId,
+    WordToPdfConverter.Services.Remediation.Api.RemediationSessionManager sessionManager,
+    ILogger<Program> logger) =>
+{
+    try
+    {
+        var session = sessionManager.GetSession(sessionId);
+        if (session == null)
+        {
+            return Results.NotFound(new { error = $"Session {sessionId} not found" });
+        }
+
+        var response = new
+        {
+            sessionId,
+            status = session.Status.ToString(),
+            fileName = session.FileName,
+            startTime = session.StartTime,
+            elapsedTime = DateTime.UtcNow - session.StartTime,
+            currentIteration = session.Session?.IterationCount,
+            maxIterations = session.Session?.Options.MaxIterations,
+            currentViolations = session.Session?.CurrentValidation?.Violations.Count,
+            initialViolations = session.Session?.InitialValidation?.Violations.Count,
+            complianceScore = session.Session?.CurrentValidation?.Summary.ComplianceScore,
+            exitReason = session.Session?.ExitReason.ToString(),
+            bestIterationNumber = session.Session?.BestIterationNumber,
+            bestComplianceScore = session.Session?.BestValidation?.Summary.ComplianceScore,
+            bestViolationCount = session.Session?.BestValidation?.Violations.Count,
+            gptAttempts = session.Session?.Metadata.ContainsKey("GptAttempts") == true
+                ? (int)session.Session.Metadata["GptAttempts"]
+                : 0,
+            gptStagnationDetected = session.Session?.Metadata.ContainsKey("GptAttempts") == true
+                && (int)session.Session.Metadata["GptAttempts"] >= 3,
+            iterationHistory = session.Session?.History.Select(h => new
+            {
+                iterationNumber = h.IterationNumber,
+                violationCount = h.ViolationCount,
+                complianceScore = h.ComplianceScore,
+                fixesApplied = h.FixesApplied,
+                phasesExecuted = h.PhasesExecuted,
+                duration = h.Duration
+            }).ToList(),
+            isCompliant = session.Result?.Summary.IsCompliant,
+            success = session.Result?.Success
+        };
+
+        return Results.Ok(response);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, $"[REMEDIATION-API] Failed to get status for session {sessionId}");
+        return Results.Problem($"Failed to get session status: {ex.Message}");
+    }
+});
+
+// GET /api/v2/remediation/download/{sessionId}/best - Download the best PDF achieved
+app.MapGet("/api/v2/remediation/download/{sessionId}/best", (
+    string sessionId,
+    WordToPdfConverter.Services.Remediation.Api.RemediationSessionManager sessionManager,
+    ILogger<Program> logger) =>
+{
+    try
+    {
+        var session = sessionManager.GetSession(sessionId);
+        if (session == null)
+        {
+            return Results.NotFound(new { error = $"Session {sessionId} not found" });
+        }
+
+        if (session.Status != WordToPdfConverter.Services.Remediation.Api.RemediationSessionManager.RemediationStatus.Completed)
+        {
+            return Results.BadRequest(new
+            {
+                error = "Remediation not complete",
+                status = session.Status.ToString()
+            });
+        }
+
+        // Use best PDF if available, otherwise use output PDF
+        var pdfBytes = session.Session?.BestPdf ?? session.Result?.OutputPdf;
+
+        if (pdfBytes == null)
+        {
+            return Results.Problem("No PDF available");
+        }
+
+        var fileName = $"{Path.GetFileNameWithoutExtension(session.FileName)}_best.pdf";
+        return Results.File(pdfBytes, "application/pdf", fileName);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, $"[REMEDIATION-API] Failed to download best PDF for session {sessionId}");
+        return Results.Problem($"Failed to download PDF: {ex.Message}");
+    }
+});
+
+// GET /api/v2/remediation/download/{sessionId} - Download the final remediated PDF
+app.MapGet("/api/v2/remediation/download/{sessionId}", (
+    string sessionId,
+    WordToPdfConverter.Services.Remediation.Api.RemediationSessionManager sessionManager,
+    ILogger<Program> logger) =>
+{
+    try
+    {
+        var session = sessionManager.GetSession(sessionId);
+        if (session == null)
+        {
+            return Results.NotFound(new { error = $"Session {sessionId} not found" });
+        }
+
+        if (session.Status != WordToPdfConverter.Services.Remediation.Api.RemediationSessionManager.RemediationStatus.Completed)
+        {
+            return Results.BadRequest(new
+            {
+                error = "Remediation not complete",
+                status = session.Status.ToString()
+            });
+        }
+
+        if (session.Result?.OutputPdf == null)
+        {
+            return Results.Problem("No output PDF available");
+        }
+
+        var fileName = $"{Path.GetFileNameWithoutExtension(session.FileName)}_remediated.pdf";
+        return Results.File(session.Result.OutputPdf, "application/pdf", fileName);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, $"[REMEDIATION-API] Failed to download for session {sessionId}");
+        return Results.Problem($"Failed to download PDF: {ex.Message}");
+    }
+});
+
+// DELETE /api/v2/remediation/{sessionId} - Cancel a running remediation
+app.MapDelete("/api/v2/remediation/{sessionId}", (
+    string sessionId,
+    WordToPdfConverter.Services.Remediation.Api.RemediationSessionManager sessionManager,
+    ILogger<Program> logger) =>
+{
+    try
+    {
+        var cancelled = sessionManager.CancelSession(sessionId);
+        if (!cancelled)
+        {
+            return Results.NotFound(new { error = $"Session {sessionId} not found" });
+        }
+
+        logger.LogInformation($"[REMEDIATION-API] Cancelled session {sessionId}");
+
+        return Results.Ok(new
+        {
+            sessionId,
+            status = "cancelled",
+            message = "Remediation cancelled successfully"
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, $"[REMEDIATION-API] Failed to cancel session {sessionId}");
+        return Results.Problem($"Failed to cancel session: {ex.Message}");
+    }
+});
+
+// GET /api/v2/remediation/health - Check remediation service health
+app.MapGet("/api/v2/remediation/health", (
+    WordToPdfConverter.Services.Remediation.Api.RemediationSessionManager sessionManager,
+    ILogger<Program> logger) =>
+{
+    try
+    {
+        var activeSessions = sessionManager.GetActiveSessionCount();
+
+        // Cleanup old sessions (older than 1 hour)
+        sessionManager.CleanupOldSessions(TimeSpan.FromHours(1));
+
+        return Results.Ok(new
+        {
+            activeSessions,
+            status = "healthy",
+            serverTime = DateTime.UtcNow
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[REMEDIATION-API] Health check failed");
+        return Results.Problem("Health check failed");
     }
 });
 
@@ -5201,6 +5507,19 @@ app.MapPost("/api/cascade-correction/{sessionId}/apply", (string sessionId, Word
         return Results.Problem($"Failed to apply corrections: {ex.Message}");
     }
 });
+
+// Version tracking - increment this with each significant change
+const string APP_VERSION = "2025.10.28.001";  // Format: YYYY.MM.DD.NNN
+
+// Add version to configuration for UI access
+builder.Configuration["AppVersion"] = APP_VERSION;
+
+// Log version on startup
+var logger = app.Services.GetRequiredService<ILogger<Program>>();
+logger.LogInformation($"🚀 AccessForm Server v{APP_VERSION} starting...");
+
+// Add version endpoint for easy checking
+app.MapGet("/version", () => new { version = APP_VERSION, timestamp = DateTime.UtcNow });
 
 // Map fallback to Blazor pages - MUST be last to avoid intercepting API routes
 app.MapFallbackToPage("/_Host");

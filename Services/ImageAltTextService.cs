@@ -118,9 +118,12 @@ public class ImageAltTextService
             figures.Add(figure);
         }
 
-        foreach (var child in element.ChildElements)
+        if (element.ChildElements != null)
         {
-            FindFigureElements(child, figures);
+            foreach (var child in element.ChildElements)
+            {
+                FindFigureElements(child, figures);
+            }
         }
     }
 

@@ -9,11 +9,12 @@ namespace WordToPdfConverter.Services.Remediation.Adapters
 {
     /// <summary>
     /// Adapter for font embedding service to ensure all fonts are embedded
+    /// Uses Aspose Cloud API to avoid macOS GDI+ issues
     /// </summary>
     public class FontEmbeddingServiceAdapter : IRemediationService
     {
         private readonly ILogger<FontEmbeddingServiceAdapter> _logger;
-        private readonly AsposePdfService _asposePdfService;
+        private readonly AsposePdfCloudService _cloudService;
 
         public string ServiceName => "Font Embedding";
         public ViolationCategory TargetCategory => ViolationCategory.Fonts;
@@ -22,10 +23,10 @@ namespace WordToPdfConverter.Services.Remediation.Adapters
 
         public FontEmbeddingServiceAdapter(
             ILogger<FontEmbeddingServiceAdapter> logger,
-            AsposePdfService asposePdfService)
+            AsposePdfCloudService cloudService)
         {
             _logger = logger;
-            _asposePdfService = asposePdfService;
+            _cloudService = cloudService;
         }
 
         public async Task<ServiceResult> RemediateAsync(byte[] pdfBytes)
@@ -36,10 +37,15 @@ namespace WordToPdfConverter.Services.Remediation.Adapters
             try
             {
                 _logger.LogInformation($"[FONT-SERVICE] Starting font embedding for PDF ({pdfBytes.Length} bytes)");
-                _logger.LogInformation($"[FONT-SERVICE] Strategy: Embed all fonts → Convert to PDF/A-1b");
+                _logger.LogInformation($"[FONT-SERVICE] Strategy: Use Aspose Cloud API → Optimize → Convert to PDF/A-1b");
 
-                // Use Aspose.PDF to embed all fonts and convert to PDF/A
-                var fixedBytes = await _asposePdfService.ConvertFontsAsync(pdfBytes);
+                if (!_cloudService.IsConfigured)
+                {
+                    throw new InvalidOperationException("Aspose Cloud service is not configured");
+                }
+
+                // Use Aspose Cloud API to embed fonts (avoids macOS GDI+ issues)
+                var fixedBytes = await _cloudService.OptimizePdfWithFontEmbeddingAsync(pdfBytes);
 
                 if (fixedBytes != null && fixedBytes.Length > 0)
                 {
@@ -50,7 +56,7 @@ namespace WordToPdfConverter.Services.Remediation.Adapters
 
                     _logger.LogInformation(
                         $"[FONT-SERVICE] ✓ Success: {pdfBytes.Length} → {fixedBytes.Length} bytes ({stopwatch.ElapsedMilliseconds}ms)");
-                    _logger.LogInformation($"[FONT-SERVICE] All fonts embedded, converted to PDF/A-1b");
+                    _logger.LogInformation($"[FONT-SERVICE] All fonts embedded via Aspose Cloud, converted to PDF/A-1b");
                 }
                 else
                 {
