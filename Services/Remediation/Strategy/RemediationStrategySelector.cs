@@ -329,7 +329,13 @@ namespace WordToPdfConverter.Services.Remediation.Strategy
                     break;
 
                 case ViolationCategory.Structure:
-                    // Add circular role mapping fix
+                    // Add AI structure rebuild FIRST - rebuilds entire tag tree based on visual layout
+                    var aiStructureRebuildService = _serviceProvider.GetService(
+                        typeof(StructureRebuildService)) as IRemediationService;
+                    if (aiStructureRebuildService != null)
+                        services.Add(aiStructureRebuildService);
+
+                    // Then add circular role mapping fix
                     var structureService = _serviceProvider.GetService(
                         typeof(CircularRoleMappingFixService)) as IRemediationService;
                     if (structureService != null)

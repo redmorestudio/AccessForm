@@ -59,6 +59,25 @@ builder.Services.AddScoped<AccessibilityRetrofitService>();
 builder.Services.AddScoped<PdfAccessibilityEnhancer>();
 builder.Services.AddScoped<WordToPdfConverter.Services.VeraPdfService>();
 builder.Services.AddScoped<AccessFormServer.Services.ImageAltTextService>();
+builder.Services.AddScoped<AccessFormServer.Services.ImageAutoTaggingService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Enrichment.FigureDetectionEnricher>();
+
+// Phase 3c: Layout Engine (Column-aware reading order)
+var layoutEngine = builder.Configuration.GetValue<string>("AccessibilityRemediation:LayoutEngine", "Simple");
+if (layoutEngine == "ColumnAware")
+{
+    builder.Services.AddSingleton<WordToPdfConverter.Services.Layout.IPageLayoutEngine,
+        WordToPdfConverter.Services.Layout.ColumnAwareLayoutEngine>();
+}
+else
+{
+    builder.Services.AddSingleton<WordToPdfConverter.Services.Layout.IPageLayoutEngine,
+        WordToPdfConverter.Services.Layout.SimpleTopDownLayoutEngine>();
+}
+
+// Phase 3c: Structure Rebuild Service
+builder.Services.AddScoped<WordToPdfConverter.Services.StructureRebuildService>();
+
 builder.Services.AddScoped<WordToPdfConverter.Services.FieldAnalysisService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.FormFieldCreationService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.WordFormFieldAnalyzer>();
@@ -156,6 +175,15 @@ builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Adapters.GptS
 
 // Add quick-fix services (run early)
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.CircularRoleMappingFixService>();
+
+// Add AI Structural Remediation pipeline services
+builder.Services.AddScoped<WordToPdfConverter.Services.Analysis.ILogicalLayoutAnalysisService,
+    WordToPdfConverter.Services.Analysis.ClaudeLogicalLayoutAnalysisService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Pdf.IPdfStructureWriter,
+    WordToPdfConverter.Services.Pdf.SyncfusionPdfStructureWriter>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Analysis.FormFieldEnrichmentService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Structure.StructureTreeCleaner>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.StructureRebuildService>();
 
 // Add specialized PDF/UA remediation services for common end-stage violations
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.ArtifactTaggedContentFixService>();
