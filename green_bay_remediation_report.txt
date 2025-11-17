@@ -1,0 +1,79 @@
+======================================
+GREEN BAY PDF REMEDIATION REPORT
+Generated: Fri Oct 31 11:17:10 PDT 2025
+======================================
+
+========================================
+PDF: SOG 10 Call-In for Custodians - (rev.) Final_202411250945373753.pdf
+========================================
+Initial Compliance Score: ~100
+Initial Violation Count: None
+Final Compliance Score: None
+Final Violation Count: None
+Violations Fixed: 0
+Iterations Completed: None
+Exit Reason: None
+Processing Time: 60s
+
+Iteration History:
+
+Output File: SOG 10 Call-In for Custodians - (rev.) Final_202411250945373753_REMEDIATED.pdf (122085 bytes)
+
+========================================
+PDF: BASIC FMLA Guide_202409131109189018.pdf
+========================================
+Initial Compliance Score: ~100
+Initial Violation Count: None
+Final Compliance Score: None
+Final Violation Count: None
+Violations Fixed: 0
+Iterations Completed: None
+Exit Reason: None
+Processing Time: 82s
+
+Iteration History:
+
+Output File: BASIC FMLA Guide_202409131109189018_REMEDIATED.pdf (553009 bytes)
+
+========================================
+PDF: Remote Work & Alt. Schedule Request Form (Fillable Ver.)_202510021602086175.pdf
+========================================
+Initial Compliance Score: ~100
+Initial Violation Count: None
+Final Compliance Score: None
+Final Violation Count: None
+Violations Fixed: 0
+Iterations Completed: None
+Exit Reason: None
+Processing Time: 108s
+
+Iteration History:
+
+Output File: Remote Work & Alt. Schedule Request Form (Fillable Ver.)_202510021602086175_REMEDIATED.pdf (247634 bytes)
+
+========================================
+PDF: City Trail Map (PDF).pdf
+========================================
+Initial Compliance Score: ~100
+Initial Violation Count: None
+Final Compliance Score: None
+Final Violation Count: None
+Violations Fixed: 0
+Iterations Completed: None
+Exit Reason: None
+Processing Time: 89s
+
+Iteration History:
+
+Output File: City Trail Map (PDF)_REMEDIATED.pdf (969820 bytes)
+
+========================================
+OVERALL SUMMARY
+========================================
+Total PDFs Processed: 4/4
+Total Initial Violations: 0
+Total Final Violations: 0
+Total Violations Fixed: 0
+Total Processing Time: 339s
+Average Processing Time: 84s per PDF
+

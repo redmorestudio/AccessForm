@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AccessForm - Document Accessibility</title>
+    <base href="/" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='16'>♿</text></svg>">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    
+<!--Blazor:{"type":"server","prerenderId":"9ceb43878cb24a1f80f104ae1ff8e315","key":{"locationHash":"E5E953B801E1CBA559B02A5CEE2C57C245F43AEE4C2837A4EFC25A2BB2ECDA75:0","formattedComponentKey":""},"sequence":0,"descriptor":"CfDJ8BXnKhy5z49Kiuoa1IrHPZrq9oeeXot7cEHId7i2x3HO6ctPx9OPkpAa87SpJQMeV909BoBIU9toVeu5XRd/0Pk98GGPDy8HsIJ5jcumiAE6iVqS8luTiXLqb1rdP36C6kATqhJD3IZlk9Z8HgOwk/JaufFB2I1fj5ImA8nSIYzUWjsqgshuAesF1p3jB5Ewus8JIcyN34dsoCzY92k5V8zgyGqd0tCwi/ftWMc70wc3J3QxD/qfowKAiQ3tXLbJFS5kp76c4/L6sY5sJaQOaRptzg4BQNr/IAwrPPEFHfxDxwuQmTHNijrh5xwZL6ymFNaZjZXa6BZGG5nGAKrMX2GBDDhxtyHHA7H\u002BImN5ecIMv9Dw2bVKJ3ZPsQJpGN9aLUQPAIxOF6TWS6STsL8loFS8zCQJb5YPu35OWauiGHLBbv2d7krHFCo/05T0f60RqsuFTGT4k2Y2sb8kyK8YXGtsbtK\u002BQYfX5BAT/bBBOC9QfBFvpJeZQTfODjejyyPwjzcoN3Y1F\u002BOV7BY50m565ns="}--><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+<div class="page"><div style="position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.7); color: #fff; padding: 5px 10px; border-radius: 4px; font-size: 12px; z-index: 9999;">
+        v2025.10.28.001</div>
+    <main><p>Sorry, there's nothing at this address.</p></main></div><!--Blazor:{"prerenderId":"9ceb43878cb24a1f80f104ae1ff8e315"}-->
+
+    
+    <script src="js/init.js"></script>
+    <script src="js/accessform.js"></script>
+    <script src="js/blazor-interop.js"></script>
+    <script src="js/ai-mode.js"></script>
+    <script src="js/resizableWindow.js"></script>
+    <script src="_framework/blazor.server.js" autostart="false"></script>
+    <script>
+        Blazor.start({
+            reconnectionOptions: {
+                maxRetries: 10,
+                retryIntervalMilliseconds: 2000
+            }
+        });
+    </script>
+</body>
+</html>

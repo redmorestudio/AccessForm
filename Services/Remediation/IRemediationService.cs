@@ -55,6 +55,7 @@ namespace WordToPdfConverter.Services.Remediation
     /// </summary>
     public enum ViolationCategory
     {
+        StructureRebuild, // AI-powered complete structure rebuild (Phase 0)
         Structure,        // Tagged structure issues (7.1)
         Metadata,         // Title, language, PDF/UA identifier (6.1, 6.2)
         Content,          // Tagged content, artifacts (7.3)

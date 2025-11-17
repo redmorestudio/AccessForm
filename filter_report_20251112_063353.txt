@@ -1,0 +1,155 @@
+================================================================================
+CITY DOMAIN FILTERING REPORT
+Generated: 2025-11-12 06:33:53
+================================================================================
+
+Total unique cities: 233
+Cities with multiple domains: 31
+Filtered rows output: 220
+
+================================================================================
+CITIES WITH EXCLUDED DOMAINS
+================================================================================
+
+Bakersfield, California
+  Kept: bakersfieldcity.us
+  Excluded: kerncounty.com
+  Excluded: norfun.org
+
+Burbank, California
+  Kept: burbankca.gov
+  Excluded: hollywoodburbankairport.com
+
+Elk Grove, California
+  Kept: elkgrove.gov
+  Excluded: egusd.net
+
+Fontana, California
+  Kept: fontanaca.gov
+  Excluded: ehsf.realjourney.org
+
+Fremont, California
+  Kept: fremont.gov
+  Excluded: alameda.courts.ca.gov
+
+Modesto, California
+  Kept: modestogov.com
+  Excluded: mcs4kids.com
+  Excluded: stanislaus.courts.ca.gov
+  Excluded: stancounty.com
+
+Moreno Valley, California
+  Kept: moval.gov
+  Excluded: mvusd.net
+
+Oceanside, California
+  Kept: ci.oceanside.ca.us
+  Excluded: gonctd.com
+  Excluded: factsd.org
+
+Pomona, California
+  Kept: pomonaca.gov
+  Excluded: dir.ca.gov
+  Excluded: cssd.lacounty.gov
+  Excluded: lacourt.org
+
+Redding, California
+  Kept: records.ci.redding.ca.us
+  Excluded: shastacounty.gov
+
+Riverside, California
+  Kept: riversideca.gov
+  Excluded: rc-hr.com
+  Excluded: trans.rctlma.org
+  Excluded: riverside.courts.ca.gov
+
+San Bernardino, California
+  Kept: ci.san-bernardino.ca.us
+  Excluded: rm.sbcounty.gov
+  Excluded: dir.ca.gov
+  Excluded: csusb.edu
+  Excluded: sanbernardino.courts.ca.gov
+
+San Mateo, California
+  Kept: cityofsanmateo.org
+  Excluded: sanmateo.courts.ca.gov
+
+Santa Ana, California
+  Kept: santa-ana.org
+  Excluded: en.ocgov.com
+  Excluded: dir.ca.gov
+
+Ventura, California
+  Kept: ventura.org
+  Excluded: goventura.org
+
+Aurora, Colorado
+  Kept: auroragov.org
+  Excluded: coaccess.com
+  Excluded: dpa.colorado.gov
+  Excluded: coloradojudicial.gov
+
+Brandon, Florida
+  Kept: 
+  Excluded: EXCLUDED (only domain): hcfl.gov
+
+Lexington-Fayette, Kentucky
+  Kept: 
+  Excluded: EXCLUDED (only domain): lextran.com
+
+Louisville-Jefferson County, Kentucky
+  Kept: 
+  Excluded: EXCLUDED (only domain): louisville.edu
+
+Metairie, Louisiana
+  Kept: 
+  Excluded: EXCLUDED (only domain): jeffparish.net
+
+Lansing, Michigan
+  Kept: 
+  Excluded: EXCLUDED (only domain): michigan.gov
+
+Lincoln, Nebraska
+  Kept: 
+  Excluded: EXCLUDED (only domain): nebraskajudicial.gov
+
+Enterprise, Nevada
+  Kept: 
+  Excluded: EXCLUDED (only domain): clarkcountynv.gov
+
+Paradise, Nevada
+  Kept: 
+  Excluded: EXCLUDED (only domain): clarkcountynv.gov
+
+Reno, Nevada
+  Kept: reno.gov
+  Excluded: rtcwashoe.com
+  Excluded: adsd.nv.gov
+  Excluded: washoecourts.com
+  Excluded: washoecounty.gov
+
+Spring Valley, Nevada
+  Kept: 
+  Excluded: EXCLUDED (only domain): clarkcountynv.gov
+
+Sunrise Manor, Nevada
+  Kept: 
+  Excluded: EXCLUDED (only domain): clarkcountynv.gov
+
+Manchester, New Hampshire
+  Kept: 
+  Excluded: EXCLUDED (only domain): snhpc.org
+
+Erie, Pennsylvania
+  Kept: erie.pa.us
+  Excluded: erieairport.org
+  Excluded: ride-the-e.com
+
+Laredo, Texas
+  Kept: 
+  Excluded: EXCLUDED (only domain): webbcountytx.gov
+
+Provo, Utah
+  Kept: 
+  Excluded: EXCLUDED (only domain): provo.edu
+

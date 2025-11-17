@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using WordToPdfConverter.Services.Remediation.Analysis;
 using WordToPdfConverter.Services.Remediation.Models;
@@ -15,13 +16,16 @@ namespace WordToPdfConverter.Services.Remediation.Strategy
     {
         private readonly ILogger<RemediationStrategySelector> _logger;
         private readonly IServiceProvider _serviceProvider;
+        private readonly IConfiguration _configuration;
 
         public RemediationStrategySelector(
             ILogger<RemediationStrategySelector> logger,
-            IServiceProvider serviceProvider)
+            IServiceProvider serviceProvider,
+            IConfiguration configuration)
         {
             _logger = logger;
             _serviceProvider = serviceProvider;
+            _configuration = configuration;
         }
 
         public async Task<RemediationStrategy> SelectAsync(
@@ -44,6 +48,27 @@ namespace WordToPdfConverter.Services.Remediation.Strategy
             RemediationSession session)
         {
             var phases = new List<RemediationPhase>();
+
+            // Phase 0: AI Structure Rebuild (Order: 0, MaxIter: 1) - RUNS FIRST if enabled
+            // This is a foundational phase that rebuilds the PDF structure from scratch using AI analysis
+            // Only runs when RemediationPipeline:EnableStructureRebuild config is true
+            var enableStructureRebuild = _configuration.GetValue<bool>("RemediationPipeline:EnableStructureRebuild", false);
+            if (enableStructureRebuild && session.IterationCount == 1) // Only run on first iteration
+            {
+                _logger.LogInformation("[PHASE-0] Structure rebuild enabled - will run AI-powered structure rebuild");
+                phases.Add(new RemediationPhase
+                {
+                    Name = "AI Structure Rebuild",
+                    Order = 0,
+                    TargetCategory = ViolationCategory.StructureRebuild,
+                    MaxIterations = 1,
+                    Services = GetServicesForCategory(ViolationCategory.StructureRebuild)
+                });
+            }
+            else if (enableStructureRebuild)
+            {
+                _logger.LogInformation("[PHASE-0] Structure rebuild skipped - only runs on iteration 1");
+            }
 
             // Phase 1: Whitespace Cleanup (Order: 1, MaxIter: 2)
             if (analysis.Categories.ContainsKey(ViolationCategory.Whitespace))
@@ -279,6 +304,14 @@ namespace WordToPdfConverter.Services.Remediation.Strategy
             // Get service from DI container based on category
             switch (category)
             {
+                case ViolationCategory.StructureRebuild:
+                    // Phase 0: AI-powered complete structure rebuild
+                    var structureRebuildService = _serviceProvider.GetService(
+                        typeof(Adapters.StructureRebuildServiceAdapter)) as IRemediationService;
+                    if (structureRebuildService != null)
+                        services.Add(structureRebuildService);
+                    break;
+
                 case ViolationCategory.Whitespace:
                     var whitespaceService = _serviceProvider.GetService(
                         typeof(Adapters.WhitespaceServiceAdapter)) as IRemediationService;

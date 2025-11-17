@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Remediation API Test Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .upload-section {
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            margin-bottom: 15px;
+        }
+
+        .file-input-wrapper input[type=file] {
+            position: absolute;
+            left: -9999px;
+        }
+
+        .file-input-label {
+            display: inline-block;
+            padding: 12px 30px;
+            background: #667eea;
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+
+        .file-input-label:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .file-name {
+            display: block;
+            margin-top: 10px;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .option {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .option label {
+            font-weight: 500;
+            margin-bottom: 5px;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .option input, .option select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 16px;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: #c82333;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .status-section {
+            display: none;
+            margin-top: 30px;
+        }
+
+        .status-section.active {
+            display: block;
+        }
+
+        .status-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .status-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .status-badge.starting { background: #ffeaa7; color: #d63031; }
+        .status-badge.running { background: #74b9ff; color: #0984e3; }
+        .status-badge.completed { background: #55efc4; color: #00b894; }
+        .status-badge.failed { background: #ff7675; color: #d63031; }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e9ecef;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.5s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .metric {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .metric-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .iteration-history {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .iteration-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .iteration-item:last-child {
+            border-bottom: none;
+        }
+
+        .download-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .log-output {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+
+        .log-line {
+            margin-bottom: 5px;
+            line-height: 1.4;
+        }
+
+        .log-info { color: #4ec9b0; }
+        .log-warning { color: #ce9178; }
+        .log-error { color: #f48771; }
+        .log-success { color: #b5cea8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔧 Remediation API Test Dashboard</h1>
+            <p>Closed-loop PDF/UA remediation with real-time monitoring</p>
+        </div>
+
+        <div class="content">
+            <!-- Upload Section -->
+            <div class="upload-section">
+                <h2 style="margin-bottom: 20px;">Upload PDF for Remediation</h2>
+
+                <div class="file-input-wrapper">
+                    <input type="file" id="pdfFile" accept=".pdf">
+                    <label for="pdfFile" class="file-input-label">Choose PDF File</label>
+                </div>
+                <span class="file-name" id="fileName">No file selected</span>
+
+                <div class="options" style="margin-top: 30px;">
+                    <div class="option">
+                        <label for="maxIterations">Max Iterations</label>
+                        <input type="number" id="maxIterations" value="10" min="1" max="20">
+                    </div>
+                    <div class="option">
+                        <label for="maxDuration">Max Duration (min)</label>
+                        <input type="number" id="maxDuration" value="10" min="1" max="60">
+                    </div>
+                    <div class="option">
+                        <label for="acceptableScore">Acceptable Score (%)</label>
+                        <input type="number" id="acceptableScore" value="95" min="0" max="100" step="0.1">
+                    </div>
+                    <div class="option">
+                        <label for="detectStagnation">Detect Stagnation</label>
+                        <select id="detectStagnation">
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" id="startBtn" onclick="startRemediation()">
+                    Start Remediation
+                </button>
+            </div>
+
+            <!-- Status Section -->
+            <div class="status-section" id="statusSection">
+                <div class="status-card">
+                    <div class="status-header">
+                        <h2>Remediation Progress</h2>
+                        <span class="status-badge" id="statusBadge">Starting</span>
+                    </div>
+
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill" style="width: 0%">0%</div>
+                    </div>
+
+                    <div class="metrics">
+                        <div class="metric">
+                            <div class="metric-label">Iteration</div>
+                            <div class="metric-value" id="currentIteration">0</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Violations</div>
+                            <div class="metric-value" id="currentViolations">-</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Compliance</div>
+                            <div class="metric-value" id="complianceScore">-</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">GPT Attempts</div>
+                            <div class="metric-value" id="gptAttempts">0</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Best Score</div>
+                            <div class="metric-value" id="bestScore">-</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Elapsed Time</div>
+                            <div class="metric-value" id="elapsedTime">0s</div>
+                        </div>
+                    </div>
+
+                    <div class="download-buttons" id="downloadButtons" style="display: none;">
+                        <button class="btn btn-primary" onclick="downloadBest()">
+                            Download Best PDF
+                        </button>
+                        <button class="btn btn-primary" onclick="downloadFinal()">
+                            Download Final PDF
+                        </button>
+                    </div>
+
+                    <button class="btn btn-danger" id="cancelBtn" onclick="cancelRemediation()" style="display: none;">
+                        Cancel Remediation
+                    </button>
+                </div>
+
+                <!-- Iteration History -->
+                <div class="status-card">
+                    <h3 style="margin-bottom: 15px;">Iteration History</h3>
+                    <div class="iteration-history" id="iterationHistory">
+                        <p style="text-align: center; color: #999;">Waiting for iterations...</p>
+                    </div>
+                </div>
+
+                <!-- Console Log -->
+                <div class="status-card">
+                    <h3 style="margin-bottom: 15px;">Console Log</h3>
+                    <div class="log-output" id="logOutput">
+                        <div class="log-line log-info">Ready to start remediation...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let sessionId = null;
+        let pollInterval = null;
+
+        // File selection
+        document.getElementById('pdfFile').addEventListener('change', function(e) {
+            const fileName = e.target.files[0]?.name || 'No file selected';
+            document.getElementById('fileName').textContent = fileName;
+        });
+
+        // Start remediation
+        async function startRemediation() {
+            const fileInput = document.getElementById('pdfFile');
+            if (!fileInput.files.length) {
+                alert('Please select a PDF file');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('maxIterations', document.getElementById('maxIterations').value);
+            formData.append('maxDurationMinutes', document.getElementById('maxDuration').value);
+            formData.append('acceptableComplianceScore', document.getElementById('acceptableScore').value);
+            formData.append('detectStagnation', document.getElementById('detectStagnation').value);
+
+            addLog('Starting remediation...', 'info');
+
+            try {
+                const response = await fetch('/api/v2/remediation/start', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.sessionId) {
+                    sessionId = result.sessionId;
+                    addLog(`Session started: ${sessionId}`, 'success');
+                    addLog(`File: ${result.fileName}`, 'info');
+
+                    // Show status section
+                    document.getElementById('statusSection').classList.add('active');
+                    document.getElementById('startBtn').disabled = true;
+                    document.getElementById('cancelBtn').style.display = 'inline-block';
+
+                    // Start polling
+                    pollInterval = setInterval(pollStatus, 2000);
+                } else {
+                    addLog(`Error: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                addLog(`Failed to start: ${error.message}`, 'error');
+            }
+        }
+
+        // Poll status
+        async function pollStatus() {
+            if (!sessionId) return;
+
+            try {
+                const response = await fetch(`/api/v2/remediation/status/${sessionId}`);
+                const status = await response.json();
+
+                updateStatus(status);
+
+                if (status.status === 'Completed' || status.status === 'Failed') {
+                    clearInterval(pollInterval);
+                    document.getElementById('cancelBtn').style.display = 'none';
+
+                    if (status.status === 'Completed') {
+                        document.getElementById('downloadButtons').style.display = 'flex';
+                        addLog('Remediation completed!', 'success');
+                    } else {
+                        addLog('Remediation failed', 'error');
+                    }
+                }
+            } catch (error) {
+                addLog(`Status poll error: ${error.message}`, 'error');
+            }
+        }
+
+        // Update status display
+        function updateStatus(status) {
+            // Status badge
+            const badge = document.getElementById('statusBadge');
+            badge.textContent = status.status;
+            badge.className = `status-badge ${status.status.toLowerCase()}`;
+
+            // Progress bar
+            if (status.currentIteration && status.maxIterations) {
+                const progress = (status.currentIteration / status.maxIterations) * 100;
+                const progressFill = document.getElementById('progressFill');
+                progressFill.style.width = `${progress}%`;
+                progressFill.textContent = `${Math.round(progress)}%`;
+            }
+
+            // Metrics
+            document.getElementById('currentIteration').textContent =
+                status.currentIteration ? `${status.currentIteration}/${status.maxIterations}` : '0';
+            document.getElementById('currentViolations').textContent =
+                status.currentViolations ?? '-';
+            document.getElementById('complianceScore').textContent =
+                status.complianceScore ? `${status.complianceScore.toFixed(1)}%` : '-';
+            document.getElementById('gptAttempts').textContent = status.gptAttempts ?? 0;
+            document.getElementById('bestScore').textContent =
+                status.bestComplianceScore ? `${status.bestComplianceScore.toFixed(1)}%` : '-';
+
+            // Elapsed time
+            if (status.elapsedTime) {
+                const seconds = Math.floor(status.elapsedTime.totalSeconds || 0);
+                const minutes = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                document.getElementById('elapsedTime').textContent =
+                    minutes > 0 ? `${minutes}m ${secs}s` : `${secs}s`;
+            }
+
+            // Iteration history
+            if (status.iterationHistory && status.iterationHistory.length > 0) {
+                const historyDiv = document.getElementById('iterationHistory');
+                historyDiv.innerHTML = status.iterationHistory.map(iter => `
+                    <div class="iteration-item">
+                        <span><strong>Iteration ${iter.iterationNumber}</strong></span>
+                        <span>${iter.violationCount} violations (${iter.complianceScore.toFixed(1)}%)</span>
+                        <span>${iter.fixesApplied} fixes</span>
+                    </div>
+                `).join('');
+            }
+
+            // GPT stagnation warning
+            if (status.gptStagnationDetected) {
+                addLog('⚠️ GPT stagnation detected - stopping after 3 failed attempts', 'warning');
+            }
+        }
+
+        // Download functions
+        function downloadBest() {
+            window.location.href = `/api/v2/remediation/download/${sessionId}/best`;
+            addLog('Downloading best PDF...', 'info');
+        }
+
+        function downloadFinal() {
+            window.location.href = `/api/v2/remediation/download/${sessionId}`;
+            addLog('Downloading final PDF...', 'info');
+        }
+
+        // Cancel remediation
+        async function cancelRemediation() {
+            if (!sessionId) return;
+
+            try {
+                await fetch(`/api/v2/remediation/${sessionId}`, { method: 'DELETE' });
+                clearInterval(pollInterval);
+                addLog('Remediation cancelled', 'warning');
+                document.getElementById('cancelBtn').style.display = 'none';
+            } catch (error) {
+                addLog(`Cancel failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Add log entry
+        function addLog(message, type = 'info') {
+            const logOutput = document.getElementById('logOutput');
+            const timestamp = new Date().toLocaleTimeString();
+            const logLine = document.createElement('div');
+            logLine.className = `log-line log-${type}`;
+            logLine.textContent = `[${timestamp}] ${message}`;
+            logOutput.appendChild(logLine);
+            logOutput.scrollTop = logOutput.scrollHeight;
+        }
+    </script>
+</body>
+</html>

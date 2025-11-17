@@ -162,6 +162,7 @@ builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.RemediationOr
 builder.Services.AddSingleton<WordToPdfConverter.Services.Remediation.Api.RemediationSessionManager>();
 
 // Add remediation service adapters
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Adapters.StructureRebuildServiceAdapter>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Adapters.WhitespaceServiceAdapter>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Adapters.ContentServiceAdapter>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Adapters.LinkServiceAdapter>();
