@@ -205,6 +205,11 @@ builder.Services.AddScoped<WordToPdfConverter.Services.Analysis.FormFieldEnrichm
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Structure.StructureTreeCleaner>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.StructureRebuildService>();
 
+// Phase 6H: External MCID rewriter microservice integration
+builder.Services.AddHttpClient<WordToPdfConverter.Services.Phase6H.ExternalMcidRewriterService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Phase6H.McidRewritePlanBuilder>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Phase6H.ExternalMcidRewriterService>();
+
 // Add specialized PDF/UA remediation services for common end-stage violations
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.ArtifactTaggedContentFixService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.ContentIndexArtifactFixService>();

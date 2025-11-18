@@ -7,7 +7,9 @@ using iText.Kernel.Pdf.Tagging;
 using iText.Kernel.Pdf.Tagutils;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using WordToPdfConverter.Models.Layout;
 using WordToPdfConverter.Models.Remediation;
+using WordToPdfConverter.Services.Phase6H;
 using WordToPdfConverter.Services.Remediation.Models;
 using WordToPdfConverter.Services.Remediation.Structure;
 
@@ -24,6 +26,8 @@ public sealed class ITextPdfStructureWriter : IPdfStructureWriter
     private readonly IContentMcidMarker? _mcidMarker;
     private readonly IConfiguration _configuration;
     private readonly RemediationJobContext _jobContext;
+    private readonly McidRewritePlanBuilder? _planBuilder;
+    private readonly ExternalMcidRewriterService? _externalRewriter;
 
     // Mapping from StructureNode to its corresponding PdfStructElem
     private readonly Dictionary<StructureNode, PdfStructElem> _nodeToElementMap = new();
@@ -32,12 +36,16 @@ public sealed class ITextPdfStructureWriter : IPdfStructureWriter
         ILogger<ITextPdfStructureWriter> logger,
         IConfiguration configuration,
         RemediationJobContext jobContext,
-        IContentMcidMarker? mcidMarker = null)
+        IContentMcidMarker? mcidMarker = null,
+        McidRewritePlanBuilder? planBuilder = null,
+        ExternalMcidRewriterService? externalRewriter = null)
     {
         _logger = logger;
         _configuration = configuration;
         _jobContext = jobContext;
         _mcidMarker = mcidMarker;
+        _planBuilder = planBuilder;
+        _externalRewriter = externalRewriter;
     }
 
     public byte[] Rewrite(byte[] originalPdf, StructureTree tree, StructureRebuildContext? context = null)
@@ -137,8 +145,72 @@ public sealed class ITextPdfStructureWriter : IPdfStructureWriter
             var finalEmc = finalText.Split(new[] { "EMC" }, StringSplitOptions.None).Length - 1;
             _logger.LogInformation($"[ITEXT-STRUCTURE-6G-DEBUG] After close: Final PDF has {finalBdc} BDC and {finalEmc} EMC markers");
 
+            // PHASE 6H: External microservice rewrite of content streams
+            // After iText7 close (which discards BDC/EMC markers), call external microservice
+            // to rewrite content streams with proper MCID markers
+            byte[] rewrittenBytes = finalBytes;
+
+            if (enableMcidLinking && _planBuilder != null && _externalRewriter != null && context?.LayoutPlan != null)
+            {
+                _logger.LogInformation("[PHASE-6H] Starting external MCID rewriter integration");
+
+                try
+                {
+                    // Build McidRewritePlan from structure tree
+                    var plan = _planBuilder.BuildPlan(
+                        tree,
+                        context.LayoutPlan,
+                        documentId: null, // No job ID available in context
+                        debug: false);
+
+                    _logger.LogInformation("[PHASE-6H] Built plan with {SegmentCount} segments", plan.Segments.Count);
+
+                    // Call external microservice to rewrite content streams (synchronously)
+                    rewrittenBytes = _externalRewriter.RewritePdfWithMcidsAsync(
+                        finalBytes,
+                        plan,
+                        CancellationToken.None).GetAwaiter().GetResult();
+
+                    _logger.LogInformation("[PHASE-6H] ✅ External rewrite complete, verifying markers...");
+
+                    // Verify BDC/EMC markers in rewritten PDF
+                    var rewrittenText = System.Text.Encoding.ASCII.GetString(rewrittenBytes);
+                    var rewrittenBdc = rewrittenText.Split(new[] { "BDC" }, StringSplitOptions.None).Length - 1;
+                    var rewrittenEmc = rewrittenText.Split(new[] { "EMC" }, StringSplitOptions.None).Length - 1;
+                    _logger.LogInformation($"[PHASE-6H] Rewritten PDF has {rewrittenBdc} BDC and {rewrittenEmc} EMC markers");
+
+                    if (rewrittenBdc > 0 && rewrittenEmc > 0)
+                    {
+                        _logger.LogInformation("[PHASE-6H] ✅ MCID markers successfully persisted via external microservice!");
+
+                        // Mark context flag to prevent downstream services from rebuilding
+                        if (context != null)
+                        {
+                            context.McidContentRewriteExecuted = true;
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("[PHASE-6H] ⚠️  External rewrite returned 0 markers, using iText7 output");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[PHASE-6H] External MCID rewriter failed, falling back to iText7 output");
+                    // Fall back to finalBytes (without markers)
+                    rewrittenBytes = finalBytes;
+                }
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "[PHASE-6H] External MCID rewriter unavailable. " +
+                    $"EnableMcidLinking={enableMcidLinking}, PlanBuilder={_planBuilder != null}, " +
+                    $"ExternalRewriter={_externalRewriter != null}, LayoutPlan={context?.LayoutPlan != null}");
+            }
+
             _logger.LogInformation("[ITEXT-STRUCTURE] Structure tree rebuild complete");
-            return finalBytes;
+            return rewrittenBytes;
         }
         catch (Exception ex)
         {
