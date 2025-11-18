@@ -1,3 +1,4 @@
+using iText.Kernel.Pdf.Tagging;
 using WordToPdfConverter.Services.Remediation.Structure;
 
 namespace WordToPdfConverter.Services.Pdf;
@@ -17,4 +18,9 @@ public sealed class McidTarget
     /// The MCID assigned to this target (populated from Node.McidReferences).
     /// </summary>
     public int Mcid { get; init; }
+
+    /// <summary>
+    /// PHASE 6G: The PDF structure element for this target (used to create MCR links after content marking).
+    /// </summary>
+    public PdfStructElem? StructElem { get; init; }
 }

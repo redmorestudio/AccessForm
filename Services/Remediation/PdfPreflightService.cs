@@ -4,24 +4,30 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using AccessFormServer.Services;
 using WordToPdfConverter.Services.Remediation.Models;
+using WordToPdfConverter.Services.Remediation.Fixes;
 
 namespace WordToPdfConverter.Services.Remediation;
 
 /// <summary>
-/// Preflight service that runs Aspose font optimization BEFORE any structure rebuild or MCID work.
-/// This ensures that font fixes don't destroy MCID markers added later in the pipeline.
+/// Preflight service that runs content-stream mutations BEFORE structure rebuild or MCID work.
+/// This ensures that operations like font fixes and artifact tagging don't destroy MCID markers.
+/// Phase 6C: Aspose font optimization
+/// Phase 6D: Artifact fix (unmarked XObject wrapping)
 /// </summary>
 public class PdfPreflightService : IPdfPreflightService
 {
     private readonly ILogger<PdfPreflightService> _logger;
     private readonly AsposePdfCloudService _asposeCloud;
+    private readonly ArtifactTaggedContentFixService _artifactFix;
 
     public PdfPreflightService(
         ILogger<PdfPreflightService> logger,
-        AsposePdfCloudService asposeCloud)
+        AsposePdfCloudService asposeCloud,
+        ArtifactTaggedContentFixService artifactFix)
     {
         _logger = logger;
         _asposeCloud = asposeCloud;
+        _artifactFix = artifactFix;
     }
 
     public async Task<byte[]> RunPreflightAsync(byte[] inputPdf, RemediationOptions options)
@@ -53,22 +59,48 @@ public class PdfPreflightService : IPdfPreflightService
                     "Expected 'PreStructureOnly' or 'Disabled'. Proceeding with preflight.");
             }
 
-            // Run Aspose font optimization
-            _logger.LogInformation("[PREFLIGHT] Running Aspose Cloud font optimization...");
-            var optimizedPdf = await _asposeCloud.OptimizePdfWithFontEmbeddingAsync(inputPdf);
+            byte[] pdf = inputPdf;
+
+            // Step 1: Run Aspose font optimization (Phase 6C)
+            _logger.LogInformation("[PREFLIGHT] Step 1: Aspose Cloud font optimization...");
+            var optimizedPdf = await _asposeCloud.OptimizePdfWithFontEmbeddingAsync(pdf);
 
             if (optimizedPdf != null && optimizedPdf.Length > 0)
             {
-                stopwatch.Stop();
                 _logger.LogInformation(
-                    $"[PREFLIGHT] ✓ Font optimization complete: {inputPdf.Length:N0} → {optimizedPdf.Length:N0} bytes ({stopwatch.ElapsedMilliseconds}ms)");
-                return optimizedPdf;
+                    $"[PREFLIGHT] ✓ Font optimization complete: {pdf.Length:N0} → {optimizedPdf.Length:N0} bytes");
+                pdf = optimizedPdf;
             }
             else
             {
-                _logger.LogWarning("[PREFLIGHT] Aspose optimization returned no output - using original PDF");
-                return inputPdf;
+                _logger.LogWarning("[PREFLIGHT] Aspose optimization returned no output - continuing with original");
             }
+
+            // Step 2: Run Artifact Fix (Phase 6D)
+            if (options.ArtifactFixMode == "PreStructureOnly")
+            {
+                _logger.LogInformation("[PREFLIGHT] Step 2: Artifact Fix (unmarked XObject wrapping)...");
+                var artifactResult = await _artifactFix.RemediateAsync(pdf);
+
+                if (artifactResult.Success && artifactResult.OutputPdf != null && artifactResult.OutputPdf.Length > 0)
+                {
+                    _logger.LogInformation(
+                        $"[PREFLIGHT] ✓ Artifact fix complete: {pdf.Length:N0} → {artifactResult.OutputPdf.Length:N0} bytes, {artifactResult.IssuesFixed} issues fixed");
+                    pdf = artifactResult.OutputPdf;
+                }
+                else
+                {
+                    _logger.LogWarning("[PREFLIGHT] Artifact fix returned no output or failed - continuing");
+                }
+            }
+            else
+            {
+                _logger.LogInformation($"[PREFLIGHT] Artifact fix skipped (mode: {options.ArtifactFixMode})");
+            }
+
+            stopwatch.Stop();
+            _logger.LogInformation($"[PREFLIGHT] ✓ Preflight complete: {inputPdf.Length:N0} → {pdf.Length:N0} bytes ({stopwatch.ElapsedMilliseconds}ms)");
+            return pdf;
         }
         catch (Exception ex)
         {

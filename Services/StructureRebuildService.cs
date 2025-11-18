@@ -54,8 +54,15 @@ public sealed class StructureRebuildService
         byte[] originalPdfBytes,
         string fileName = "document.pdf")
     {
+        // PHASE 6E: Read MCID settings from job context
+        var options = _jobContext.Options ?? new WordToPdfConverter.Services.Remediation.Models.RemediationOptions();
+
         _logger.LogInformation(
             $"[STRUCTURE-REBUILD] Starting structure rebuild for {fileName}");
+        _logger.LogInformation(
+            "[STRUCTURE-REBUILD] MCID linking={McidLinking}, MCID content rewrite={McidRewrite}",
+            options.EnableMcidLinking,
+            options.EnableMcidContentRewrite);
 
         try
         {
@@ -119,6 +126,14 @@ public sealed class StructureRebuildService
                 $"{remediatedPdf.Length} bytes, " +
                 $"StructureRebuildExecuted={context.StructureRebuildExecuted}, " +
                 $"McidContentRewriteExecuted={context.McidContentRewriteExecuted}");
+
+            // DEBUG: Check if MCID markers are present in returned PDF
+            if (context.McidContentRewriteExecuted)
+            {
+                var bdcCount = System.Text.Encoding.ASCII.GetString(remediatedPdf).Split(new[] { "BDC" }, StringSplitOptions.None).Length - 1;
+                var emcCount = System.Text.Encoding.ASCII.GetString(remediatedPdf).Split(new[] { "EMC" }, StringSplitOptions.None).Length - 1;
+                _logger.LogInformation($"[STRUCTURE-REBUILD-DEBUG] PDF has {bdcCount} BDC and {emcCount} EMC markers");
+            }
 
             return remediatedPdf;
         }

@@ -35,6 +35,10 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddProvider(new SimpleFileLoggerProvider("/Users/sethredmore/Documents/Redmore Studio/AccessForm/WordToPdfConverter/Logs/accessform.log"));
 
+// Phase 6E: Configure remediation options from appsettings.json
+builder.Services.Configure<WordToPdfConverter.Services.Remediation.Models.RemediationOptions>(
+    builder.Configuration.GetSection("AccessibilityRemediation"));
+
 // Add services
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor(options =>
@@ -1106,6 +1110,54 @@ app.MapPost("/api/remediate-pdf", async (HttpRequest request, AccessibilityServi
         Console.WriteLine($"❌ Remediation error: {ex.Message}");
         Console.WriteLine($"Stack trace: {ex.StackTrace}");
         return Results.Problem($"PDF remediation failed: {ex.Message}");
+    }
+});
+
+// ===========================================================================================
+// PHASE 6E TEST ENDPOINT - Uses RemediationOrchestrator to verify MCID settings
+// ===========================================================================================
+
+app.MapPost("/api/test-remediate-with-orchestrator", async (
+    HttpRequest request,
+    WordToPdfConverter.Services.Remediation.RemediationOrchestrator orchestrator,
+    ILogger<Program> logger) =>
+{
+    try
+    {
+        if (!request.Form.Files.Any())
+        {
+            return Results.BadRequest("No file uploaded");
+        }
+
+        var file = request.Form.Files[0];
+
+        if (!file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.BadRequest("Please upload a PDF file");
+        }
+
+        logger.LogInformation("[TEST-ENDPOINT] Starting remediation via orchestrator for: {FileName}", file.FileName);
+
+        using var stream = file.OpenReadStream();
+        using var memoryStream = new MemoryStream();
+        await stream.CopyToAsync(memoryStream);
+        var pdfBytes = memoryStream.ToArray();
+
+        logger.LogInformation("[TEST-ENDPOINT] Calling RemediationOrchestrator.RemediateAsync with Production options");
+
+        // Use Production options which should have MCID enabled by default
+        var options = WordToPdfConverter.Services.Remediation.Models.RemediationOptions.Production;
+
+        var result = await orchestrator.RemediateAsync(pdfBytes, options);
+
+        logger.LogInformation("[TEST-ENDPOINT] Remediation complete. Final violations: {Count}", result.Summary.FinalViolationCount);
+
+        return Results.File(result.OutputPdf, "application/pdf", $"remediated_{file.FileName}");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[TEST-ENDPOINT] Remediation failed");
+        return Results.Problem($"Remediation failed: {ex.Message}");
     }
 });
 

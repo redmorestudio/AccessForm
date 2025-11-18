@@ -9,6 +9,7 @@ using iText.Kernel.Pdf.Tagging;
 using iText.Kernel.Pdf.Tagutils;
 using Microsoft.Extensions.Logging;
 using WordToPdfConverter.Services.Remediation.Models;
+using WordToPdfConverter.Models.Remediation;
 
 namespace WordToPdfConverter.Services.Remediation.Fixes
 {
@@ -17,19 +18,26 @@ namespace WordToPdfConverter.Services.Remediation.Fixes
     /// 7.1-1: Content marked as Artifact should not be present inside tagged content
     /// 7.1-2: Tagged content should not be present inside artifact designation
     /// These are two sides of the same coin and must be handled together to avoid ping-ponging.
+    ///
+    /// PHASE 6D: This service rewrites page content streams and MUST NOT run after MCID content rewrite.
+    /// Default mode: runs in preflight phase (before structure rebuild/MCID work).
     /// </summary>
     public class ArtifactTaggedContentFixService : IRemediationService
     {
         private readonly ILogger<ArtifactTaggedContentFixService> _logger;
+        private readonly RemediationJobContext _jobContext;
 
         public string ServiceName => "Artifact/Tagged Content Fix";
         public ViolationCategory TargetCategory => ViolationCategory.Structure;
         public int Priority => 10; // High priority - structural issues should be fixed early
         public bool IsRequired => true; // Always run to catch untagged content (7.1-3)
 
-        public ArtifactTaggedContentFixService(ILogger<ArtifactTaggedContentFixService> logger)
+        public ArtifactTaggedContentFixService(
+            ILogger<ArtifactTaggedContentFixService> logger,
+            RemediationJobContext jobContext)
         {
             _logger = logger;
+            _jobContext = jobContext;
         }
 
         public async Task<ServiceResult> RemediateAsync(byte[] pdfBytes)
@@ -43,6 +51,23 @@ namespace WordToPdfConverter.Services.Remediation.Fixes
 
             try
             {
+                // PHASE 6D GUARD: Block if MCID content rewrite already executed
+                if (_jobContext.StructureContext != null &&
+                    _jobContext.StructureContext.McidContentRewriteExecuted)
+                {
+                    _logger.LogWarning(
+                        "[ARTIFACT-FIX] ⚠ BLOCKED: Artifact fix cannot run after MCID content rewrite. " +
+                        "This service rewrites page content streams and would destroy BDC/EMC markers. " +
+                        "Returning PDF unchanged.");
+                    _logger.LogWarning(
+                        "[ARTIFACT-FIX] To fix: Ensure ArtifactFixMode='PreStructureOnly' and artifact fix runs in preflight.");
+
+                    result.Success = true; // Not an error - this is expected behavior
+                    result.ChangesMade = false;
+                    result.OutputPdf = pdfBytes;
+                    return result;
+                }
+
                 _logger.LogInformation("[ARTIFACT-FIX] Starting artifact/tagged content remediation");
 
                 using var ms = new MemoryStream(pdfBytes);

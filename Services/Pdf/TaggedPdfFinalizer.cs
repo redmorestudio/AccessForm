@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using WordToPdfConverter.Models.Layout;
 using WordToPdfConverter.Models.Logical;
 using WordToPdfConverter.Models.Remediation;
+using WordToPdfConverter.Services.Remediation.Models;
 using WordToPdfConverter.Services.Remediation.Structure;
 
 namespace WordToPdfConverter.Services.Pdf;
@@ -22,15 +23,18 @@ public sealed class TaggedPdfFinalizer : ITaggedPdfFinalizer
     private readonly ILogger<TaggedPdfFinalizer> _logger;
     private readonly IPdfStructureWriter _structureWriter;
     private readonly IConfiguration _configuration;
+    private readonly RemediationJobContext _jobContext;
 
     public TaggedPdfFinalizer(
         ILogger<TaggedPdfFinalizer> logger,
         IPdfStructureWriter structureWriter,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        RemediationJobContext jobContext)
     {
         _logger = logger;
         _structureWriter = structureWriter;
         _configuration = configuration;
+        _jobContext = jobContext;
     }
 
     public byte[] FinalizeTaggedPdf(
@@ -44,13 +48,23 @@ public sealed class TaggedPdfFinalizer : ITaggedPdfFinalizer
         {
             _logger.LogInformation("[FINALIZER] Starting final tagged PDF generation");
 
+            // PHASE 6E: Read MCID settings from job context instead of IConfiguration
+            var options = _jobContext.Options ?? new RemediationOptions();
+            var enableMcidLinking = options.EnableMcidLinking;
+            var enableMcidContentRewrite = options.EnableMcidContentRewrite;
+
+            _logger.LogInformation(
+                "[FINALIZER] Using MCID settings: linking={Link}, rewrite={Rewrite}",
+                enableMcidLinking,
+                enableMcidContentRewrite);
+
             // Guard 1: Check if rebuild already executed
             if (context.StructureRebuildExecuted)
             {
                 _logger.LogWarning(
                     "[FINALIZER] Structure rebuild already executed. Skipping to prevent overwriting MCID markers. " +
-                    "Returning original PDF bytes.");
-                return originalPdf;
+                    "Passing through input PDF unchanged.");
+                return originalPdf; // PHASE 6F: Pass through input unchanged
             }
 
             // Guard 2: Check if MCID content rewrite already executed
@@ -58,14 +72,11 @@ public sealed class TaggedPdfFinalizer : ITaggedPdfFinalizer
             {
                 _logger.LogWarning(
                     "[FINALIZER] MCID content rewrite already executed. Skipping to prevent overwriting BDC/EMC markers. " +
-                    "Returning original PDF bytes.");
-                return originalPdf;
+                    "Passing through input PDF unchanged.");
+                return originalPdf; // PHASE 6F: Pass through input unchanged
             }
 
             // Enforcement: Require LayoutPlan for Phase 6b
-            var enableMcidContentRewrite = _configuration.GetValue<bool>(
-                "AccessibilityRemediation:EnableMcidContentRewrite", true);
-
             if (enableMcidContentRewrite && layoutPlan == null)
             {
                 var errorMsg =
@@ -77,9 +88,6 @@ public sealed class TaggedPdfFinalizer : ITaggedPdfFinalizer
             }
 
             // Log configuration
-            var enableMcidLinking = _configuration.GetValue<bool>(
-                "AccessibilityRemediation:EnableMcidLinking", false);
-
             _logger.LogInformation(
                 "[FINALIZER] Configuration: " +
                 $"EnableMcidLinking={enableMcidLinking}, " +

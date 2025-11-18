@@ -226,13 +226,10 @@ namespace WordToPdfConverter.Services.Remediation.Strategy
             // Add all the fix services that clean up common structural issues
             // These are the services that fix problems often introduced during remediation
 
-            // 1. Fix artifact/tagged content conflicts (7.1 violations)
-            var artifactService = _serviceProvider.GetService(
-                typeof(Fixes.ArtifactTaggedContentFixService)) as IRemediationService;
-            if (artifactService != null)
-                cleanupPhase.Services.Add(artifactService);
+            // PHASE 6D: Artifact fix moved to preflight - no longer runs here
+            // Artifact/tagged content conflicts (7.1 violations) are now handled before MCID work
 
-            // 1.5. Fix content by specific index (7.1-3 violations for specific content[33] etc)
+            // 1. Fix content by specific index (7.1-3 violations for specific content[33] etc)
             var contentIndexService = _serviceProvider.GetService(
                 typeof(Fixes.ContentIndexArtifactFixService)) as IRemediationService;
             if (contentIndexService != null)
@@ -380,11 +377,8 @@ namespace WordToPdfConverter.Services.Remediation.Strategy
                     if (contentIndexService != null)
                         services.Add(contentIndexService);
 
-                    // Add artifact/tagged content fix
-                    var artifactService = _serviceProvider.GetService(
-                        typeof(Fixes.ArtifactTaggedContentFixService)) as IRemediationService;
-                    if (artifactService != null)
-                        services.Add(artifactService);
+                    // PHASE 6D: Artifact fix moved to preflight - no longer runs here
+                    // Artifact/tagged content conflicts (7.1 violations) are now handled before MCID work
                     break;
 
                 case ViolationCategory.FormFields:

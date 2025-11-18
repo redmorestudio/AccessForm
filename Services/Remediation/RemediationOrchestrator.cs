@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using WordToPdfConverter.Models.PdfUA;
 using WordToPdfConverter.Services;
 using AccessFormServer.Services;
@@ -36,6 +37,8 @@ namespace WordToPdfConverter.Services.Remediation
         private readonly ProcessingProgressService _progressService;
         private readonly CostTrackingService _costTracking;
         private readonly IPdfPreflightService _preflightService;
+        private readonly IOptions<RemediationOptions> _defaultOptions;
+        private readonly WordToPdfConverter.Models.Remediation.RemediationJobContext _jobContext;
 
         public RemediationOrchestrator(
             ILogger<RemediationOrchestrator> logger,
@@ -48,6 +51,8 @@ namespace WordToPdfConverter.Services.Remediation
             RemediationReporter reporter,
             CostTrackingService costTracking,
             IPdfPreflightService preflightService,
+            IOptions<RemediationOptions> defaultOptions,
+            WordToPdfConverter.Models.Remediation.RemediationJobContext jobContext,
             ProcessingProgressService progressService = null,
             GptRemediationService gptService = null)
         {
@@ -61,6 +66,8 @@ namespace WordToPdfConverter.Services.Remediation
             _reporter = reporter;
             _costTracking = costTracking;
             _preflightService = preflightService;
+            _defaultOptions = defaultOptions;
+            _jobContext = jobContext;
             _progressService = progressService;
             _gptService = gptService;
         }
@@ -72,11 +79,36 @@ namespace WordToPdfConverter.Services.Remediation
             byte[] inputPdf,
             RemediationOptions options = null)
         {
-            // Use default options if none provided
+            // PHASE 6E: Merge configuration settings with passed-in options
+            var configOptions = _defaultOptions.Value;
+
+            // Use default options if none provided, then merge with config
             options ??= RemediationOptions.Production;
+
+            // Merge MCID settings from configuration (config takes precedence for MCID flags)
+            options.EnableMcidLinking = configOptions.EnableMcidLinking;
+            options.EnableMcidContentRewrite = configOptions.EnableMcidContentRewrite;
+
+            // Also merge other Phase 6C/6D settings if not explicitly set
+            if (string.IsNullOrEmpty(options.AsposeOptimizationMode) || options.AsposeOptimizationMode == "PreStructureOnly")
+                options.AsposeOptimizationMode = configOptions.AsposeOptimizationMode;
+            if (string.IsNullOrEmpty(options.ArtifactFixMode) || options.ArtifactFixMode == "PreStructureOnly")
+                options.ArtifactFixMode = configOptions.ArtifactFixMode;
 
             var fileInfo = !string.IsNullOrEmpty(options.FileName) ? $" [{options.FileName}]" : "";
             _logger.LogInformation($"=== CLOSED-LOOP REMEDIATION STARTED ==={fileInfo}");
+
+            // PHASE 6E: Log MCID configuration at job start for diagnostics
+            _logger.LogInformation(
+                "REMEDIATION JOB: MCID linking={Link}, MCID content rewrite={Rewrite}, " +
+                "AsposeMode={AsposeMode}, ArtifactMode={ArtifactMode}",
+                options.EnableMcidLinking,
+                options.EnableMcidContentRewrite,
+                options.AsposeOptimizationMode,
+                options.ArtifactFixMode);
+
+            // PHASE 6E: Store options in job context so all services can access them
+            _jobContext.Options = options;
 
             // PHASE 6C: Run preflight BEFORE any structure rebuild or MCID work
             // This handles font fixes via Aspose Cloud that would otherwise destroy MCID markers
@@ -150,9 +182,32 @@ namespace WordToPdfConverter.Services.Remediation
                     session.LastValidatedPdf = session.CurrentPdf;
                     session.LastValidation = validation;
 
-                    // Track best PDF if this is better than what we've seen
-                    if (session.BestValidation == null ||
-                        validation.Summary.ComplianceScore > session.BestValidation.Summary.ComplianceScore)
+                    // Track best PDF - PHASE 6E: Prioritize PDFs with MCID markers
+                    // Check if this PDF has MCID markers (structure rebuild was executed)
+                    bool currentHasMcidMarkers = _jobContext.StructureContext.McidContentRewriteExecuted;
+                    bool bestHasMcidMarkers = session.BestIterationNumber > 0; // Assumes MCID work happens after iteration 0
+
+                    // Prefer PDFs with MCID markers over raw compliance score
+                    bool shouldUpdateBest = false;
+                    if (currentHasMcidMarkers && !bestHasMcidMarkers)
+                    {
+                        // Always prefer PDF with MCID markers
+                        shouldUpdateBest = true;
+                        _logger.LogInformation("🎯 Prioritizing PDF with MCID markers over compliance score");
+                    }
+                    else if (!currentHasMcidMarkers && bestHasMcidMarkers)
+                    {
+                        // Keep the one with MCID markers
+                        shouldUpdateBest = false;
+                    }
+                    else
+                    {
+                        // Both have same MCID status, use compliance score
+                        shouldUpdateBest = session.BestValidation == null ||
+                            validation.Summary.ComplianceScore > session.BestValidation.Summary.ComplianceScore;
+                    }
+
+                    if (shouldUpdateBest)
                     {
                         session.BestPdf = session.CurrentPdf;
                         session.BestValidation = validation;
@@ -161,7 +216,8 @@ namespace WordToPdfConverter.Services.Remediation
                         _logger.LogInformation(
                             $"🏆 New best PDF found at iteration {session.IterationCount}: " +
                             $"{validation.Summary.ComplianceScore:F1}% compliant " +
-                            $"({validation.Violations.Count} violations)");
+                            $"({validation.Violations.Count} violations)" +
+                            (currentHasMcidMarkers ? " [WITH MCID MARKERS]" : ""));
 
                         // Save the best PDF to disk
                         await SaveBestPdfAsync(session);
@@ -203,7 +259,8 @@ namespace WordToPdfConverter.Services.Remediation
                     // Step 6.5: Run Post-Remediation Cleanup Phase
                     // This phase runs AFTER normal remediation but BEFORE GPT
                     // It fixes common structural issues that are often introduced during remediation
-                    if (execution.Success && execution.OutputPdf != null)
+                    // PHASE 6F: Skip cleanup if MCID content rewrite was executed, as cleanup services may destroy MCID markers
+                    if (execution.Success && execution.OutputPdf != null && !_jobContext.StructureContext.McidContentRewriteExecuted)
                     {
                         _logger.LogInformation("\n--- POST-REMEDIATION CLEANUP ---");
 
@@ -228,6 +285,11 @@ namespace WordToPdfConverter.Services.Remediation
                                 }
                             }
                         }
+                    }
+                    else if (_jobContext.StructureContext.McidContentRewriteExecuted)
+                    {
+                        _logger.LogInformation("\n--- POST-REMEDIATION CLEANUP SKIPPED ---");
+                        _logger.LogInformation("⚠ Cleanup skipped to preserve MCID markers in content streams");
                     }
 
                     // Step 7: If violations remain AND GPT is available, try AI-powered remediation
@@ -355,6 +417,24 @@ namespace WordToPdfConverter.Services.Remediation
 
                     // Step 8: Update session
                     session.NextIteration(execution);
+
+                    // PHASE 6F FIX: Update best PDF AFTER remediation if MCID markers were just added
+                    // The best PDF selection happens BEFORE remediation, but MCID markers are created DURING remediation
+                    // So we need to capture the post-remediation PDF as the new best if MCID was added
+                    // NOTE: IterationCount was just incremented by NextIteration, so we check (IterationCount - 1)
+                    if (_jobContext.StructureContext.McidContentRewriteExecuted &&
+                        session.CurrentPdf != null &&
+                        session.BestIterationNumber == (session.IterationCount - 1))
+                    {
+                        // This iteration was already selected as best, but now it has MCID markers
+                        // Update the best PDF to the post-remediation version
+                        session.BestPdf = session.CurrentPdf;
+                        _logger.LogInformation(
+                            "📌 Updated best PDF to post-remediation version with MCID markers");
+
+                        // Save the updated best PDF
+                        await SaveBestPdfAsync(session);
+                    }
 
                     // Update temp file for next validation
                     tempPath = await SaveToTempFileAsync(session.CurrentPdf);

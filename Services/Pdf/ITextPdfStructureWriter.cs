@@ -8,6 +8,7 @@ using iText.Kernel.Pdf.Tagutils;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using WordToPdfConverter.Models.Remediation;
+using WordToPdfConverter.Services.Remediation.Models;
 using WordToPdfConverter.Services.Remediation.Structure;
 
 namespace WordToPdfConverter.Services.Pdf;
@@ -22,6 +23,7 @@ public sealed class ITextPdfStructureWriter : IPdfStructureWriter
     private readonly ILogger<ITextPdfStructureWriter> _logger;
     private readonly IContentMcidMarker? _mcidMarker;
     private readonly IConfiguration _configuration;
+    private readonly RemediationJobContext _jobContext;
 
     // Mapping from StructureNode to its corresponding PdfStructElem
     private readonly Dictionary<StructureNode, PdfStructElem> _nodeToElementMap = new();
@@ -29,10 +31,12 @@ public sealed class ITextPdfStructureWriter : IPdfStructureWriter
     public ITextPdfStructureWriter(
         ILogger<ITextPdfStructureWriter> logger,
         IConfiguration configuration,
+        RemediationJobContext jobContext,
         IContentMcidMarker? mcidMarker = null)
     {
         _logger = logger;
         _configuration = configuration;
+        _jobContext = jobContext;
         _mcidMarker = mcidMarker;
     }
 
@@ -47,8 +51,8 @@ public sealed class ITextPdfStructureWriter : IPdfStructureWriter
                 _logger.LogWarning(
                     "[ITEXT-STRUCTURE] Rebuild skipped — MCID content rewrite already executed. " +
                     "Proceeding with rebuild would overwrite BDC/EMC markers. " +
-                    "Returning original PDF bytes.");
-                return originalPdf;
+                    "Passing through input PDF unchanged.");
+                return originalPdf; // PHASE 6F: Pass through input unchanged (originalPdf is the input here)
             }
 
             if (context != null && context.StructureRebuildExecuted)
@@ -84,8 +88,15 @@ public sealed class ITextPdfStructureWriter : IPdfStructureWriter
             // Create new structure tree from our model
             CreateStructureTree(pdfDoc, tree);
 
+            // PHASE 6E: Read MCID settings from job context instead of IConfiguration
+            var options = _jobContext.Options ?? new RemediationOptions();
+            var enableMcidLinking = options.EnableMcidLinking;
+
+            _logger.LogInformation(
+                "[ITEXT-STRUCTURE] Using MCID linking setting from job context: {Link}",
+                enableMcidLinking);
+
             // Phase 6: MCID linking (if enabled and context available)
-            var enableMcidLinking = _configuration.GetValue<bool>("AccessibilityRemediation:EnableMcidLinking", false);
             if (enableMcidLinking && _mcidMarker != null && context?.LayoutPlan != null)
             {
                 _logger.LogInformation("[ITEXT-STRUCTURE] Starting Phase 6 MCID linking");
@@ -99,10 +110,35 @@ public sealed class ITextPdfStructureWriter : IPdfStructureWriter
                     $"EnableMcidLinking={enableMcidLinking}, Marker={_mcidMarker != null}, LayoutPlan={context?.LayoutPlan != null}");
             }
 
+            // PHASE 6G DEBUG: Check PDF state before close
+            _logger.LogInformation("[ITEXT-STRUCTURE-6G-DEBUG] ========== BEFORE CLOSE ==========");
+            var pageCount = pdfDoc.GetNumberOfPages();
+            for (int i = 1; i <= Math.Min(pageCount, 2); i++)
+            {
+                var pg = pdfDoc.GetPage(i);
+                var pageDict = pg.GetPdfObject();
+                var contentsObj = pageDict.Get(PdfName.Contents);
+
+                _logger.LogInformation($"[ITEXT-STRUCTURE-6G-DEBUG] Page {i}: Contents object type = {contentsObj?.GetType().Name}, IsIndirect = {contentsObj?.IsIndirectReference()}");
+
+                var contentBytes = pg.GetContentBytes();
+                var pgBdc = System.Text.Encoding.ASCII.GetString(contentBytes).Split(new[] { "BDC" }, StringSplitOptions.None).Length - 1;
+                var pgEmc = System.Text.Encoding.ASCII.GetString(contentBytes).Split(new[] { "EMC" }, StringSplitOptions.None).Length - 1;
+                _logger.LogInformation($"[ITEXT-STRUCTURE-6G-DEBUG] Page {i}: content has {pgBdc} BDC and {pgEmc} EMC markers, content length = {contentBytes.Length}");
+            }
+
+            _logger.LogInformation("[ITEXT-STRUCTURE-6G-DEBUG] ========== CALLING pdfDoc.Close() ==========");
             pdfDoc.Close();
+            _logger.LogInformation("[ITEXT-STRUCTURE-6G-DEBUG] ========== CLOSE COMPLETE ==========");
+
+            var finalBytes = outputStream.ToArray();
+            var finalText = System.Text.Encoding.ASCII.GetString(finalBytes);
+            var finalBdc = finalText.Split(new[] { "BDC" }, StringSplitOptions.None).Length - 1;
+            var finalEmc = finalText.Split(new[] { "EMC" }, StringSplitOptions.None).Length - 1;
+            _logger.LogInformation($"[ITEXT-STRUCTURE-6G-DEBUG] After close: Final PDF has {finalBdc} BDC and {finalEmc} EMC markers");
 
             _logger.LogInformation("[ITEXT-STRUCTURE] Structure tree rebuild complete");
-            return outputStream.ToArray();
+            return finalBytes;
         }
         catch (Exception ex)
         {
@@ -306,14 +342,16 @@ public sealed class ITextPdfStructureWriter : IPdfStructureWriter
             var leafNodes = allNodes.Where(StructureNodeHelper.IsLeafContentNode).ToList();
             _logger.LogInformation($"[ITEXT-MCID] Found {leafNodes.Count} leaf content nodes");
 
+            // PHASE 6G FIX: Manual MCID allocation without PdfMcrNumber
+            // Don't use PdfMcrNumber - it conflicts with manual content stream rewriting
+            // We'll assign MCID numbers manually and let ItextContentMcidMarker handle all BDC/EMC injection
+            var mcidCounterPerPage = new Dictionary<int, int>();
+
             int mcidCount = 0;
             foreach (var node in leafNodes)
             {
                 // Resolve page index for this node
                 var pageIndex = StructureNodeHelper.ResolvePageIndex(node, layoutPlan);
-
-                // Get the PdfPage (1-based in iText)
-                var page = pdfDoc.GetPage(pageIndex + 1);
 
                 // Get the PdfStructElem for this node
                 if (!_nodeToElementMap.TryGetValue(node, out var structElem))
@@ -322,9 +360,12 @@ public sealed class ITextPdfStructureWriter : IPdfStructureWriter
                     continue;
                 }
 
-                // Allocate MCID using PdfMcrNumber
-                var mcr = new PdfMcrNumber(page, structElem);
-                var mcid = mcr.GetMcid();
+                // Allocate MCID manually (not using PdfMcrNumber to avoid conflict)
+                if (!mcidCounterPerPage.ContainsKey(pageIndex))
+                {
+                    mcidCounterPerPage[pageIndex] = 0;
+                }
+                var mcid = mcidCounterPerPage[pageIndex]++;
 
                 // Add to node's MCID references
                 node.McidReferences.Add(new McidReference
@@ -337,7 +378,8 @@ public sealed class ITextPdfStructureWriter : IPdfStructureWriter
                 mcidTargets[(pageIndex, mcid)] = new McidTarget
                 {
                     Node = node,
-                    Mcid = mcid
+                    Mcid = mcid,
+                    StructElem = structElem // Store structElem for later MCR creation
                 };
 
                 mcidCount++;
@@ -347,11 +389,17 @@ public sealed class ITextPdfStructureWriter : IPdfStructureWriter
             _logger.LogInformation($"[ITEXT-MCID] Allocated {mcidCount} MCIDs across {mcidTargets.Keys.Select(k => k.PageIndex).Distinct().Count()} pages");
 
             // Phase 6b: Call marker to insert BDC/EMC in content streams (if enabled)
-            var enableMcidContentRewrite = _configuration.GetValue<bool>("AccessibilityRemediation:EnableMcidContentRewrite", true);
+            // PHASE 6E: Read MCID content rewrite setting from job context
+            var enableMcidContentRewrite = _jobContext.Options?.EnableMcidContentRewrite ?? true;
             if (_mcidMarker != null && enableMcidContentRewrite)
             {
                 _logger.LogInformation("[ITEXT-MCID] Calling Phase 6b content marker to rewrite streams with BDC/EMC operators");
                 _mcidMarker.Apply(pdfDoc, mcidTargets);
+
+                // PHASE 6G EXPERIMENT: DON'T create MCR dictionaries yet
+                // Hypothesis: Adding MCR refs after content modification causes iText to reset content streams during close
+                // Let's see if content markers persist without MCR links
+                _logger.LogInformation("[ITEXT-MCID] PHASE 6G: Skipping MCR dictionary creation to test content persistence");
             }
             else
             {

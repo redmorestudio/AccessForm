@@ -1,3 +1,5 @@
+using WordToPdfConverter.Services.Remediation.Models;
+
 namespace WordToPdfConverter.Models.Remediation;
 
 /// <summary>
@@ -18,4 +20,10 @@ public sealed class RemediationJobContext
     /// All services must use this single instance to ensure flags persist.
     /// </summary>
     public StructureRebuildContext StructureContext { get; } = new();
+
+    /// <summary>
+    /// Phase 6E: Remediation options for this job, including MCID settings.
+    /// Set by RemediationOrchestrator at job start and accessible to all services.
+    /// </summary>
+    public RemediationOptions Options { get; set; }
 }

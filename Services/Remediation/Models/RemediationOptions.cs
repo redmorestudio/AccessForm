@@ -31,6 +31,27 @@ namespace WordToPdfConverter.Services.Remediation.Models
         /// </summary>
         public string AsposeOptimizationMode { get; set; } = "PreStructureOnly";
 
+        /// <summary>
+        /// Controls when/if Artifact Fix (unmarked XObject wrapping) runs.
+        /// - "PreStructureOnly" (default): ARTIFACT-FIX runs in preflight, before structure rebuild/MCID work
+        /// - "PostStructureMcidAware": Reserved for future MCID-aware implementation (not yet available)
+        /// </summary>
+        public string ArtifactFixMode { get; set; } = "PreStructureOnly";
+
+        /// <summary>
+        /// Phase 6E: Enable MCID (Marked Content ID) linking between structure tree and page content.
+        /// When true, structure elements will be assigned MCIDs that reference page content.
+        /// </summary>
+        public bool EnableMcidLinking { get; set; } = true;
+
+        /// <summary>
+        /// Phase 6E: Enable MCID content stream rewriting (Phase 6b).
+        /// When true, page content streams will be rewritten to insert BDC/EMC operators
+        /// that mark content with MCIDs, linking visual content to the structure tree.
+        /// Requires EnableMcidLinking to also be true.
+        /// </summary>
+        public bool EnableMcidContentRewrite { get; set; } = true;
+
         // Reporting
         public bool SaveIntermediatePdfs { get; set; } = false;
         public string IntermediateOutputPath { get; set; } = "./remediation-temp";

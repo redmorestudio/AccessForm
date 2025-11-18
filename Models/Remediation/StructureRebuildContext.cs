@@ -1,3 +1,4 @@
+using System;
 using WordToPdfConverter.Models.Layout;
 
 namespace WordToPdfConverter.Models.Remediation;
@@ -30,9 +31,20 @@ public sealed class StructureRebuildContext
     /// </summary>
     public bool StructureRebuildExecuted { get; set; }
 
+    private bool _mcidContentRewriteExecuted;
+
     /// <summary>
     /// Phase 6b Pipeline Integration: Tracks whether MCID content stream rewrite has been executed.
     /// Used to write-protect the PDF against accidental overwrites of BDC/EMC markers.
     /// </summary>
-    public bool McidContentRewriteExecuted { get; set; }
+    public bool McidContentRewriteExecuted
+    {
+        get => _mcidContentRewriteExecuted;
+        set
+        {
+            System.Console.WriteLine($"[DEBUG-CONTEXT] McidContentRewriteExecuted set to {value} at {DateTime.Now:HH:mm:ss.fff}");
+            System.Console.WriteLine($"[DEBUG-CONTEXT] Stack trace: {Environment.StackTrace}");
+            _mcidContentRewriteExecuted = value;
+        }
+    }
 }

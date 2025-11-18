@@ -497,10 +497,58 @@ public class ItextContentMcidMarker : IContentMcidMarker
 
             output.Flush();
 
-            // Replace page content
+            // PHASE 6G FIX: MODIFY existing stream data, don't create new stream
             var newContent = ms.ToArray();
-            page.Put(PdfName.Contents, new PdfStream(newContent));
+
+            // DEBUG: Verify BDC/EMC markers are actually in the new content
+            var bdcCount = System.Text.Encoding.ASCII.GetString(newContent).Split(new[] { "BDC" }, StringSplitOptions.None).Length - 1;
+            var emcCount = System.Text.Encoding.ASCII.GetString(newContent).Split(new[] { "EMC" }, StringSplitOptions.None).Length - 1;
+            _logger.LogInformation(
+                $"[MCID-MARKER-6b-DEBUG] New content has {bdcCount} BDC and {emcCount} EMC markers before writing to page");
+
+            // PHASE 6G KEY FIX: Get the EXISTING content stream and modify its data
+            // Don't create a new stream - iText won't persist it correctly during close
+            var pageDict = page.GetPdfObject();
+            var existingContents = pageDict.Get(PdfName.Contents);
+
+            _logger.LogInformation($"[MCID-MARKER-6b-STREAM] Existing Contents: type={existingContents?.GetType().Name}, IsIndirect={existingContents?.IsIndirectReference()}");
+
+            PdfStream contentStream;
+
+            if (existingContents is PdfStream stream)
+            {
+                // Modify existing stream
+                contentStream = stream;
+                _logger.LogInformation($"[MCID-MARKER-6b-STREAM] Modifying existing PdfStream, ObjNum={contentStream.GetIndirectReference()?.GetObjNumber()}");
+            }
+            else if (existingContents is PdfArray array)
+            {
+                // Multiple content streams - for now, just replace with single stream
+                _logger.LogInformation($"[MCID-MARKER-6b-STREAM] Found PdfArray with {array.Size()} streams, creating new single stream");
+                contentStream = new PdfStream(newContent);
+                contentStream.MakeIndirect(page.GetDocument());
+                pageDict.Put(PdfName.Contents, contentStream);
+            }
+            else
+            {
+                // No existing stream - create new one
+                _logger.LogInformation($"[MCID-MARKER-6b-STREAM] No existing stream, creating new PdfStream");
+                contentStream = new PdfStream(newContent);
+                contentStream.MakeIndirect(page.GetDocument());
+                pageDict.Put(PdfName.Contents, contentStream);
+            }
+
+            // Set the new data on the stream
+            contentStream.SetData(newContent);
+
+            // Mark everything as modified
+            pageDict.SetModified();
             page.SetModified();
+
+            _logger.LogInformation($"[MCID-MARKER-6b-STREAM] SetData() called with {newContent.Length} bytes, marked as modified");
+
+            // PHASE 6G: Don't flush page here - let normal close process handle persistence
+            // Flushing early can interfere with structure tree finalization
 
             _logger.LogInformation($"[MCID-MARKER-6b] Rewrote content stream with {markedSegments.Count} BDC/EMC pairs");
         }
