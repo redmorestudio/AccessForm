@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using WordToPdfConverter.Services.Remediation.Models;
+using WordToPdfConverter.Models.Remediation;
 using AccessFormServer.Services;
 
 namespace WordToPdfConverter.Services.Remediation.Adapters
@@ -10,11 +11,15 @@ namespace WordToPdfConverter.Services.Remediation.Adapters
     /// <summary>
     /// Adapter for font embedding service to ensure all fonts are embedded
     /// Uses Aspose Cloud API to avoid macOS GDI+ issues
+    ///
+    /// PHASE 6C: This service should NOT run after MCID content rewrite.
+    /// Font fixes must happen in preflight phase, before structure rebuild.
     /// </summary>
     public class FontEmbeddingServiceAdapter : IRemediationService
     {
         private readonly ILogger<FontEmbeddingServiceAdapter> _logger;
         private readonly AsposePdfCloudService _cloudService;
+        private readonly RemediationJobContext _jobContext;
 
         public string ServiceName => "Font Embedding";
         public ViolationCategory TargetCategory => ViolationCategory.Fonts;
@@ -23,10 +28,12 @@ namespace WordToPdfConverter.Services.Remediation.Adapters
 
         public FontEmbeddingServiceAdapter(
             ILogger<FontEmbeddingServiceAdapter> logger,
-            AsposePdfCloudService cloudService)
+            AsposePdfCloudService cloudService,
+            RemediationJobContext jobContext)
         {
             _logger = logger;
             _cloudService = cloudService;
+            _jobContext = jobContext;
         }
 
         public async Task<ServiceResult> RemediateAsync(byte[] pdfBytes)
@@ -36,6 +43,22 @@ namespace WordToPdfConverter.Services.Remediation.Adapters
 
             try
             {
+                // PHASE 6C GUARD: Block Aspose if MCID content rewrite already executed
+                if (_jobContext.StructureContext != null &&
+                    _jobContext.StructureContext.McidContentRewriteExecuted)
+                {
+                    _logger.LogWarning(
+                        "[FONT-SERVICE] ⚠ BLOCKED: Aspose font optimization cannot run after MCID content rewrite. " +
+                        "Font fixes should have been handled in preflight phase. Returning PDF unchanged.");
+                    _logger.LogWarning(
+                        "[FONT-SERVICE] To fix: Ensure AsposeOptimizationMode='PreStructureOnly' and preflight is enabled.");
+
+                    result.Success = true; // Not an error - this is expected behavior
+                    result.ChangesMade = false;
+                    result.OutputPdf = pdfBytes;
+                    return result;
+                }
+
                 _logger.LogInformation($"[FONT-SERVICE] Starting font embedding for PDF ({pdfBytes.Length} bytes)");
                 _logger.LogInformation($"[FONT-SERVICE] Strategy: Use Aspose Cloud API → Optimize → Convert to PDF/A-1b");
 

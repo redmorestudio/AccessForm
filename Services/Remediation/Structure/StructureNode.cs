@@ -31,4 +31,10 @@ public record StructureNode(
     /// May be null for container nodes that don't have physical bounds (e.g., Document root).
     /// </summary>
     public Rect? Bounds { get; init; }
+
+    /// <summary>
+    /// MCID references assigned to this structure node (per page).
+    /// Populated during Phase 6 MCID linking to connect structure elements to actual PDF content.
+    /// </summary>
+    public List<McidReference> McidReferences { get; init; } = new();
 }

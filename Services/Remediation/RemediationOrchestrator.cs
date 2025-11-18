@@ -35,6 +35,7 @@ namespace WordToPdfConverter.Services.Remediation
         private readonly GptRemediationService _gptService;
         private readonly ProcessingProgressService _progressService;
         private readonly CostTrackingService _costTracking;
+        private readonly IPdfPreflightService _preflightService;
 
         public RemediationOrchestrator(
             ILogger<RemediationOrchestrator> logger,
@@ -46,6 +47,7 @@ namespace WordToPdfConverter.Services.Remediation
             ProgressTracker progressTracker,
             RemediationReporter reporter,
             CostTrackingService costTracking,
+            IPdfPreflightService preflightService,
             ProcessingProgressService progressService = null,
             GptRemediationService gptService = null)
         {
@@ -58,6 +60,7 @@ namespace WordToPdfConverter.Services.Remediation
             _progressTracker = progressTracker;
             _reporter = reporter;
             _costTracking = costTracking;
+            _preflightService = preflightService;
             _progressService = progressService;
             _gptService = gptService;
         }
@@ -72,16 +75,22 @@ namespace WordToPdfConverter.Services.Remediation
             // Use default options if none provided
             options ??= RemediationOptions.Production;
 
-            // Create session
+            var fileInfo = !string.IsNullOrEmpty(options.FileName) ? $" [{options.FileName}]" : "";
+            _logger.LogInformation($"=== CLOSED-LOOP REMEDIATION STARTED ==={fileInfo}");
+
+            // PHASE 6C: Run preflight BEFORE any structure rebuild or MCID work
+            // This handles font fixes via Aspose Cloud that would otherwise destroy MCID markers
+            _logger.LogInformation("\n--- PREFLIGHT PHASE ---");
+            var preflightPdf = await _preflightService.RunPreflightAsync(inputPdf, options);
+
+            // Create session with preflight-optimized PDF
             var session = new RemediationSession(options)
             {
-                OriginalPdf = inputPdf,
-                CurrentPdf = inputPdf,
+                OriginalPdf = inputPdf,  // Keep original for comparison
+                CurrentPdf = preflightPdf,  // Start remediation with preflight-optimized PDF
                 FileName = options.FileName
             };
 
-            var fileInfo = !string.IsNullOrEmpty(session.FileName) ? $" [{session.FileName}]" : "";
-            _logger.LogInformation($"=== CLOSED-LOOP REMEDIATION STARTED ==={fileInfo}");
             _logger.LogInformation($"Session ID: {session.SessionId}");
             _logger.LogInformation($"Max Iterations: {options.MaxIterations}");
             _logger.LogInformation($"Max Duration: {options.MaxDuration.TotalMinutes:F1} minutes");

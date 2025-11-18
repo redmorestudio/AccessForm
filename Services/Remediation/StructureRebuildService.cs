@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using WordToPdfConverter.Models.Logical;
+using WordToPdfConverter.Models.Remediation;
 using WordToPdfConverter.Services.Analysis;
 using WordToPdfConverter.Services.Pdf;
 using WordToPdfConverter.Services.Remediation.Structure;
@@ -23,6 +24,7 @@ public sealed class StructureRebuildService : IRemediationService
     private readonly StructureTreeCleaner _cleaner;
     private readonly IPdfStructureWriter _writer;
     private readonly ProcessingProgressService? _progressService;
+    private readonly RemediationJobContext _jobContext;
 
     public string ServiceName => "AI Structure Rebuild";
     public ViolationCategory TargetCategory => ViolationCategory.Structure;
@@ -35,6 +37,7 @@ public sealed class StructureRebuildService : IRemediationService
         FormFieldEnrichmentService formFieldEnrichment,
         StructureTreeCleaner cleaner,
         IPdfStructureWriter writer,
+        RemediationJobContext jobContext,
         ProcessingProgressService? progressService = null)
     {
         _logger = logger;
@@ -42,6 +45,7 @@ public sealed class StructureRebuildService : IRemediationService
         _formFieldEnrichment = formFieldEnrichment;
         _cleaner = cleaner;
         _writer = writer;
+        _jobContext = jobContext;
         _progressService = progressService;
     }
 
@@ -101,8 +105,11 @@ public sealed class StructureRebuildService : IRemediationService
             _logger.LogInformation("[AI-STRUCTURE-REBUILD] Structure tree cleaning complete");
 
             // Step 4: Write new PDF tags
+            // Phase 6b Pipeline Integration: Use shared context from job
+            // If structure rebuild already occurred with MCID content rewrite, the guard will skip this
             _logger.LogInformation("[AI-STRUCTURE-REBUILD] Rewriting PDF tag structure...");
-            var updated = _writer.Rewrite(pdfBytes, structure);
+            var context = _jobContext.StructureContext;
+            var updated = _writer.Rewrite(pdfBytes, structure, context);
 
             result.OutputPdf = updated;
             result.Success = true;

@@ -23,6 +23,14 @@ namespace WordToPdfConverter.Services.Remediation.Models
         public Dictionary<string, bool> EnabledServices { get; set; } = new();
         public Dictionary<string, object> ServiceOptions { get; set; } = new();
 
+        /// <summary>
+        /// Controls when/if Aspose Cloud font optimization runs.
+        /// - "PreStructureOnly" (default): Aspose runs in preflight, before structure rebuild/MCID work
+        /// - "Disabled": Aspose is not used at all
+        /// - "PostStructureAllowed": Aspose can run after structure (incompatible with MCID content rewrite)
+        /// </summary>
+        public string AsposeOptimizationMode { get; set; } = "PreStructureOnly";
+
         // Reporting
         public bool SaveIntermediatePdfs { get; set; } = false;
         public string IntermediateOutputPath { get; set; } = "./remediation-temp";

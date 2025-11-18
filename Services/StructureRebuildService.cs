@@ -24,18 +24,21 @@ public sealed class StructureRebuildService
 {
     private readonly ILogger<StructureRebuildService> _logger;
     private readonly IPageLayoutEngine _layoutEngine;
-    private readonly IPdfStructureWriter _writer;
+    private readonly ITaggedPdfFinalizer _finalizer;
     private readonly FigureDetectionEnricher? _figureEnricher;
+    private readonly RemediationJobContext _jobContext;
 
     public StructureRebuildService(
         ILogger<StructureRebuildService> logger,
         IPageLayoutEngine layoutEngine,
-        IPdfStructureWriter writer,
+        ITaggedPdfFinalizer finalizer,
+        RemediationJobContext jobContext,
         FigureDetectionEnricher? figureEnricher = null)
     {
         _logger = logger;
         _layoutEngine = layoutEngine;
-        _writer = writer;
+        _finalizer = finalizer;
+        _jobContext = jobContext;
         _figureEnricher = figureEnricher;
     }
 
@@ -87,19 +90,35 @@ public sealed class StructureRebuildService
                 $"{layoutPlan.Pages.Count} pages, " +
                 $"{layoutPlan.Pages.Sum(p => p.Instructions.Count)} instructions");
 
-            // Step 4: Build StructureRebuildContext
-            var context = new StructureRebuildContext
-            {
-                ImageCache = imageCache,
-                LayoutPlan = layoutPlan
-            };
+            // Step 4: Use shared job context (Phase 6b Pipeline Integration)
+            // Update the shared context with image cache and layout plan
+            var context = _jobContext.StructureContext;
+            context.ImageCache = imageCache;
+            context.LayoutPlan = layoutPlan;
 
-            // Step 5: Call PDF writer
-            _logger.LogInformation("[STRUCTURE-REBUILD] Writing PDF structure");
-            var remediatedPdf = _writer.Rewrite(originalPdfBytes, structureTree, context);
+            // Check if rebuild already executed (should never happen, but log if it does)
+            if (context.StructureRebuildExecuted)
+            {
+                _logger.LogWarning(
+                    "[STRUCTURE-REBUILD] Structure rebuild already executed. " +
+                    "This should not be called multiple times per remediation job.");
+            }
+
+            // Step 5: Call tagged PDF finalizer (Phase 6b Pipeline Integration)
+            // This orchestrates the final structure rebuild, MCID assignment, and content marking
+            // The finalizer will set context.StructureRebuildExecuted and context.McidContentRewriteExecuted
+            _logger.LogInformation("[STRUCTURE-REBUILD] Finalizing tagged PDF structure");
+            var remediatedPdf = _finalizer.FinalizeTaggedPdf(
+                originalPdfBytes,
+                logicalDocument,
+                structureTree,
+                layoutPlan,
+                context);
             _logger.LogInformation(
                 $"[STRUCTURE-REBUILD] Structure rebuild complete: " +
-                $"{remediatedPdf.Length} bytes");
+                $"{remediatedPdf.Length} bytes, " +
+                $"StructureRebuildExecuted={context.StructureRebuildExecuted}, " +
+                $"McidContentRewriteExecuted={context.McidContentRewriteExecuted}");
 
             return remediatedPdf;
         }

@@ -156,6 +156,10 @@ builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Strategy.Reme
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Execution.RemediationExecutor>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Tracking.ProgressTracker>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Reporting.RemediationReporter>();
+
+// Phase 6C: Preflight service (runs Aspose BEFORE structure rebuild/MCID work)
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.IPdfPreflightService, WordToPdfConverter.Services.Remediation.PdfPreflightService>();
+
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.RemediationOrchestrator>();
 
 // Add remediation REST API services
@@ -180,8 +184,19 @@ builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.CircularRoleM
 // Add AI Structural Remediation pipeline services
 builder.Services.AddScoped<WordToPdfConverter.Services.Analysis.ILogicalLayoutAnalysisService,
     WordToPdfConverter.Services.Analysis.ClaudeLogicalLayoutAnalysisService>();
+// CRITICAL FIX: Use iText implementation instead of Syncfusion
+// iText correctly preserves original PDF content while replacing structure tree
+// Syncfusion was creating brand new PDFs which destroyed visual content (maps, tables, etc.)
 builder.Services.AddScoped<WordToPdfConverter.Services.Pdf.IPdfStructureWriter,
-    WordToPdfConverter.Services.Pdf.SyncfusionPdfStructureWriter>();
+    WordToPdfConverter.Services.Pdf.ITextPdfStructureWriter>();
+// Phase 6b: MCID content marker for linking structure to actual PDF content via content stream rewriting
+builder.Services.AddScoped<WordToPdfConverter.Services.Pdf.IContentMcidMarker,
+    WordToPdfConverter.Services.Pdf.ItextContentMcidMarker>();
+// Phase 6b Pipeline Integration: Finalizer orchestrates single structure rebuild with MCID linking
+builder.Services.AddScoped<WordToPdfConverter.Services.Pdf.ITaggedPdfFinalizer,
+    WordToPdfConverter.Services.Pdf.TaggedPdfFinalizer>();
+// Phase 6b Pipeline Integration: Shared job context ensures context flags persist across all services
+builder.Services.AddScoped<WordToPdfConverter.Models.Remediation.RemediationJobContext>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Analysis.FormFieldEnrichmentService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Structure.StructureTreeCleaner>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.StructureRebuildService>();
