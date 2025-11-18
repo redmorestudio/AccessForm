@@ -17,6 +17,11 @@ import logging
 from io import BytesIO
 import pikepdf
 from pikepdf import Pdf, Array, Dictionary, Name, Operator, Stream
+try:
+    from pikepdf import ContentStreamInstruction
+except ImportError:
+    # ContentStreamInstruction might not be in public API in all versions
+    ContentStreamInstruction = pikepdf._core.ContentStreamInstruction
 import re
 
 # Configure logging
@@ -129,16 +134,10 @@ def rewrite_content_stream_with_mcids(
 
     logger.info(f"[PHASE-6H] Page {page_index + 1}: Processing {len(page_segments)} segments")
 
-    # Get existing content stream
+    # Parse content stream into instructions (parse_content_stream expects a Page object)
     try:
-        content_stream = page.contents_coalesce()
-    except Exception as e:
-        logger.error(f"[PHASE-6H] Failed to get content stream for page {page_index + 1}: {e}")
-        raise
-
-    # Parse content stream into instructions
-    try:
-        instructions = pikepdf.parse_content_stream(content_stream)
+        instructions = pikepdf.parse_content_stream(page)
+        logger.info(f"[PHASE-6H] Page {page_index + 1}: Parsed {len(instructions)} content stream instructions")
     except Exception as e:
         logger.error(f"[PHASE-6H] Failed to parse content stream for page {page_index + 1}: {e}")
         raise
@@ -157,31 +156,48 @@ def rewrite_content_stream_with_mcids(
     bdc_count = 0
     emc_count = 0
 
-    # For each segment, insert BDC at start and EMC at end
+    # For each segment, insert BDC at start
     for i, segment in enumerate(sorted_segments):
         # Insert BDC marker: /Span << /MCID N >> BDC
-        bdc_dict = pikepdf.Dictionary({
-            pikepdf.Name.MCID: segment.mcid
-        })
-        new_instructions.append((bdc_dict, pikepdf.Operator("BDC")))
+        # Must use ContentStreamInstruction constructor
+        bdc_instr = ContentStreamInstruction(
+            [pikepdf.Name.Span, pikepdf.Name.MCID, segment.mcid],
+            pikepdf.Operator("BDC")
+        )
+        new_instructions.append(bdc_instr)
         bdc_count += 1
 
-        logger.debug(f"[PHASE-6H]   Segment {i}: MCID={segment.mcid}, Role={segment.role}, Bounds=({segment.x:.1f}, {segment.y:.1f}, {segment.width:.1f}, {segment.height:.1f})")
+        logger.info(f"[PHASE-6H]   Segment {i}: MCID={segment.mcid}, Role={segment.role}, Bounds=({segment.x:.1f}, {segment.y:.1f}, {segment.width:.1f}, {segment.height:.1f})")
 
     # Add original content
+    logger.info(f"[PHASE-6H] Page {page_index + 1}: Adding {len(instructions)} original instructions")
     new_instructions.extend(instructions)
 
     # Close all segments with EMC
     for _ in sorted_segments:
-        new_instructions.append((pikepdf.Operator("EMC"),))
+        emc_instr = ContentStreamInstruction([], pikepdf.Operator("EMC"))
+        new_instructions.append(emc_instr)
         emc_count += 1
+
+    logger.info(f"[PHASE-6H] Page {page_index + 1}: Built new instruction stream with {len(new_instructions)} total instructions")
 
     # Rebuild content stream
     try:
         new_stream = pikepdf.unparse_content_stream(new_instructions)
+        logger.info(f"[PHASE-6H] Page {page_index + 1}: Unparsed to stream of {len(new_stream)} bytes")
+
+        # Replace page contents
         page.contents_replace(new_stream)
+        logger.info(f"[PHASE-6H] Page {page_index + 1}: Replaced page contents")
+
+        # Verify the replacement worked by checking the stream
+        verify_stream = bytes(page.contents_coalesce())
+        verify_bdc = verify_stream.count(b'BDC')
+        verify_emc = verify_stream.count(b'EMC')
+        logger.info(f"[PHASE-6H] Page {page_index + 1}: Verification - stream has {verify_bdc} BDC and {verify_emc} EMC in content")
+
     except Exception as e:
-        logger.error(f"[PHASE-6H] Failed to rebuild content stream for page {page_index + 1}: {e}")
+        logger.error(f"[PHASE-6H] Failed to rebuild content stream for page {page_index + 1}: {e}", exc_info=True)
         raise
 
     logger.info(f"[PHASE-6H] Page {page_index + 1}: Inserted {bdc_count} BDC and {emc_count} EMC markers")
@@ -189,9 +205,10 @@ def rewrite_content_stream_with_mcids(
     return (bdc_count, emc_count)
 
 
-def rewrite_pdf_with_mcids(pdf_bytes: bytes, plan: McidRewritePlan) -> bytes:
+def rewrite_pdf_with_mcids(pdf_bytes: bytes, plan: McidRewritePlan) -> tuple[bytes, int, int, int]:
     """
     Main rewriting function: opens PDF, rewrites content streams, returns modified PDF.
+    Returns: (output_bytes, pages_processed, total_bdc, total_emc)
     """
     logger.info(f"[PHASE-6H] Starting MCID rewrite for document: {plan.document_id or 'unknown'}")
     logger.info(f"[PHASE-6H] Plan version: {plan.version}, Segments: {len(plan.segments)}, Debug: {plan.debug}")
@@ -236,7 +253,7 @@ def rewrite_pdf_with_mcids(pdf_bytes: bytes, plan: McidRewritePlan) -> bytes:
 
     logger.info(f"[PHASE-6H] ✅ Rewrite complete: {pages_processed} pages, {len(plan.segments)} segments, {total_bdc} BDC, {total_emc} EMC")
 
-    return output_bytes
+    return (output_bytes, pages_processed, total_bdc, total_emc)
 
 
 # ============================================================================
@@ -268,7 +285,7 @@ async def mcid_rewrite(request: McidRewriteRequest):
 
         # Rewrite PDF
         try:
-            output_bytes = rewrite_pdf_with_mcids(pdf_bytes, request.plan)
+            output_bytes, pages_processed, bdc_count, emc_count = rewrite_pdf_with_mcids(pdf_bytes, request.plan)
         except ValueError as e:
             logger.error(f"[PHASE-6H] PDF processing error: {e}")
             raise HTTPException(status_code=400, detail=str(e))
@@ -281,14 +298,12 @@ async def mcid_rewrite(request: McidRewriteRequest):
 
         logger.info(f"[PHASE-6H] Output PDF size: {len(output_bytes) / 1024:.1f} KB")
 
-        # Build stats
-        pages_with_segments = len(set(s.page_index for s in request.plan.segments))
-
+        # Build stats from actual rewrite results
         stats = McidRewriteStats(
-            pages_processed=pages_with_segments,
+            pages_processed=pages_processed,
             segments_processed=len(request.plan.segments),
-            bdc_count=len(request.plan.segments),  # One BDC per segment
-            emc_count=len(request.plan.segments)   # One EMC per segment
+            bdc_count=bdc_count,
+            emc_count=emc_count
         )
 
         return McidRewriteResponse(
