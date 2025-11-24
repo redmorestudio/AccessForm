@@ -1,0 +1,2 @@
+// Simple launcher for TestPhase6KFullPipeline
+await TestPhase6KFullPipeline.Main(args);

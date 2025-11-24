@@ -12,6 +12,7 @@ using iText.Kernel.Pdf.Canvas.Parser.Listener;
 using iText.Kernel.Pdf.Canvas.Parser.Data;
 using Microsoft.Extensions.Logging;
 using WordToPdfConverter.Services.Remediation.Models;
+using WordToPdfConverter.Models.Remediation;
 
 namespace WordToPdfConverter.Services.Remediation.Fixes
 {
@@ -23,15 +24,19 @@ namespace WordToPdfConverter.Services.Remediation.Fixes
     public class ContentIndexArtifactFixService : IRemediationService
     {
         private readonly ILogger<ContentIndexArtifactFixService> _logger;
+        private readonly RemediationJobContext _jobContext;
 
         public string ServiceName => "Content Index Artifact Fix";
         public ViolationCategory TargetCategory => ViolationCategory.Structure;
         public int Priority => 5; // Higher priority to run before other structure fixes
         public bool IsRequired => true;
 
-        public ContentIndexArtifactFixService(ILogger<ContentIndexArtifactFixService> logger)
+        public ContentIndexArtifactFixService(
+            ILogger<ContentIndexArtifactFixService> logger,
+            RemediationJobContext jobContext)
         {
             _logger = logger;
+            _jobContext = jobContext;
         }
 
         public async Task<ServiceResult> RemediateAsync(byte[] pdfBytes)
@@ -45,6 +50,21 @@ namespace WordToPdfConverter.Services.Remediation.Fixes
 
             try
             {
+                // PHASE 6H GUARD: Block if MCID content rewrite already executed
+                if (_jobContext.StructureContext != null &&
+                    _jobContext.StructureContext.McidContentRewriteExecuted)
+                {
+                    _logger.LogWarning(
+                        "[CONTENT-INDEX-FIX] ⚠ BLOCKED: Content index artifact fix cannot run after MCID content rewrite. " +
+                        "This service rewrites page content streams and would destroy BDC/EMC markers. " +
+                        "Returning PDF unchanged.");
+
+                    result.Success = true; // Not an error - this is expected behavior
+                    result.ChangesMade = false;
+                    result.OutputPdf = pdfBytes;
+                    return result;
+                }
+
                 _logger.LogInformation("[CONTENT-INDEX-FIX] Starting content index artifact remediation");
 
                 using var ms = new MemoryStream(pdfBytes);

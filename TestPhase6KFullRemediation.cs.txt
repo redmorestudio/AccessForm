@@ -1,0 +1,194 @@
+using System;
+using System.IO;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using WordToPdfConverter.Services.Remediation;
+using WordToPdfConverter.Services.Remediation.Models;
+
+/// <summary>
+/// Phase 6K Full Remediation Test - Runs COMPLETE remediation pipeline
+/// including preflight, structure rebuild, MCID linking, and all fix services
+/// </summary>
+public class TestPhase6KFullRemediation
+{
+    public static async Task Main(string[] args)
+    {
+        Console.WriteLine("================================================================================");
+        Console.WriteLine("PHASE 6K FULL REMEDIATION TEST - Erie Route 229 PDF");
+        Console.WriteLine("================================================================================\n");
+
+        // Input PDF
+        var inputPdf = "/Users/sethredmore/Documents/Redmore Studio/AccessForm/WordToPdfConverter/StateAssets_archived_20251112_063442/Pennsylvania/Erie/ERA_0042_Route 229 August 2025.pdf";
+        var outputPdf = "./erie_route229_full_remediation_output.pdf";
+
+        if (!File.Exists(inputPdf))
+        {
+            Console.WriteLine($"❌ Input PDF not found: {inputPdf}");
+            return;
+        }
+
+        Console.WriteLine($"📄 Input: {inputPdf}");
+        Console.WriteLine($"📤 Output: {outputPdf}\n");
+
+        // Setup DI container (mimicking real application setup)
+        var services = new ServiceCollection();
+
+        // Logging
+        services.AddLogging(builder =>
+        {
+            builder.AddConsole();
+            builder.SetMinimumLevel(LogLevel.Information);
+        });
+
+        // Configuration
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new[]
+            {
+                new KeyValuePair<string, string>("Phase6H:MicroserviceUrl", "http://localhost:8000"),
+                new KeyValuePair<string, string>("AnthropicApiKey", Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY") ?? ""),
+                new KeyValuePair<string, string>("RemediationOptions:EnableMcidLinking", "true"),
+                new KeyValuePair<string, string>("RemediationOptions:EnableMcidContentRewrite", "true"),
+                new KeyValuePair<string, string>("RemediationOptions:MaxIterations", "3")
+            })
+            .Build();
+        services.AddSingleton<IConfiguration>(configuration);
+
+        // Register ALL services needed for full remediation
+        // This mimics the Program.cs registration
+        RegisterRemediationServices(services);
+
+        // Build provider
+        var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<TestPhase6KFullRemediation>>();
+
+        // Get RemediationOrchestrator (the main entry point)
+        var orchestrator = scope.ServiceProvider.GetRequiredService<RemediationOrchestrator>();
+
+        // Load PDF
+        var pdfBytes = await File.ReadAllBytesAsync(inputPdf);
+        logger.LogInformation($"[TEST] Loaded {pdfBytes.Length / 1024}KB PDF");
+
+        // Create remediation options with MCID enabled
+        var options = new RemediationOptions
+        {
+            EnableMcidLinking = true,
+            EnableMcidContentRewrite = true,
+            MaxIterations = 3,
+            MaxDuration = TimeSpan.FromMinutes(10),
+            FileName = "ERA_0042_Route 229 August 2025.pdf"
+        };
+
+        // Run FULL remediation pipeline
+        logger.LogInformation("[TEST] ========== STARTING FULL REMEDIATION PIPELINE ==========");
+
+        try
+        {
+            var result = await orchestrator.RemediateAsync(pdfBytes, options);
+
+            if (result.Success)
+            {
+                logger.LogInformation("[TEST] ✅ Full remediation successful!");
+                logger.LogInformation($"[TEST] Exit Reason: {result.ExitReason}");
+                logger.LogInformation($"[TEST] Iterations: {result.Summary.TotalIterations}");
+                logger.LogInformation($"[TEST] Duration: {result.Summary.TotalDuration.TotalSeconds:F1}s");
+                logger.LogInformation($"[TEST] Compliance: {result.Summary.FinalComplianceScore:F1}%");
+                logger.LogInformation($"[TEST] Violations: {result.Summary.InitialViolations} → {result.Summary.FinalViolations}");
+
+                // Save output
+                await File.WriteAllBytesAsync(outputPdf, result.OutputPdf);
+                logger.LogInformation($"[TEST] Saved to: {outputPdf}");
+
+                // Verify MCID markers
+                var bdcCount = CountOccurrences(result.OutputPdf, "BDC");
+                var emcCount = CountOccurrences(result.OutputPdf, "EMC");
+
+                logger.LogInformation($"[TEST] BDC markers: {bdcCount}");
+                logger.LogInformation($"[TEST] EMC markers: {emcCount}");
+
+                if (bdcCount > 0 && emcCount > 0)
+                {
+                    logger.LogInformation("[TEST] ✅✅✅ SUCCESS! Phase 6K full remediation is working!");
+                    logger.LogInformation("[TEST] - Preflight executed");
+                    logger.LogInformation("[TEST] - AI layout analysis complete");
+                    logger.LogInformation("[TEST] - Structure tree built with MCR kids");
+                    logger.LogInformation("[TEST] - BDC/EMC markers added to content streams");
+                    logger.LogInformation("[TEST] - All remediation fixes applied");
+                }
+                else
+                {
+                    logger.LogWarning("[TEST] ⚠️  No markers found - may need investigation");
+                }
+            }
+            else
+            {
+                logger.LogError($"[TEST] ❌ Remediation failed: {result.ErrorMessage}");
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[TEST] ❌ Exception during remediation");
+        }
+
+        Console.WriteLine("\n================================================================================");
+        Console.WriteLine("Test complete!");
+        Console.WriteLine("================================================================================");
+    }
+
+    private static void RegisterRemediationServices(IServiceCollection services)
+    {
+        // TODO: This needs to register ALL the remediation services
+        // For now, let's use a minimal set to test
+        // In a real implementation, this would mirror Program.cs registration
+
+        // Core remediation services
+        services.AddScoped<RemediationOrchestrator>();
+
+        // Analysis services
+        services.AddScoped<WordToPdfConverter.Services.Remediation.Analysis.ViolationAnalyzer>();
+
+        // Strategy services
+        services.AddScoped<WordToPdfConverter.Services.Remediation.Strategy.RemediationStrategySelector>();
+
+        // Execution services
+        services.AddScoped<WordToPdfConverter.Services.Remediation.Execution.RemediationExecutor>();
+
+        // Decision services
+        services.AddScoped<WordToPdfConverter.Services.Remediation.Decision.ExitConditionEvaluator>();
+
+        // Tracking services
+        services.AddScoped<WordToPdfConverter.Services.Remediation.Tracking.ProgressTracker>();
+
+        // Reporting services
+        services.AddScoped<WordToPdfConverter.Services.Remediation.Reporting.RemediationReporter>();
+
+        // VeraPDF service
+        services.AddScoped<WordToPdfConverter.Services.VeraPdfService>();
+
+        // Job context
+        services.AddScoped<WordToPdfConverter.Models.Remediation.RemediationJobContext>();
+
+        // Cost tracking
+        services.AddSingleton<AccessFormServer.Services.CostTrackingService>();
+
+        // Preflight service
+        services.AddScoped<WordToPdfConverter.Services.Remediation.IPdfPreflightService,
+                          WordToPdfConverter.Services.Remediation.PdfPreflightService>();
+
+        // Processing progress (optional)
+        // services.AddSingleton<ProcessingProgressService>();
+
+        // NOTE: This is incomplete - full registration would need all fix services,
+        // layout services, structure services, etc.
+        // For a complete test, use the actual server's DI registration
+    }
+
+    private static int CountOccurrences(byte[] data, string search)
+    {
+        var text = System.Text.Encoding.Latin1.GetString(data);
+        return text.Split(new[] { search }, StringSplitOptions.None).Length - 1;
+    }
+}

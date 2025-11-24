@@ -49,6 +49,14 @@ public static class StructureNodeHelper
     /// <returns>Zero-based page index, or 0 if not found</returns>
     public static int ResolvePageIndex(StructureNode node, PageLayoutPlan plan)
     {
+        // PRIORITY 1: Use node's PageIndex property if set (for remediation)
+        // This allows nodes from AI structure rebuild to carry their page information
+        if (node.PageIndex > 0)
+        {
+            return node.PageIndex;
+        }
+
+        // PRIORITY 2: Look for node in layout plan (for new PDF generation)
         foreach (var pagePlan in plan.Pages)
         {
             if (pagePlan.Instructions.Any(i => ReferenceEquals(i.Node, node)))
@@ -57,8 +65,8 @@ public static class StructureNodeHelper
             }
         }
 
-        // Not found - default to page 0
-        // This can happen for structural container nodes that don't have draw instructions
-        return 0;
+        // PRIORITY 3: Use node's PageIndex even if 0 (could be legitimate page 0)
+        // PRIORITY 4: Default to page 0 as fallback
+        return node.PageIndex;
     }
 }

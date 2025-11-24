@@ -1,0 +1,2 @@
+// Entry point for Phase 6K Full Remediation Test
+await TestPhase6KFullRemediation.Main(args);

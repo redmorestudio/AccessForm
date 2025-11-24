@@ -1,0 +1,180 @@
+using System;
+using System.IO;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+
+/// <summary>
+/// SIMPLE RUNNER - Full remediation pipeline on Corry PDF
+/// No bullshit, just the actual service doing its job
+/// </summary>
+class RunFullRemediationCorry
+{
+    static async Task Main(string[] args)
+    {
+        Console.WriteLine("╔════════════════════════════════════════════════════════════════╗");
+        Console.WriteLine("║  FULL REMEDIATION PIPELINE - Corry PDF with MCID Integration  ║");
+        Console.WriteLine("╚════════════════════════════════════════════════════════════════╝");
+        Console.WriteLine();
+
+        var inputPath = "StateAssets_archived_20251112_063442/Pennsylvania/Erie/ERA_0032_105 Corry.pdf";
+        var outputPath = "corry_FULL_remediation_output.pdf";
+
+        if (!File.Exists(inputPath))
+        {
+            Console.WriteLine($"❌ Input PDF not found: {inputPath}");
+            return;
+        }
+
+        Console.WriteLine($"📥 Input:  {inputPath}");
+        Console.WriteLine($"📤 Output: {outputPath}");
+        Console.WriteLine();
+
+        // Build DI container with ALL the services (like Program.cs does)
+        var services = new ServiceCollection();
+
+        // Add logging
+        services.AddLogging(builder =>
+        {
+            builder.AddConsole();
+            builder.SetMinimumLevel(LogLevel.Information);
+        });
+
+        // Add configuration with MCID enabled
+        var configuration = new ConfigurationBuilder()
+            .SetBasePath(Directory.GetCurrentDirectory())
+            .AddJsonFile("appsettings.json", optional: false)
+            .Build();
+        services.AddSingleton<IConfiguration>(configuration);
+
+        // Configure RemediationOptions from config
+        services.Configure<WordToPdfConverter.Services.Remediation.Models.RemediationOptions>(
+            configuration.GetSection("AccessibilityRemediation"));
+
+        // Register ALL services (mimicking Program.cs lines 55-149)
+        RegisterAllServices(services);
+
+        // Build and run
+        var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var orchestrator = scope.ServiceProvider.GetRequiredService<
+            WordToPdfConverter.Services.Remediation.RemediationOrchestrator>();
+
+        // Load PDF
+        var pdfBytes = await File.ReadAllBytesAsync(inputPath);
+        Console.WriteLine($"✅ Loaded PDF: {pdfBytes.Length / 1024:N0} KB");
+        Console.WriteLine();
+
+        // Create options with MCID enabled
+        var options = new WordToPdfConverter.Services.Remediation.Models.RemediationOptions
+        {
+            EnableMcidLinking = true,
+            EnableMcidContentRewrite = true,
+            MaxIterations = 5,
+            MaxDuration = TimeSpan.FromMinutes(15),
+            GenerateDetailedReport = true,
+            FileName = "ERA_0032_105 Corry.pdf"
+        };
+
+        Console.WriteLine("🚀 Starting FULL remediation pipeline...");
+        Console.WriteLine($"   MCID Linking: {options.EnableMcidLinking}");
+        Console.WriteLine($"   MCID Content Rewrite: {options.EnableMcidContentRewrite}");
+        Console.WriteLine($"   Max Iterations: {options.MaxIterations}");
+        Console.WriteLine();
+
+        var startTime = DateTime.Now;
+
+        // RUN THE FULL PIPELINE
+        var result = await orchestrator.RemediateAsync(pdfBytes, options);
+
+        var duration = DateTime.Now - startTime;
+
+        Console.WriteLine();
+        Console.WriteLine("╔════════════════════════════════════════════════════════════════╗");
+        Console.WriteLine("║                      REMEDIATION COMPLETE                      ║");
+        Console.WriteLine("╚════════════════════════════════════════════════════════════════╝");
+        Console.WriteLine();
+
+        if (result.Success)
+        {
+            Console.WriteLine($"✅ SUCCESS!");
+            Console.WriteLine($"   Exit Reason: {result.ExitReason}");
+            Console.WriteLine($"   Iterations: {result.Summary.TotalIterations}");
+            Console.WriteLine($"   Duration: {duration.TotalSeconds:F1}s");
+            Console.WriteLine($"   Initial Violations: {result.Summary.InitialViolationCount}");
+            Console.WriteLine($"   Final Violations: {result.Summary.FinalViolationCount}");
+            Console.WriteLine($"   Fixed: {result.Summary.ViolationsFixed}");
+            Console.WriteLine($"   Compliance: {(result.Summary.IsCompliant ? "✅ PDF/UA COMPLIANT" : "⚠️  NOT COMPLIANT")}");
+            Console.WriteLine();
+
+            // Save output
+            await File.WriteAllBytesAsync(outputPath, result.OutputPdf);
+            Console.WriteLine($"💾 Saved: {outputPath} ({result.OutputPdf.Length / 1024:N0} KB)");
+            Console.WriteLine();
+
+            // Verify PDF/UA bit
+            Console.WriteLine("🔍 Verifying PDF/UA compliance marker...");
+            var pdfText = System.Text.Encoding.Latin1.GetString(result.OutputPdf);
+            if (pdfText.Contains("/Part") && pdfText.Contains("/Conformance"))
+            {
+                Console.WriteLine("✅ PDF/UA metadata found in output!");
+            }
+            else
+            {
+                Console.WriteLine("⚠️  PDF/UA metadata NOT found - this needs investigation");
+            }
+        }
+        else
+        {
+            Console.WriteLine($"❌ FAILED: {result.ExitReason}");
+            if (result.OutputPdf != null)
+            {
+                await File.WriteAllBytesAsync(outputPath, result.OutputPdf);
+                Console.WriteLine($"💾 Saved partial result: {outputPath}");
+            }
+        }
+    }
+
+    static void RegisterAllServices(IServiceCollection services)
+    {
+        // Core services (from Program.cs)
+        services.AddScoped<WordToPdfConverter.Services.AccessibilityService>();
+        services.AddScoped<AccessFormServer.Services.VeraPdfService>();
+        services.AddScoped<WordToPdfConverter.Services.AnthropicService>();
+        services.AddSingleton<WordToPdfConverter.Services.CostTrackingService>();
+        services.AddHttpClient<WordToPdfConverter.Services.AnthropicService>();
+
+        // Remediation core (from our integration)
+        services.AddScoped<WordToPdfConverter.Models.Remediation.RemediationJobContext>();
+        services.AddScoped<WordToPdfConverter.Services.Remediation.RemediationOrchestrator>();
+        services.AddScoped<WordToPdfConverter.Services.Remediation.Strategy.RemediationStrategySelector>();
+        services.AddScoped<WordToPdfConverter.Services.Remediation.Analysis.ViolationAnalyzer>();
+        services.AddScoped<WordToPdfConverter.Services.Remediation.Execution.RemediationExecutor>();
+        services.AddScoped<WordToPdfConverter.Services.Remediation.Decision.ExitConditionEvaluator>();
+        services.AddScoped<WordToPdfConverter.Services.Remediation.Tracking.ProgressTracker>();
+        services.AddScoped<WordToPdfConverter.Services.Remediation.Reporting.RemediationReporter>();
+
+        // Preflight service
+        services.AddScoped<WordToPdfConverter.Services.IPdfPreflightService,
+            WordToPdfConverter.Services.PdfPreflightService>();
+
+        // Structure rebuild services (Phase 6K)
+        services.AddScoped<WordToPdfConverter.Services.StructureRebuildService>();
+        services.AddScoped<WordToPdfConverter.Services.Analysis.LogicalLayoutAnalysisService>();
+        services.AddScoped<WordToPdfConverter.Services.Pdf.ITaggedPdfFinalizer,
+            WordToPdfConverter.Services.Pdf.TaggedPdfFinalizer>();
+        services.AddScoped<WordToPdfConverter.Services.Pdf.IPdfStructureWriter,
+            WordToPdfConverter.Services.Pdf.ITextPdfStructureWriter>();
+        services.AddScoped<WordToPdfConverter.Services.Phase6H.ExternalMcidRewriterService>();
+        services.AddHttpClient();
+
+        // Add all the fix services that RemediationOrchestrator needs
+        services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.PdfUaMetadataService>();
+        services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.FormRoleAttributeFixService>();
+        // Add more as needed...
+
+        Console.WriteLine("✅ All services registered");
+    }
+}

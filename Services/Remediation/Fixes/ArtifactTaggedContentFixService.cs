@@ -51,16 +51,29 @@ namespace WordToPdfConverter.Services.Remediation.Fixes
 
             try
             {
-                // PHASE 6D GUARD: Block if MCID content rewrite already executed
+                // PHASE 6D GUARD: Block if structure rebuild OR MCID content rewrite already executed
                 if (_jobContext.StructureContext != null &&
-                    _jobContext.StructureContext.McidContentRewriteExecuted)
+                    (_jobContext.StructureContext.StructureRebuildExecuted ||
+                     _jobContext.StructureContext.McidContentRewriteExecuted))
                 {
-                    _logger.LogWarning(
-                        "[ARTIFACT-FIX] ⚠ BLOCKED: Artifact fix cannot run after MCID content rewrite. " +
-                        "This service rewrites page content streams and would destroy BDC/EMC markers. " +
-                        "Returning PDF unchanged.");
-                    _logger.LogWarning(
-                        "[ARTIFACT-FIX] To fix: Ensure ArtifactFixMode='PreStructureOnly' and artifact fix runs in preflight.");
+                    if (_jobContext.StructureContext.StructureRebuildExecuted)
+                    {
+                        _logger.LogWarning(
+                            "[ARTIFACT-FIX] ⚠️ BLOCKED: Artifact fix cannot run after AI structure rebuild. " +
+                            "Structure rebuild creates semantic structure (H1, H2, P, etc.) which artifact tagging would destroy. " +
+                            "Returning PDF unchanged to preserve semantic structure.");
+                        _logger.LogWarning(
+                            "[ARTIFACT-FIX] To fix: Use ArtifactFixMode='PreStructureOnly' to run artifact fix BEFORE structure rebuild.");
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "[ARTIFACT-FIX] ⚠️ BLOCKED: Artifact fix cannot run after MCID content rewrite. " +
+                            "This service rewrites page content streams and would destroy BDC/EMC markers. " +
+                            "Returning PDF unchanged.");
+                        _logger.LogWarning(
+                            "[ARTIFACT-FIX] To fix: Ensure ArtifactFixMode='PreStructureOnly' and artifact fix runs in preflight.");
+                    }
 
                     result.Success = true; // Not an error - this is expected behavior
                     result.ChangesMade = false;

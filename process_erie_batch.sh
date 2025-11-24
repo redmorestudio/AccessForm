@@ -2,10 +2,10 @@
 
 set -e
 
-CITY_DIR="/Users/sethredmore/Documents/Redmore Studio/AccessForm/WordToPdfConverter/StateAssets/Pennsylvania/Erie"
+CITY_DIR="/Users/sethredmore/Library/CloudStorage/GoogleDrive-sredmore@gmail.com/My Drive/StateAssets/Pennsylvania/Erie"
 OUTPUT_DIR="/Users/sethredmore/Documents/Redmore Studio/AccessForm/WordToPdfConverter/remediation-best"
 SERVER_PORT=5008
-API_URL="http://localhost:${SERVER_PORT}/api/v2/remediation/start"
+API_URL="http://localhost:${SERVER_PORT}/api/remediate-pdf-full?maxIterations=3&enableAiServices=true&enableStructureRebuild=true&enableMcidLinking=true&enableMcidContentRewrite=true&artifactFixMode=PreStructureOnly"
 
 echo "========================================="
 echo "Erie, PA PDF Remediation - Batch Run"

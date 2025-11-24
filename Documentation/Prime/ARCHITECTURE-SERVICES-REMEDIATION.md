@@ -1,6 +1,6 @@
 # AccessForm PDF/UA Remediation Service Architecture
 
-**Last Updated:** 2025-10-26
+**Last Updated:** 2025-11-19
 
 ## Overview
 
@@ -72,8 +72,8 @@ The remediation system uses a **closed-loop architecture**:
 ### RemediationOrchestrator
 
 **Location**: `Services/Remediation/RemediationOrchestrator.cs`
-**Purpose**: Main orchestrator for closed-loop PDF/UA remediation
-**Dependencies**: VeraPdfService, ViolationAnalyzer, RemediationStrategySelector, RemediationExecutor, ExitConditionEvaluator, ProgressTracker, RemediationReporter, GptRemediationService
+**Purpose**: Main orchestrator for closed-loop PDF/UA remediation with Phase 0 structure rebuild and MCID integration
+**Dependencies**: VeraPdfService, ViolationAnalyzer, RemediationStrategySelector, RemediationExecutor, ExitConditionEvaluator, ProgressTracker, RemediationReporter, GptRemediationService, StructureRebuildService (optional Phase 0)
 
 **Key Methods**:
 
@@ -93,10 +93,16 @@ public class RemediationOptions
     public string FileName { get; set; }
     public string ProgressSessionId { get; set; }
 
+    // Phase 6K MCID options
+    public bool EnableMcidLinking { get; set; } = true;
+    public bool EnableMcidContentRewrite { get; set; } = true;
+
     public static RemediationOptions Production => new()
     {
         MaxIterations = 10,
-        MaxDuration = TimeSpan.FromMinutes(10)
+        MaxDuration = TimeSpan.FromMinutes(10),
+        EnableMcidLinking = true,
+        EnableMcidContentRewrite = true
     };
 }
 ```
@@ -124,6 +130,30 @@ while (!session.IsComplete)
 {
     session.IterationCount++;
 
+    // Step 0.5: Phase 0 Structure Rebuild (if enabled and first iteration)
+    // This runs BEFORE first validation to establish clean structure + MCID links
+    if (session.IterationCount == 1 && ShouldRunStructureRebuild(context))
+    {
+        _logger.LogInformation("Phase 0: Running structure rebuild with MCID integration");
+
+        var structureResult = await _structureRebuildService.FixAsync(
+            session.CurrentPdf, context);
+
+        if (structureResult != null && structureResult.Length > 0)
+        {
+            session.CurrentPdf = structureResult;
+            await File.WriteAllBytesAsync(tempPath, structureResult);
+
+            // Structure rebuild sets context flags:
+            // - context.StructureRebuildExecuted = true
+            // - context.McidContentRewriteExecuted = true (if rewrite enabled)
+
+            _logger.LogInformation(
+                $"Phase 0 complete: MCID linking={context.Options.EnableMcidLinking}, " +
+                $"Content rewrite={context.McidContentRewriteExecuted}");
+        }
+    }
+
     // Step 1: Validate current PDF
     var validation = await ValidateAsync(session, tempPath);
     session.CurrentValidation = validation;
@@ -150,8 +180,10 @@ while (!session.IsComplete)
     var execution = await _executor.ExecuteAsync(
         session.CurrentPdf, strategy, session);
 
-    // Step 6.5: Post-Remediation Cleanup
-    if (execution.Success && execution.OutputPdf != null)
+    // Step 6.5: Post-Remediation Cleanup (ONLY if MCID content not rewritten)
+    // Guard clause prevents cleanup phase from corrupting BDC/EMC markers
+    if (execution.Success && execution.OutputPdf != null &&
+        !context.McidContentRewriteExecuted)
     {
         var cleanupStrategy = _strategySelector.BuildCleanupStrategy();
         var cleanupResult = await _executor.ExecuteAsync(
@@ -161,6 +193,11 @@ while (!session.IsComplete)
         {
             execution.OutputPdf = cleanupResult.OutputPdf;
         }
+    }
+    else if (context.McidContentRewriteExecuted)
+    {
+        _logger.LogInformation(
+            "Skipping cleanup phase - MCID content rewrite executed, protecting markers");
     }
 
     // Step 7: GPT-5 Fallback (if needed)
@@ -382,6 +419,10 @@ Builds execution strategy with phased approach.
 
 **Execution Phases** (in order):
 
+0. **Structure Rebuild** (Order: 0, MaxIter: 1, First Iteration Only)
+   - StructureRebuildServiceAdapter (Phase 6K MCID integration)
+   - Only runs if `RemediationPipeline:EnableStructureRebuild = true` in config
+
 1. **Whitespace Cleanup** (Order: 1, MaxIter: 2)
    - WhitespaceServiceAdapter
 
@@ -427,6 +468,8 @@ public class RemediationPhase
 
 #### `BuildCleanupStrategy()`
 Builds a special cleanup strategy that runs all fix services to clean up issues introduced during remediation.
+
+**Important**: Cleanup phase is SKIPPED if `context.McidContentRewriteExecuted = true` to protect BDC/EMC markers.
 
 **Cleanup Services** (runs after main remediation):
 1. ArtifactTaggedContentFixService
@@ -1195,6 +1238,385 @@ foreach (var link in tocLinks)
 - Links TOC entries to document bookmarks
 - Adds proper heading hierarchy (H1, H2, H3)
 - Validates destination references
+
+---
+
+## MCID Content Linking Services (Phase 6)
+
+### Overview
+
+Phase 6K implements the "two-sided MCID story" for PDF/UA compliance:
+- **Structure Side (Phase 6K)**: MCR (Marked Content Reference) objects in structure tree
+- **Content Side (Phase 6H)**: BDC/EMC markers in PDF content streams
+
+This links PDF structure elements to actual page content via MCIDs (Marked Content Identifiers).
+
+### StructureRebuildService
+
+**Location**: `Services/Remediation/StructureRebuildService.cs`
+**Interface**: `IRemediationService`
+**Target Category**: Structure
+**Priority**: Phase 0 (First service in remediation pipeline)
+**Dependencies**:
+- LogicalLayoutAnalysisService (AI layout analysis)
+- FormFieldEnrichmentService
+- StructureTreeBuilder
+- StructureTreeCleaner
+- ITaggedPdfFinalizer (Phase 6K orchestrator)
+
+**Purpose**: Performs AI-driven PDF structure rebuild with optional MCID linking based on RemediationOptions configuration.
+
+**Key Responsibilities**:
+1. Analyze PDF layout using Claude AI to produce LogicalDocument
+2. Enrich structure with form field metadata
+3. Build clean structure tree from logical blocks
+4. Clean and optimize structure tree
+5. **Finalize with MCID linking** (if enabled via RemediationOptions.EnableMcidLinking)
+
+**Implementation Details**:
+
+```csharp
+public async Task<byte[]> FixAsync(byte[] pdfBytes, RemediationJobContext context)
+{
+    // 1. AI Layout Analysis
+    var logicalDocument = await _layoutAnalysisService.AnalyzeLayoutAsync(pdfBytes);
+
+    // 2. Form Field Enrichment
+    var enrichedDocument = await _enrichmentService.EnrichWithFormFieldsAsync(
+        pdfBytes, logicalDocument);
+
+    // 3. Build Structure Tree
+    var structure = _builder.Build(enrichedDocument);
+
+    // 4. Clean Structure
+    structure = _cleaner.Clean(structure);
+
+    // 5. Finalize with MCID (if enabled)
+    var result = await _finalizer.FinalizeTaggedPdf(pdfBytes, structure, context);
+
+    // 6. Set context flags
+    context.StructureRebuildExecuted = true;
+    if (context.Options.EnableMcidContentRewrite)
+        context.McidContentRewriteExecuted = true;
+
+    return result;
+}
+```
+
+**Configuration via RemediationOptions**:
+- `EnableMcidLinking` - Enable MCID allocation and MCR creation (default: true)
+- `EnableMcidContentRewrite` - Enable external Python rewriter for BDC/EMC markers (default: true)
+
+**Execution Order**: Always runs as Phase 0 (first) when `RemediationPipeline:EnableStructureRebuild = true` in config.
+
+**State Management**:
+- Sets `context.StructureRebuildExecuted = true` after completion
+- Sets `context.McidContentRewriteExecuted = true` if content rewrite performed
+- These flags prevent subsequent services from corrupting MCID markers
+
+---
+
+### TaggedPdfFinalizer
+
+**Location**: `Services/Pdf/TaggedPdfFinalizer.cs`
+**Interface**: `ITaggedPdfFinalizer`
+**Purpose**: Orchestrates final PDF structure writing with optional MCID integration
+
+**Responsibilities**:
+1. Validate structure tree
+2. Call IPdfStructureWriter.Rewrite() to write structure + MCIDs
+3. Handle errors gracefully
+
+**Key Code Path**:
+```csharp
+public async Task<byte[]> FinalizeTaggedPdf(
+    byte[] originalPdf,
+    StructureTree structure,
+    RemediationJobContext context)
+{
+    // Delegate to structure writer (ITextPdfStructureWriter for Phase 6K)
+    return await _structureWriter.Rewrite(originalPdf, structure, context);
+}
+```
+
+**Implementation Selection**:
+- Production uses `ITextPdfStructureWriter` (full Phase 6K MCID support)
+- Can swap to `SyncfusionPdfStructureWriter` or `StubPdfStructureWriter` via DI
+
+---
+
+### ITextPdfStructureWriter (Phase 6K Implementation)
+
+**Location**: `Services/Pdf/ITextPdfStructureWriter.cs`
+**Interface**: `IPdfStructureWriter`
+**Purpose**: Writes PDF structure tree with MCR (Marked Content Reference) kids for Phase 6K
+
+**MCID Pipeline** (lines 463-511):
+
+```csharp
+public async Task<byte[]> Rewrite(byte[] pdfBytes, StructureTree tree, RemediationJobContext context)
+{
+    // 1. Check if MCID linking enabled
+    if (!context.Options.EnableMcidLinking)
+    {
+        // Write structure without MCIDs
+        return WriteStructureOnly(pdfBytes, tree);
+    }
+
+    // 2. Allocate MCIDs in reading order
+    AllocateMcids(tree);
+
+    // 3. Create MCR kids in structure elements
+    foreach (var node in tree.TraversePreOrder())
+    {
+        foreach (var mcidRef in node.McidReferences)
+        {
+            var page = document.GetPage(mcidRef.PageIndex + 1);
+            var mcr = new PdfMcrNumber(page, mcidRef.Mcid);
+            structElement.AddKid(mcr);
+        }
+    }
+
+    // 4. Save PDF with MCR kids
+    var pdfWithMcrs = SaveDocument();
+
+    // 5. External MCID rewriter (if enabled)
+    if (context.Options.EnableMcidContentRewrite)
+    {
+        var plan = _planBuilder.BuildPlan(tree);
+        return await _mcidRewriter.RewriteMcidsAsync(pdfWithMcrs, plan);
+    }
+
+    return pdfWithMcrs;
+}
+```
+
+**MCID Allocation Strategy**:
+- Traverses structure tree in reading order
+- Assigns sequential MCID numbers (0, 1, 2, ...) per page
+- Stores allocations in `StructureNode.McidReferences` list
+
+**MCR Kid Creation**:
+- Creates `PdfMcrNumber` objects linking structure to content
+- Each MCR references (Page, MCID) pair
+- iText7 automatically serializes to PDF structure tree
+
+---
+
+### ExternalMcidRewriterService
+
+**Location**: `Services/Phase6H/ExternalMcidRewriterService.cs`
+**Purpose**: HTTP client for Python microservice that inserts BDC/EMC markers in content streams
+
+**Microservice Details**:
+- **Endpoint**: `http://localhost:8000/api/mcid-rewrite`
+- **Method**: POST
+- **Language**: Python 3.10+ with FastAPI
+- **PDF Library**: pikepdf
+- **Location**: `McidRewriterMicroservice/main.py`
+
+**Request Format**:
+```json
+{
+  "pdfBase64": "<base64-encoded PDF>",
+  "plan": {
+    "segments": [
+      {
+        "pageIndex": 0,
+        "mcid": 0,
+        "bounds": { "x": 100, "y": 200, "width": 400, "height": 50 },
+        "role": "P",
+        "sequenceIndex": 0
+      }
+    ]
+  }
+}
+```
+
+**Implementation**:
+```csharp
+public async Task<byte[]> RewriteMcidsAsync(byte[] pdfBytes, McidRewritePlan plan)
+{
+    var base64Pdf = Convert.ToBase64String(pdfBytes);
+    var request = new { pdfBase64 = base64Pdf, plan };
+
+    var response = await _httpClient.PostAsJsonAsync("/api/mcid-rewrite", request);
+    response.EnsureSuccessStatusCode();
+
+    var result = await response.Content.ReadFromJsonAsync<McidRewriteResponse>();
+    return Convert.FromBase64String(result.PdfBase64);
+}
+```
+
+**Error Handling**:
+- Logs warnings if microservice unavailable
+- Returns original PDF (with MCR kids but no content markers)
+- Allows partial MCID support (structure-side only)
+
+**Verification**: Per Phase 6K testing (Erie Route 5 PDF), BDC/EMC markers persist correctly through save/reload cycle.
+
+---
+
+### McidRewritePlanBuilder
+
+**Location**: `Services/Phase6K/McidRewritePlanBuilder.cs`
+**Purpose**: Converts StructureTree with McidReferences into McidRewritePlan for Python service
+
+**Responsibilities**:
+1. Extract MCID assignments from structure nodes
+2. Map to page coordinates and bounding boxes
+3. Generate sequential processing order
+4. Include structure role information (P, H1, Figure, etc.)
+
+**Plan Structure**:
+```csharp
+public class McidRewritePlan
+{
+    public List<McidSegment> Segments { get; set; }
+}
+
+public class McidSegment
+{
+    public int PageIndex { get; set; }
+    public int Mcid { get; set; }
+    public BoundingBox Bounds { get; set; }
+    public string Role { get; set; }  // PDF structure role
+    public int SequenceIndex { get; set; }
+}
+```
+
+---
+
+### Guard Clauses for MCID Protection
+
+**Purpose**: Prevent content stream overwrites after BDC/EMC marker insertion
+
+**Implementation Pattern**:
+```csharp
+public async Task<byte[]> FixAsync(byte[] pdfBytes, RemediationJobContext context)
+{
+    // Check if MCID content rewrite already executed
+    if (context.McidContentRewriteExecuted)
+    {
+        _logger.LogInformation("Skipping {ServiceName} - MCID content already rewritten",
+            GetType().Name);
+        return pdfBytes;
+    }
+
+    // Safe to proceed with content stream mutations
+    return await PerformFix(pdfBytes);
+}
+```
+
+**Protected Services**:
+- `ArtifactTaggedContentFixService` - Only runs in "PreStructureOnly" mode after MCID rewrite
+- `WhitespaceTaggingService` - Skips if content rewritten
+- Any custom service that modifies content streams
+
+**Guard Locations**:
+- `RemediationOrchestrator.cs:263-293` - Prevents cleanup phase after MCID rewrite
+- `TaggedPdfFinalizer.cs:62-77` - Checks before finalization
+- Individual fix services (as needed)
+
+**Why This Matters**: BDC/EMC markers are inserted directly into PDF content streams. Any subsequent content stream modification could corrupt or remove these markers, breaking the MCID link between structure and content.
+
+---
+
+### RemediationJobContext Integration
+
+**Model**: `Models/Remediation/RemediationJobContext.cs`
+**DI Lifetime**: Scoped (one instance per remediation job)
+
+**Key Properties**:
+```csharp
+public class RemediationJobContext
+{
+    public RemediationOptions Options { get; set; }
+    public StructureRebuildContext StructureContext { get; set; }
+
+    // Convenience accessors
+    public bool StructureRebuildExecuted
+    {
+        get => StructureContext.StructureRebuildExecuted;
+        set => StructureContext.StructureRebuildExecuted = value;
+    }
+
+    public bool McidContentRewriteExecuted
+    {
+        get => StructureContext.McidContentRewriteExecuted;
+        set => StructureContext.McidContentRewriteExecuted = value;
+    }
+}
+```
+
+**Usage Pattern**:
+- Injected into all `IRemediationService` implementations
+- Shared across all services in single remediation job
+- Stores MCID pipeline state flags
+- Provides access to `RemediationOptions`
+
+---
+
+### Configuration
+
+**appsettings.json** (AccessibilityRemediation section):
+```json
+{
+  "AccessibilityRemediation": {
+    "EnableMcidLinking": true,
+    "EnableMcidContentRewrite": true,
+    "AsposeOptimizationMode": "PreStructureOnly",
+    "ArtifactFixMode": "PreStructureOnly"
+  },
+  "RemediationPipeline": {
+    "EnableStructureRebuild": true
+  }
+}
+```
+
+**Configuration Flow**:
+1. `appsettings.json` → `IOptions<RemediationOptions>` (via DI)
+2. `RemediationOrchestrator` merges config into `RemediationOptions`
+3. Options stored in `RemediationJobContext`
+4. All services read from `context.Options`
+
+---
+
+### Testing
+
+**Test File**: `TestPhase6KFullPipeline.cs`
+**Test PDF**: Erie Route 5 (Pennsylvania/Erie/ERA_0051_Route 5 August 2025.pdf)
+
+**Verification Steps**:
+1. Run test → produces `erie_phase6k_output.pdf`
+2. Check microservice logs: Should report "Added X BDC, Y EMC markers"
+3. Hexdump output PDF: `xxd erie_phase6k_output.pdf | grep -A2 -B2 "/MCID"`
+4. Open in Adobe Acrobat: Check Reading Order panel for MCID-linked structure
+
+**Expected Results** (from CLAUDE.md verification):
+- ✅ Python microservice inserts BDC/EMC markers
+- ✅ Markers persist through save/reload cycle
+- ✅ No PDF corruption
+- ✅ Structure tree shows MCR kids in tag inspector
+
+---
+
+### Troubleshooting
+
+**Issue**: BDC/EMC markers not found in output
+- Check microservice is running: `curl http://localhost:8000/health`
+- Verify `EnableMcidContentRewrite = true` in config
+- Check logs for ExternalMcidRewriterService warnings
+
+**Issue**: Structure rebuild runs but no MCIDs
+- Verify `EnableMcidLinking = true`
+- Check `RemediationPipeline:EnableStructureRebuild = true`
+- Ensure StructureRebuildServiceAdapter registered in DI
+
+**Issue**: Content overwrites MCID markers
+- Check guard clauses in cleanup services
+- Verify `context.McidContentRewriteExecuted` flag set
+- Review service execution order
 
 ---
 

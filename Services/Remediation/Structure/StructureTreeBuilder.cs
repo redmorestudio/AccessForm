@@ -35,8 +35,9 @@ public static class StructureTreeBuilder
     {
         var children = new List<StructureNode>();
 
-        foreach (var page in doc.Pages)
+        for (int pageIndex = 0; pageIndex < doc.Pages.Count; pageIndex++)
         {
+            var page = doc.Pages[pageIndex];
             foreach (var block in page.Blocks)
             {
                 switch (block)
@@ -48,7 +49,8 @@ public static class StructureTreeBuilder
                             Attributes: null,
                             Children: null)
                         {
-                            Bounds = heading.Bounds
+                            Bounds = heading.Bounds,
+                            PageIndex = pageIndex
                         });
                         break;
 
@@ -59,12 +61,13 @@ public static class StructureTreeBuilder
                             Attributes: null,
                             Children: null)
                         {
-                            Bounds = paragraph.Bounds
+                            Bounds = paragraph.Bounds,
+                            PageIndex = pageIndex
                         });
                         break;
 
                     case TableBlock table:
-                        children.Add(BuildTableNode(table));
+                        children.Add(BuildTableNode(table, pageIndex));
                         break;
 
                     case FigureBlock figure:
@@ -90,7 +93,7 @@ public static class StructureTreeBuilder
     /// Builds a Table structure node with proper TR/TH/TD hierarchy.
     /// Includes row/col attributes for table cells to support scope and headers.
     /// </summary>
-    private static StructureNode BuildTableNode(TableBlock table)
+    private static StructureNode BuildTableNode(TableBlock table, int pageIndex)
     {
         var rowNodes = new List<StructureNode>();
 
@@ -117,14 +120,20 @@ public static class StructureTreeBuilder
                     Role: role,
                     TextContent: cell.Text,
                     Attributes: attributes,
-                    Children: null));
+                    Children: null)
+                {
+                    PageIndex = pageIndex
+                });
             }
 
             rowNodes.Add(new StructureNode(
                 Role: "TR",
                 TextContent: null,
                 Attributes: null,
-                Children: cellNodes));
+                Children: cellNodes)
+            {
+                PageIndex = pageIndex
+            });
         }
 
         return new StructureNode(
@@ -133,7 +142,8 @@ public static class StructureTreeBuilder
             Attributes: null,
             Children: rowNodes)
         {
-            Bounds = table.Bounds
+            Bounds = table.Bounds,
+            PageIndex = pageIndex
         };
     }
 
@@ -170,7 +180,8 @@ public static class StructureTreeBuilder
             Attributes: attributes.Count > 0 ? attributes : null,
             Children: null)
         {
-            Bounds = figure.Bounds
+            Bounds = figure.Bounds,
+            PageIndex = figure.PageIndex
         };
     }
 
@@ -231,6 +242,9 @@ public static class StructureTreeBuilder
                     TextContent: field.LabelText,
                     Attributes: null,
                     Children: null)
+                {
+                    PageIndex = field.PageIndex
+                }
             };
         }
 
@@ -240,7 +254,8 @@ public static class StructureTreeBuilder
             Attributes: attributes,
             Children: children)
         {
-            Bounds = field.Bounds
+            Bounds = field.Bounds,
+            PageIndex = field.PageIndex
         };
     }
 }

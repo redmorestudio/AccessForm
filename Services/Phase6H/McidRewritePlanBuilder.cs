@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using WordToPdfConverter.Models.Layout;
+using WordToPdfConverter.Models.Logical;
 using WordToPdfConverter.Models.Phase6H;
 using WordToPdfConverter.Services.Remediation.Structure;
 
@@ -61,11 +62,13 @@ public sealed class McidRewritePlanBuilder
                 // Each node may have multiple MCID references (one per page if it spans pages)
                 foreach (var mcidRef in node.McidReferences)
                 {
-                    // Skip if no bounds available
+                    // Create segment even without bounds (use zero rect)
+                    // Python microservice will skip these but MCR kids still need to exist
+                    var bounds = node.Bounds ?? new Rect(0, 0, 0, 0);
+
                     if (node.Bounds == null)
                     {
-                        _logger.LogWarning("[PHASE-6H] Node {Role} has MCID {Mcid} but no bounds, skipping", node.Role, mcidRef.Mcid);
-                        continue;
+                        _logger.LogWarning("[PHASE-6H] Node {Role} has MCID {Mcid} but no bounds, using zero rect", node.Role, mcidRef.Mcid);
                     }
 
                     var segment = new McidSegment
@@ -73,10 +76,10 @@ public sealed class McidRewritePlanBuilder
                         PageIndex = mcidRef.PageIndex + 1, // Convert from 0-based to 1-based
                         Mcid = mcidRef.Mcid,
                         Role = node.Role,
-                        X = node.Bounds.Value.X,
-                        Y = node.Bounds.Value.Y,
-                        Width = node.Bounds.Value.Width,
-                        Height = node.Bounds.Value.Height,
+                        X = bounds.X,
+                        Y = bounds.Y,
+                        Width = bounds.Width,
+                        Height = bounds.Height,
                         SequenceIndex = segmentCount
                     };
 

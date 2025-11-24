@@ -361,7 +361,7 @@ namespace WordToPdfConverter.Services.Remediation.Strategy
                 case ViolationCategory.Structure:
                     // Add AI structure rebuild FIRST - rebuilds entire tag tree based on visual layout
                     var aiStructureRebuildService = _serviceProvider.GetService(
-                        typeof(StructureRebuildService)) as IRemediationService;
+                        typeof(RemediationStructureRebuildService)) as IRemediationService;
                     if (aiStructureRebuildService != null)
                         services.Add(aiStructureRebuildService);
 

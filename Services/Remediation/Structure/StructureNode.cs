@@ -33,6 +33,12 @@ public record StructureNode(
     public Rect? Bounds { get; init; }
 
     /// <summary>
+    /// Page index (0-based) where this node's content appears.
+    /// Used for multi-page PDF MCID allocation to ensure content markers are placed on the correct page.
+    /// </summary>
+    public int PageIndex { get; init; }
+
+    /// <summary>
     /// MCID references assigned to this structure node (per page).
     /// Populated during Phase 6 MCID linking to connect structure elements to actual PDF content.
     /// </summary>

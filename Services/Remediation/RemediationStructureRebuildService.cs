@@ -15,10 +15,11 @@ namespace WordToPdfConverter.Services.Remediation;
 /// This service uses AI vision models to analyze the visual layout of a PDF, constructs a
 /// semantic document model, and then rebuilds the tag tree from scratch for better accessibility.
 /// Particularly useful for PDFs from design tools (Illustrator, InDesign) that have poor structure.
+/// NOTE: This is the REMEDIATION version. The production version is at Services/StructureRebuildService.cs
 /// </summary>
-public sealed class StructureRebuildService : IRemediationService
+public sealed class RemediationStructureRebuildService : IRemediationService
 {
-    private readonly ILogger<StructureRebuildService> _logger;
+    private readonly ILogger<RemediationStructureRebuildService> _logger;
     private readonly ILogicalLayoutAnalysisService _layout;
     private readonly FormFieldEnrichmentService _formFieldEnrichment;
     private readonly StructureTreeCleaner _cleaner;
@@ -31,8 +32,8 @@ public sealed class StructureRebuildService : IRemediationService
     public int Priority => 2; // Run early, after whitespace cleanup, before other structure fixes
     public bool IsRequired => false; // Optional - can be disabled if needed
 
-    public StructureRebuildService(
-        ILogger<StructureRebuildService> logger,
+    public RemediationStructureRebuildService(
+        ILogger<RemediationStructureRebuildService> logger,
         ILogicalLayoutAnalysisService layout,
         FormFieldEnrichmentService formFieldEnrichment,
         StructureTreeCleaner cleaner,

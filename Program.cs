@@ -29,6 +29,10 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(optio
     options.MemoryBufferThreshold = int.MaxValue;
 });
 
+// Configure RemediationOptions from AccessibilityRemediation section
+builder.Services.Configure<WordToPdfConverter.Services.Remediation.Models.RemediationOptions>(
+    builder.Configuration.GetSection("AccessibilityRemediation"));
+
 // Configure logging to file
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
@@ -105,12 +109,14 @@ builder.Services.AddScoped<ITextFieldRebuildService>();
 //     return new AccessFormServer.Services.AdobeAutotagService(logger, credentialsPath);
 // });
 
-// Add Aspose PDF Service for font embedding and optimization
-builder.Services.AddScoped<AccessFormServer.Services.AsposePdfService>(provider =>
-{
-    var logger = provider.GetRequiredService<ILogger<AccessFormServer.Services.AsposePdfService>>();
-    return new AccessFormServer.Services.AsposePdfService(logger);
-});
+// // Add Aspose PDF Service for font embedding and optimization
+// builder.Services.AddScoped<AccessFormServer.Services.AsposePdfService>(provider =>
+// {
+//     var logger = provider.GetRequiredService<ILogger<AccessFormServer.Services.AsposePdfService>>();
+//     var fontCompliance = provider.GetRequiredService<WordToPdfConverter.Services.TwcFontComplianceService>();
+//     var tableLink = provider.GetRequiredService<WordToPdfConverter.Services.TableLinkAccessibilityService>();
+//     return new AccessFormServer.Services.AsposePdfService(logger, fontCompliance, tableLink);
+// });
 
 // Add PDF Form Structure service
 // builder.Services.AddScoped<AccessFormServer.Services.PdfFormStructureService>();
@@ -132,6 +138,55 @@ builder.Services.AddScoped<PdfCompleteRebuildService>(provider =>
 
 // Add NLP services  
 builder.Services.AddScoped<NLPLabelGenerator>();
+
+// Register Remediation Orchestrator Services
+builder.Services.AddScoped<WordToPdfConverter.Models.Remediation.RemediationJobContext>();
+builder.Services.AddScoped<WordToPdfConverter.Services.VeraPdfService>();
+builder.Services.AddScoped<AccessFormServer.Services.AsposePdfCloudService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.IPdfPreflightService, WordToPdfConverter.Services.Remediation.PdfPreflightService>();
+builder.Services.AddScoped<ProcessingProgressService>();
+// GptRemediationService is optional (nullable in RemediationOrchestrator) - commenting out for now
+// builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.AI.GptRemediationService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.RemediationOrchestrator>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.RemediationStructureRebuildService>();
+builder.Services.AddSingleton<WordToPdfConverter.Services.Remediation.Api.RemediationSessionManager>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Strategy.RemediationStrategySelector>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Analysis.ViolationAnalyzer>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Execution.RemediationExecutor>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Decision.ExitConditionEvaluator>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Tracking.ProgressTracker>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Reporting.RemediationReporter>();
+
+// Register ALL Fix Services (CRITICAL - these do the actual remediation work)
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.PdfUaMetadataService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.FormRoleAttributeFixService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.FontCIDSetFixService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.TableScopeAttributeFixService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.FormWidgetNestingFixService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.EmptyFormElementRemovalService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.FigureAltTextService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.LinkAltTextService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.CrossReferenceLinkService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.ContentIndexArtifactFixService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.TableStructureValidationService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.UnmarkedXObjectContentFixService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Fixes.ArtifactTaggedContentFixService>();
+
+// Register Phase 6K MCID Services
+builder.Services.AddScoped<WordToPdfConverter.Services.StructureRebuildService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Analysis.ILogicalLayoutAnalysisService,
+    WordToPdfConverter.Services.Analysis.ClaudeLogicalLayoutAnalysisService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Analysis.FormFieldEnrichmentService>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Structure.StructureTreeCleaner>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Pdf.ITaggedPdfFinalizer,
+    WordToPdfConverter.Services.Pdf.TaggedPdfFinalizer>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Pdf.IPdfStructureWriter,
+    WordToPdfConverter.Services.Pdf.ITextPdfStructureWriter>();
+// CRITICAL: Register MCID marker service to enable MCID content linking!
+builder.Services.AddScoped<WordToPdfConverter.Services.Pdf.IContentMcidMarker,
+    WordToPdfConverter.Services.Pdf.ItextContentMcidMarker>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Phase6H.McidRewritePlanBuilder>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Phase6H.ExternalMcidRewriterService>();
 
 var app = builder.Build();
 
@@ -857,6 +912,321 @@ app.MapPost("/api/remediate-pdf", async (HttpRequest request, AccessibilityServi
     }
 });
 
+// =============================================================================
+// Full RemediationOrchestrator Endpoint (Phase 6K MCID Integration)
+// =============================================================================
+app.MapPost("/api/remediate-pdf-full", async (
+    HttpRequest request,
+    WordToPdfConverter.Services.Remediation.RemediationOrchestrator orchestrator,
+    IConfiguration configuration) =>
+{
+    try
+    {
+        if (!request.Form.Files.Any())
+        {
+            return Results.BadRequest("No file uploaded");
+        }
+
+        var file = request.Form.Files[0];
+
+        if (!file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.BadRequest("Please upload a PDF file");
+        }
+
+        Console.WriteLine($"\n╔═══════════════════════════════════════════════════════════════╗");
+        Console.WriteLine($"║ FULL REMEDIATION PIPELINE - RemediationOrchestrator          ║");
+        Console.WriteLine($"╚═══════════════════════════════════════════════════════════════╝");
+        Console.WriteLine($"\n📥 Input: {file.FileName}");
+
+        // Read PDF bytes
+        byte[] pdfBytes;
+        using (var stream = file.OpenReadStream())
+        using (var ms = new MemoryStream())
+        {
+            await stream.CopyToAsync(ms);
+            pdfBytes = ms.ToArray();
+        }
+
+        Console.WriteLine($"   Size: {pdfBytes.Length / 1024:N0} KB");
+
+        // Create remediation options with MCID enabled from appsettings
+        var options = new WordToPdfConverter.Services.Remediation.Models.RemediationOptions
+        {
+            FileName = file.FileName,
+            MaxIterations = configuration.GetValue<int>("AccessibilityRemediation:MaxIterations", 5),
+            MaxDuration = TimeSpan.FromMinutes(configuration.GetValue<int>("AccessibilityRemediation:MaxDurationMinutes", 15)),
+            GenerateDetailedReport = true,
+            EnableMcidLinking = configuration.GetValue<bool>("AccessibilityRemediation:EnableMcidLinking", true),
+            EnableMcidContentRewrite = configuration.GetValue<bool>("AccessibilityRemediation:EnableMcidContentRewrite", true)
+        };
+
+        Console.WriteLine($"\n⚙️  Configuration:");
+        Console.WriteLine($"   MCID Linking: {options.EnableMcidLinking}");
+        Console.WriteLine($"   MCID Content Rewrite: {options.EnableMcidContentRewrite}");
+        Console.WriteLine($"   Max Iterations: {options.MaxIterations}");
+        Console.WriteLine($"   Max Duration: {options.MaxDuration.TotalMinutes} min");
+        Console.WriteLine();
+
+        var startTime = DateTime.Now;
+        Console.WriteLine($"🚀 Starting RemediationOrchestrator...\n");
+
+        // Run full remediation pipeline with MCID integration
+        var result = await orchestrator.RemediateAsync(pdfBytes, options);
+
+        var duration = DateTime.Now - startTime;
+
+        Console.WriteLine($"\n╔═══════════════════════════════════════════════════════════════╗");
+        Console.WriteLine($"║                   REMEDIATION COMPLETE                        ║");
+        Console.WriteLine($"╚═══════════════════════════════════════════════════════════════╝");
+        Console.WriteLine();
+
+        if (result.Success)
+        {
+            Console.WriteLine($"✅ SUCCESS!");
+            Console.WriteLine($"   Exit Reason: {result.ExitReason}");
+            Console.WriteLine($"   Iterations: {result.Summary?.TotalIterations ?? 0}");
+            Console.WriteLine($"   Duration: {duration.TotalSeconds:F1}s");
+            Console.WriteLine($"   Initial Violations: {result.Summary?.InitialViolationCount ?? 0}");
+            Console.WriteLine($"   Final Violations: {result.Summary?.FinalViolationCount ?? 0}");
+            Console.WriteLine($"   Fixed: {result.Summary?.ViolationsFixed ?? 0}");
+            Console.WriteLine($"   Compliance: {(result.Summary?.IsCompliant == true ? "✅ PDF/UA COMPLIANT" : "⚠️  NOT COMPLIANT")}");
+            Console.WriteLine($"   Output Size: {result.OutputPdf.Length / 1024:N0} KB");
+            Console.WriteLine();
+
+            // Quick check for PDF/UA markers
+            var pdfText = System.Text.Encoding.Latin1.GetString(result.OutputPdf);
+            var hasPart = pdfText.Contains("/Part");
+            var hasConformance = pdfText.Contains("/Conformance");
+            var hasPdfUa = pdfText.Contains("PDF/UA");
+
+            Console.WriteLine($"🔍 PDF/UA Markers:");
+            Console.WriteLine($"   /Part: {(hasPart ? "✅" : "❌")}");
+            Console.WriteLine($"   /Conformance: {(hasConformance ? "✅" : "❌")}");
+            Console.WriteLine($"   PDF/UA XMP: {(hasPdfUa ? "✅" : "❌")}");
+            Console.WriteLine();
+
+            return Results.Ok(new
+            {
+                success = true,
+                remediatedPdf = Convert.ToBase64String(result.OutputPdf),
+                accessibilityReport = new
+                {
+                    violationsFound = result.Summary?.InitialViolationCount ?? 0,
+                    violationsFixed = result.Summary?.ViolationsFixed ?? 0,
+                    finalViolations = result.Summary?.FinalViolationCount ?? 0,
+                    complianceScore = result.Summary?.IsCompliant == true ? 100 : 0,
+                    isCompliant = result.Summary?.IsCompliant ?? false,
+                    iterations = result.Summary?.TotalIterations ?? 0,
+                    durationSeconds = duration.TotalSeconds,
+                    exitReason = result.ExitReason.ToString(),
+                    hasPdfUaMarkers = hasPart && hasConformance,
+                    phaseResults = result.PhaseResults,
+                    recommendations = result.Recommendations
+                }
+            });
+        }
+        else
+        {
+            Console.WriteLine($"❌ FAILED: {result.ExitReason}");
+
+            return Results.Ok(new
+            {
+                success = false,
+                error = result.ExitReason.ToString(),
+                exitReason = result.ExitReason.ToString(),
+                summary = result.Summary,
+                partialResult = result.OutputPdf != null ? Convert.ToBase64String(result.OutputPdf) : null,
+                recommendations = result.Recommendations
+            });
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"\n❌ EXCEPTION in RemediationOrchestrator endpoint:");
+        Console.WriteLine($"   {ex.Message}");
+        Console.WriteLine($"   Stack: {ex.StackTrace}");
+        return Results.Problem($"Remediation failed: {ex.Message}");
+    }
+})
+.WithName("RemediatePdfFull")
+.WithDescription("Full remediation pipeline with MCID integration using RemediationOrchestrator");
+
+//
+// // =============================================================================
+// // RemediationOrchestrator REST API Endpoints
+// // =============================================================================
+// 
+// app.MapPost("/api/remediation/start", async (
+//     HttpRequest request,
+//     WordToPdfConverter.Services.Remediation.RemediationOrchestrator orchestrator,
+//     WordToPdfConverter.Services.Remediation.Api.RemediationSessionManager sessionManager) =>
+// {
+//     try
+//     {
+//         // Read multipart form data
+//         if (!request.HasFormContentType)
+//         {
+//             return Results.BadRequest(new { error = "Must be multipart/form-data" });
+//         }
+// 
+//         var form = await request.ReadFormAsync();
+//         var file = form.Files.GetFile("file");
+//         if (file == null || file.Length == 0)
+//         {
+//             return Results.BadRequest(new { error = "No PDF file provided" });
+//         }
+// 
+//         // Read PDF bytes
+//         byte[] pdfBytes;
+//         using (var ms = new MemoryStream())
+//         {
+//             await file.CopyToAsync(ms);
+//             pdfBytes = ms.ToArray();
+//         }
+// 
+//         // Parse options from form data (optional)
+//         var options = new WordToPdfConverter.Services.Remediation.Models.RemediationOptions();
+//         
+//         if (int.TryParse(form["maxIterations"], out int maxIter))
+//             options.MaxIterations = maxIter;
+//         if (int.TryParse(form["maxDurationMinutes"], out int maxDur))
+//             options.MaxDuration = TimeSpan.FromMinutes(maxDur);
+//         if (bool.TryParse(form["enableMcidLinking"], out bool mcidLink))
+//             options.EnableMcidLinking = mcidLink;
+//         if (bool.TryParse(form["enableMcidContentRewrite"], out bool mcidRewrite))
+//             options.EnableMcidContentRewrite = mcidRewrite;
+//         if (bool.TryParse(form["generateDetailedReport"], out bool detailReport))
+//             options.GenerateDetailedReport = detailReport;
+// 
+//         options.FileName = file.FileName;
+// 
+//         // Start async remediation
+//         var sessionId = sessionManager.StartSession(orchestrator, pdfBytes, options);
+// 
+//         return Results.Ok(new
+//         {
+//             sessionId,
+//             status = "Started",
+//             message = "Remediation started successfully"
+//         });
+//     }
+//     catch (Exception ex)
+//     {
+//         return Results.Problem(detail: ex.Message, statusCode: 500);
+//     }
+// })
+// .WithName("StartRemediation");
+// 
+// app.MapGet("/api/remediation/status/{sessionId}", (
+//     string sessionId,
+//     WordToPdfConverter.Services.Remediation.Api.RemediationSessionManager sessionManager) =>
+// {
+//     try
+//     {
+//         var status = sessionManager.GetStatus(sessionId);
+//         if (status == null)
+//         {
+//             return Results.NotFound(new { error = $"Session {sessionId} not found" });
+//         }
+// 
+//         return Results.Ok(status);
+//     }
+//     catch (Exception ex)
+//     {
+//         return Results.Problem(detail: ex.Message, statusCode: 500);
+//     }
+// })
+// .WithName("GetRemediationStatus");
+// 
+// app.MapGet("/api/remediation/result/{sessionId}", async (
+//     string sessionId,
+//     WordToPdfConverter.Services.Remediation.Api.RemediationSessionManager sessionManager) =>
+// {
+//     try
+//     {
+//         var result = await sessionManager.GetResultAsync(sessionId);
+//         if (result == null)
+//         {
+//             return Results.NotFound(new { error = $"Session {sessionId} not found or not complete" });
+//         }
+// 
+//         // Convert to API response model
+//         var response = new
+//         {
+//             sessionId,
+//             success = result.Success,
+//             exitReason = result.ExitReason.ToString(),
+//             summary = new
+//             {
+//                 totalIterations = result.Summary.TotalIterations,
+//                 initialViolationCount = result.Summary.InitialViolationCount,
+//                 finalViolationCount = result.Summary.FinalViolationCount,
+//                 violationsFixed = result.Summary.ViolationsFixed,
+//                 complianceImprovement = result.Summary.ComplianceImprovement,
+//                 isCompliant = result.Summary.IsCompliant,
+//                 totalDuration = result.Summary.TotalDuration.ToString()
+//             },
+//             outputPdf = result.OutputPdf != null ? Convert.ToBase64String(result.OutputPdf) : null,
+//             remainingViolations = result.RemainingViolations?.Take(50).Select(v => new
+//             {
+//                 rule = v.Rule,
+//                 description = v.Description,
+//                 severity = v.Severity.ToString()
+//             }).ToList()
+//         };
+// 
+//         return Results.Ok(response);
+//     }
+//     catch (Exception ex)
+//     {
+//         return Results.Problem(detail: ex.Message, statusCode: 500);
+//     }
+// })
+// .WithName("GetRemediationResult");
+// 
+// app.MapPost("/api/remediation/cancel/{sessionId}", (
+//     string sessionId,
+//     WordToPdfConverter.Services.Remediation.Api.RemediationSessionManager sessionManager) =>
+// {
+//     try
+//     {
+//         var cancelled = sessionManager.CancelSession(sessionId);
+//         if (!cancelled)
+//         {
+//             return Results.NotFound(new { error = $"Session {sessionId} not found or already complete" });
+//         }
+// 
+//         return Results.Ok(new
+//         {
+//             sessionId,
+//             status = "Cancelled",
+//             message = "Remediation cancelled successfully"
+//         });
+//     }
+//     catch (Exception ex)
+//     {
+//         return Results.Problem(detail: ex.Message, statusCode: 500);
+//     }
+// })
+// .WithName("CancelRemediation");
+// 
+// app.MapGet("/api/remediation/health", (
+//     WordToPdfConverter.Services.Remediation.Api.RemediationSessionManager sessionManager) =>
+// {
+//     try
+//     {
+//         var health = sessionManager.GetHealthStatus();
+//         return Results.Ok(health);
+//     }
+//     catch (Exception ex)
+//     {
+//         return Results.Problem(detail: ex.Message, statusCode: 500);
+//     }
+// })
+// .WithName("GetRemediationHealth");
+
+
 // Add health check endpoint
 app.MapGet("/api/health", (CostTrackingService costTracking, IConfiguration configuration) =>
 {
@@ -1204,7 +1574,7 @@ app.MapPost("/api/convert-with-ai", async (
             // Create service options based on form inputs
             var serviceOptions = new PdfCompleteRebuildService.ServiceOptions
             {
-                UseAdobeAutotag = useAdobeAutotag,
+                // UseAdobeAutotag = useAdobeAutotag, // Property removed from ServiceOptions
                 UseAsposeAutotag = useAsposeAutotag,
                 UseAsposeFontEmbed = useAsposeFontEmbed,
                 UsePassportPdf = usePassportPdf

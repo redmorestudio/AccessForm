@@ -1,6 +1,6 @@
 # AccessForm PDF Processing Architecture
 
-**Last Updated:** 2025-10-26
+**Last Updated:** 2025-11-19
 
 ## Documentation Index
 - **GETTING-STARTED.md** - Quick start guide and overview
@@ -266,6 +266,12 @@ so this path skips PassportPDF and uses Syncfusion-only processing.
 
 5. RETURN TO CLIENT with compliance report
    └─ Program.cs - Return remediated PDF + validation report
+
+6. (Optional) Structure Rebuild with MCID Linking
+   ├─ If RemediationPipeline:EnableStructureRebuild = true
+   ├─ Phase 0: StructureRebuildService
+   ├─ Creates clean structure tree from AI layout analysis
+   └─ Links structure to content via MCIDs (if enabled)
 ```
 
 **Key Services Used**:
@@ -292,6 +298,111 @@ so this path skips PassportPDF and uses Syncfusion-only processing.
 - **Success**: All violations fixed (VeraPDF reports compliant)
 - **Partial**: Max iterations reached, some violations remain
 - **Failed**: No progress made or critical errors encountered
+
+---
+
+### MCID Content Linking (Phase 6)
+
+**When**: Optional step during structure rebuild in remediation pipeline
+**Enabled By**: `RemediationOptions.EnableMcidLinking = true`
+**Configuration**: `appsettings.json` → `AccessibilityRemediation:EnableMcidLinking`
+
+**Purpose**: Links PDF structure elements to actual page content via MCIDs (Marked Content Identifiers) for proper accessibility and PDF/UA compliance.
+
+#### Two-Sided MCID Architecture
+
+Phase 6K implements both sides of the MCID story:
+
+**1. Structure Side (Phase 6K)** - MCR (Marked Content Reference) objects
+- Created by `ITextPdfStructureWriter`
+- Lives in PDF structure tree
+- Links structure elements to page content via (PageIndex, MCID) pairs
+- Format: `<MCR Pg="0" MCID="5"/>` in structure element
+
+**2. Content Side (Phase 6H)** - BDC/EMC markers in content streams
+- Inserted by Python microservice (`McidRewriterMicroservice`)
+- Lives in PDF page content streams
+- Marks actual PDF content with matching MCIDs
+- Format: `/P <</MCID 5>> BDC ... EMC` in content stream
+
+#### MCID Pipeline Flow
+
+```
+Remediation Start
+  ↓
+Phase 0: Structure Rebuild (if enabled)
+  ↓
+AI Layout Analysis → LogicalDocument
+  ↓
+Structure Tree Building
+  ↓
+Structure Tree Cleaning
+  ↓
+MCID Allocation (if EnableMcidLinking = true)
+  - Assign MCID numbers in reading order
+  - Store in StructureNode.McidReferences
+  ↓
+MCR Creation (Phase 6K)
+  - ITextPdfStructureWriter creates PdfMcrNumber kids
+  - Links structure elements to (Page, MCID)
+  ↓
+External Rewrite (if EnableMcidContentRewrite = true)
+  - McidRewritePlanBuilder generates coordinate-based plan
+  - ExternalMcidRewriterService calls Python microservice
+  - Python inserts BDC/EMC markers in content streams
+  ↓
+Guard Clause Activation
+  - Sets context.McidContentRewriteExecuted = true
+  - Prevents subsequent content stream mutations
+  ↓
+Remaining Remediation Phases
+  - Cleanup phase skipped (would corrupt markers)
+  - Other phases check guard clause before content edits
+  ↓
+Final PDF with Complete MCID Linking
+```
+
+#### Configuration Options
+
+**RemediationOptions flags**:
+- `EnableMcidLinking` (bool, default: true)
+  - When true: Allocate MCIDs and create MCR kids in structure tree
+  - When false: Skip entire MCID pipeline
+
+- `EnableMcidContentRewrite` (bool, default: true)
+  - When true: Call Python microservice to insert BDC/EMC markers
+  - When false: Create MCR kids only (structure side only)
+  - Requires `EnableMcidLinking = true` to have any effect
+
+**Related configuration**:
+- `RemediationPipeline:EnableStructureRebuild` - Must be true to trigger structure rebuild
+- `AsposeOptimizationMode: "PreStructureOnly"` - Prevents overwrites after MCID
+- `ArtifactFixMode: "PreStructureOnly"` - Prevents overwrites after MCID
+
+#### When to Enable MCID Linking
+
+**Enable MCID Linking When**:
+- ✅ PDF/UA compliance is required
+- ✅ Screen reader reading order must be correct
+- ✅ Tagged PDF needs content-structure connection
+- ✅ Forms have complex layouts requiring proper structure
+- ✅ Remediation should produce compliant structure tree
+
+**Disable MCID Linking When**:
+- ❌ Quick draft conversion (speed over compliance)
+- ❌ PDF won't be used with assistive technology
+- ❌ Python microservice unavailable in deployment
+- ❌ Content-only remediation without structure changes
+- ❌ Testing non-MCID features in isolation
+
+#### Performance Impact
+
+- **MCID Allocation**: Minimal (~100ms for typical document)
+- **MCR Creation**: Low (~200ms)
+- **External Rewrite**: Medium (~500ms-2s depending on document size)
+- **Total Overhead**: ~1-3 seconds for typical document
+
+**Recommendation**: Always enable for production remediation unless speed is critical.
 
 ---
 
@@ -524,6 +635,11 @@ These orchestrate the main processing flows:
 - **PdfFieldTagEditorService** - Edits fields and tags (Syncfusion)
 - **ITextFieldRebuildService** - Rebuilds fields with proper structure (iText7)
 - **FieldPreservationService** - Preserves field state during processing
+
+### Structure Rebuild & MCID Services
+- **StructureRebuildService** - AI-powered structure tree rebuild (Services/Remediation/)
+- **ITextPdfStructureWriter** - Structure tree writing and MCR creation (Services/Pdf/)
+- **ExternalMcidRewriterService** - Python microservice for BDC/EMC markers (Services/Phase6H/)
 
 ### Utility Services
 - **DebugCacheService** - Caches debug data for AI responses

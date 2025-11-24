@@ -1,6 +1,8 @@
 # AccessForm API Architecture - Endpoint Documentation
 
-**Last Updated:** 2025-10-12
+**Last Updated:** 2025-11-19
+
+**Note**: This document includes both implemented endpoints and planned RemediationOrchestrator REST API endpoints that are designed but not yet implemented.
 
 ## Overview
 
@@ -8,6 +10,7 @@ This document provides detailed documentation for all API endpoints in AccessFor
 
 **Quick Navigation:**
 - [Main Processing APIs](#main-processing-apis)
+- [Remediation APIs](#remediation-apis)
 - [Field Management APIs](#field-management-apis)
 - [Cascade Correction APIs](#cascade-correction-apis)
 - [Accessibility & Compliance APIs](#accessibility--compliance-apis)
@@ -169,6 +172,472 @@ detectFields: true|false
 **Purpose**: Configurable field detection (before PassportPDF integration)
 **Location**: Program.cs:3951-4141
 **Status**: ⚠️ Legacy - Use `/api/process-with-passportpdf-auto` instead
+
+---
+
+## Remediation APIs
+
+### POST `/api/remediate-pdf`
+
+**Location**: Program.cs:702-968
+**Purpose**: Legacy PDF remediation endpoint (pre-RemediationOrchestrator)
+**Status**: ✅ Production, but consider migrating to `/api/remediation/start`
+
+**Request**:
+```http
+POST /api/remediate-pdf
+Content-Type: multipart/form-data
+
+file: <PDF binary>
+```
+
+**Response**:
+```json
+{
+  "originalPdf": "<base64>",
+  "remediatedPdf": "<base64>",
+  "accessibilityReport": {
+    "violationsFound": 42,
+    "violationsFixed": 38,
+    "complianceScore": 0.85,
+    "status": "Improved",
+    "complianceLevel": "Partial",
+    "totalFields": 12,
+    "measuresApplied": [
+      "Added document metadata",
+      "Tagged content structure",
+      "Added form field tooltips",
+      "Fixed artifact violations"
+    ]
+  }
+}
+```
+
+**Features**:
+- Two-phase remediation (algorithmic + accessibility enhancement)
+- Field preservation tracking
+- Compliance reporting
+
+**Limitations**:
+- No MCID linking support
+- No RemediationOrchestrator integration
+- Limited configuration options
+
+**Processing Flow**:
+```csharp
+1. Load PDF and detect fields
+2. Phase 1: AccessibilityRetrofitService (algorithmic fixes)
+3. Phase 2: AccessibilityService.ApplyAccessibilityFeatures()
+   - Tag structure
+   - Metadata (Title, Language)
+   - Form field tooltips
+   - Artifact tagging
+4. Return remediated PDF + report
+```
+
+---
+
+### POST `/api/pdf-ua-compliance`
+
+**Location**: Program.cs:2621-2685
+**Purpose**: PDF/UA compliance check with auto-remediation
+
+**Request**:
+```http
+POST /api/pdf-ua-compliance
+Content-Type: multipart/form-data
+
+file: <PDF binary>
+
+Query Parameters:
+- preserveFields (bool, optional) - Preserve form fields
+- autoFix (bool, default: true) - Auto-remediate violations
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "pdfData": "<base64>",
+  "fileName": "form_compliant.pdf",
+  "analysis": {
+    "initial": {
+      "complianceScore": 0.42,
+      "violationCount": 58,
+      "isPdfA": false
+    },
+    "final": {
+      "complianceScore": 0.95,
+      "violationCount": 3,
+      "isPdfA": true
+    },
+    "isPdfA": true,
+    "score": 0.95
+  }
+}
+```
+
+**Configuration**:
+```csharp
+var options = new ComplianceOptions
+{
+    AutoRemediate = autoFix,
+    ConvertToPdfA = !preserveFields, // Skip PDF/A if preserving fields
+    PreserveFieldNames = preserveFields,
+    DocumentTitle = fileName.Replace(".pdf", "")
+};
+```
+
+**Processing**:
+1. Initial VeraPDF validation
+2. PdfUAComplianceService.EnsureComplianceAsync()
+3. Fixes applied based on violations
+4. Re-validation
+5. Return compliant PDF + analysis
+
+---
+
+## Planned RemediationOrchestrator REST API
+
+**Status**: ❌ NOT YET IMPLEMENTED
+**Design**: See `RemediationSessionManager.cs` and `RemediationApiModels.cs`
+
+These endpoints provide asynchronous, session-based remediation with real-time progress tracking.
+
+### POST `/api/remediation/start`
+
+**Purpose**: Start new remediation session
+**Status**: 🚧 Planned
+
+**Request**:
+```http
+POST /api/remediation/start
+Content-Type: multipart/form-data
+
+file: <PDF binary>
+
+Request Body (optional JSON):
+{
+  "maxIterations": 10,
+  "maxDurationMinutes": 30,
+  "acceptableComplianceScore": 0.95,
+  "detectStagnation": true,
+  "stopOnRegression": false,
+  "saveBestPdf": true,
+  "bestPdfOutputPath": "/output/best.pdf",
+  "enableMcidLinking": true,
+  "enableMcidContentRewrite": true,
+  "generateDetailedReport": true
+}
+```
+
+**Response**:
+```json
+{
+  "sessionId": "abc123def456",
+  "status": "Starting",
+  "fileName": "form.pdf",
+  "startTime": "2025-11-19T10:30:00Z",
+  "message": "Remediation session started"
+}
+```
+
+**Options**:
+- **maxIterations**: Maximum remediation iterations (default: 10)
+- **maxDurationMinutes**: Maximum processing time (default: 30)
+- **acceptableComplianceScore**: Target score to stop (default: 0.95)
+- **detectStagnation**: Stop if progress stalls (default: true)
+- **stopOnRegression**: Stop if violations increase (default: false)
+- **saveBestPdf**: Save best iteration result (default: true)
+- **enableMcidLinking**: Enable Phase 6K MCR creation (default: true)
+- **enableMcidContentRewrite**: Enable Phase 6H/6J BDC/EMC markers (default: true)
+
+---
+
+### GET `/api/remediation/status/{sessionId}`
+
+**Purpose**: Get remediation progress
+**Status**: 🚧 Planned
+
+**Request**:
+```http
+GET /api/remediation/status/abc123def456
+```
+
+**Response**:
+```json
+{
+  "sessionId": "abc123def456",
+  "status": "Running",
+  "fileName": "form.pdf",
+  "startTime": "2025-11-19T10:30:00Z",
+  "elapsedTime": "00:03:45",
+
+  "currentIteration": 3,
+  "maxIterations": 10,
+  "currentViolations": 15,
+  "initialViolations": 58,
+  "complianceScore": 0.74,
+
+  "bestIterationNumber": 2,
+  "bestComplianceScore": 0.78,
+  "bestViolationCount": 12,
+
+  "iterationHistory": [
+    {
+      "iterationNumber": 1,
+      "violationCount": 58,
+      "complianceScore": 0.42,
+      "fixesApplied": 15,
+      "phasesExecuted": ["Structure", "Metadata", "Forms"],
+      "duration": "00:01:15"
+    },
+    {
+      "iterationNumber": 2,
+      "violationCount": 12,
+      "complianceScore": 0.78,
+      "fixesApplied": 46,
+      "phasesExecuted": ["Content", "Whitespace", "Font"],
+      "duration": "00:01:20"
+    }
+  ],
+
+  "gptAttempts": 0,
+  "gptStagnationDetected": false
+}
+```
+
+**Status Values**:
+- `Starting` - Session created, not yet running
+- `Running` - Actively processing
+- `Completed` - Finished successfully
+- `Failed` - Error occurred
+- `Cancelled` - User cancelled
+
+---
+
+### GET `/api/remediation/result/{sessionId}`
+
+**Purpose**: Get final remediation result
+**Status**: 🚧 Planned
+
+**Request**:
+```http
+GET /api/remediation/result/abc123def456
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "sessionId": "abc123def456",
+  "fileName": "form.pdf",
+
+  "summary": {
+    "totalIterations": 5,
+    "initialViolations": 58,
+    "finalViolations": 0,
+    "violationsFixed": 58,
+    "initialCompliance": 0.42,
+    "finalCompliance": 1.0,
+    "complianceImprovement": 0.58,
+    "isCompliant": true,
+    "duration": "00:08:45"
+  },
+
+  "exitReason": "Compliant",
+  "isCompliant": true,
+  "totalIterations": 5,
+  "totalDuration": "00:08:45",
+
+  "bestPdfBase64": "<base64>",
+  "finalPdfBase64": "<base64>",
+  "bestPdfSize": 245678,
+  "finalPdfSize": 245678,
+
+  "bestIterationNumber": 5,
+  "bestComplianceScore": 1.0,
+  "bestViolationCount": 0,
+
+  "remainingViolations": []
+}
+```
+
+**Exit Reasons**:
+- `Compliant` - Achieved PDF/UA compliance
+- `ThresholdMet` - Reached acceptable compliance score
+- `MaxIterations` - Hit iteration limit
+- `Timeout` - Exceeded time limit
+- `Stagnation` - No progress for multiple iterations
+- `Regression` - Violations increased
+- `Error` - Processing error
+
+---
+
+### PUT `/api/remediation/options/{sessionId}`
+
+**Purpose**: Update remediation options mid-session
+**Status**: 🚧 Planned
+
+**Request**:
+```http
+PUT /api/remediation/options/abc123def456
+Content-Type: application/json
+
+{
+  "maxIterations": 15,
+  "acceptableComplianceScore": 0.90,
+  "stopOnRegression": false
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "sessionId": "abc123def456",
+  "message": "Options updated",
+  "updatedOptions": {
+    "maxIterations": 15,
+    "acceptableComplianceScore": 0.90,
+    "stopOnRegression": false
+  }
+}
+```
+
+**Updatable Options**:
+- `maxIterations`
+- `acceptableComplianceScore`
+- `stopOnRegression`
+
+**Note**: Changes apply to current and future iterations only.
+
+---
+
+### POST `/api/remediation/cancel/{sessionId}`
+
+**Purpose**: Cancel running remediation
+**Status**: 🚧 Planned
+
+**Request**:
+```http
+POST /api/remediation/cancel/abc123def456
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "sessionId": "abc123def456",
+  "status": "Cancelled",
+  "message": "Remediation cancelled by user",
+  "bestPdfAvailable": true,
+  "partialResult": {
+    "iterationsCompleted": 3,
+    "lastComplianceScore": 0.74,
+    "lastViolationCount": 15
+  }
+}
+```
+
+**Behavior**:
+- Gracefully stops current iteration
+- Returns best PDF from completed iterations
+- Session remains accessible for result retrieval
+
+---
+
+### GET `/api/remediation/health`
+
+**Purpose**: Check remediation service health
+**Status**: 🚧 Planned
+
+**Request**:
+```http
+GET /api/remediation/health
+```
+
+**Response**:
+```json
+{
+  "status": "Healthy",
+  "activeSessions": 3,
+  "totalSessions": 47,
+  "serverTime": "2025-11-19T10:30:00Z",
+  "pythonMicroservice": {
+    "status": "Available",
+    "url": "http://localhost:8000",
+    "lastCheck": "2025-11-19T10:29:45Z"
+  },
+  "averageProcessingTime": "00:06:30",
+  "successRate": 0.94,
+  "serviceVersion": "1.0.0"
+}
+```
+
+**Health Indicators**:
+- `Healthy` - All systems operational
+- `Degraded` - Some issues (e.g., Python microservice down)
+- `Unhealthy` - Critical failures
+
+---
+
+## MCID-Related Configuration
+
+All remediation endpoints (once integrated) support MCID linking via `RemediationOptions`:
+
+```json
+{
+  "enableMcidLinking": true,           // Enable MCID allocation and MCR creation (Phase 6K)
+  "enableMcidContentRewrite": true,    // Enable BDC/EMC marker insertion (Phase 6H/6J)
+  "asposeOptimizationMode": "PreStructureOnly",  // Prevent content stream overwrites
+  "artifactFixMode": "PreStructureOnly"          // Prevent content stream overwrites
+}
+```
+
+**Phase 6K Integration**:
+- Structure tree MCR kids created by `ITextPdfStructureWriter`
+- MCID numbers allocated in reading order
+- MCR objects link structure elements to page content
+
+**Phase 6H/6J Integration**:
+- Python microservice inserts BDC/EMC markers
+- Endpoint: `http://localhost:8000/api/mcid-rewrite`
+- Markers persist through save/reload cycle
+
+**Guard Clauses**:
+Services that touch content streams check `context.McidContentRewriteExecuted` to prevent marker overwrites.
+
+**Related Documentation**:
+- See ARCHITECTURE-SERVICES-STRUCTURE.md for MCID architecture
+- See PHASE-6K-REINTEGRATION-SPEC-v1.md for integration details
+
+---
+
+## Integration Points
+
+### Planned Integration: `/api/convert-with-config`
+
+**Current Behavior**: Converts Word to PDF with field detection
+**Location**: Program.cs:3669-3758
+
+**Planned Enhancement** (per INTEGRATION-GUIDE.md):
+```csharp
+// After PDF conversion
+var remediationResult = await remediationOrchestrator.RemediateAsync(
+    pdfBytes,
+    RemediationOptions.Production);
+
+if (remediationResult.Success)
+{
+    pdfBytes = remediationResult.OutputPdf;
+}
+```
+
+**Benefits**:
+- Automatic PDF/UA compliance for all Word conversions
+- MCID linking enabled
+- Iterative improvement vs. single-pass
 
 ---
 
@@ -636,28 +1105,6 @@ GET /api/accessibility-report/latest
   ]
 }
 ```
-
----
-
-### POST `/api/remediate-pdf`
-
-**Purpose**: Apply accessibility remediation to existing PDF
-**Location**: Program.cs:776-968
-
-**Request**:
-```http
-POST /api/remediate-pdf
-Content-Type: multipart/form-data
-
-file: <.pdf file>
-```
-
-**Processing**:
-1. Load PDF
-2. Apply AccessibilityRetrofitService
-3. Apply PdfAccessibilityEnhancer
-4. Set metadata with AccessibilityService
-5. Return remediated PDF
 
 ---
 
@@ -1164,6 +1611,14 @@ curl -X POST http://localhost:5001/api/extract-pdf-fields \
 
 # Check health
 curl http://localhost:5001/api/health
+
+# Start remediation session (planned)
+curl -X POST http://localhost:5001/api/remediation/start \
+  -F "file=@form.pdf" \
+  -F "options={\"maxIterations\":10,\"enableMcidLinking\":true}"
+
+# Check remediation status (planned)
+curl http://localhost:5001/api/remediation/status/abc123def456
 ```
 
 ---
@@ -1172,5 +1627,7 @@ curl http://localhost:5001/api/health
 
 **See also:**
 - **ARCHITECTURE.md** - Main processing paths
-- **ARCHITECTURE-SERVICES.md** - Service class details
-- **ARCHITECTURE-GUI.md** - GUI components
+- **ARCHITECTURE-SERVICES-CORE.md** - Core pipeline services
+- **ARCHITECTURE-SERVICES-REMEDIATION.md** - Remediation system
+- **ARCHITECTURE-SERVICES-STRUCTURE.md** - MCID and structure tree integration
+- **INTEGRATION-GUIDE.md** - RemediationOrchestrator integration guide
