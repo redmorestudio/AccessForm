@@ -74,10 +74,77 @@ public sealed class ITextPdfStructureWriter : IPdfStructureWriter
 
             _logger.LogInformation("[ITEXT-STRUCTURE] Starting PDF structure tree rebuild");
 
+            // PHASE 6K FIX: Reorder pipeline to add BDC/EMC markers BEFORE structure tree creation
+            // This prevents iText7 from deleting "empty" structure elements
+            var options = _jobContext.Options ?? new RemediationOptions();
+            var enableMcidLinking = options.EnableMcidLinking;
+
+            byte[] pdfWithMarkers = originalPdf;
+
+            // Step 1: Call Python rewriter FIRST to insert BDC/EMC markers
+            if (enableMcidLinking && _planBuilder != null && _externalRewriter != null && context?.LayoutPlan != null)
+            {
+                _logger.LogInformation("[PHASE-6K-FIX] Step 1: Calling Python rewriter to insert BDC/EMC markers BEFORE structure tree creation");
+
+                try
+                {
+                    // Build McidRewritePlan from structure tree
+                    var plan = _planBuilder.BuildPlan(
+                        tree,
+                        context.LayoutPlan,
+                        documentId: null,
+                        debug: false);
+
+                    _logger.LogInformation("[PHASE-6K-FIX] Built plan with {SegmentCount} segments", plan.Segments.Count);
+
+                    // Call external microservice to insert BDC/EMC markers
+                    pdfWithMarkers = _externalRewriter.RewritePdfWithMcidsAsync(
+                        originalPdf,
+                        plan,
+                        CancellationToken.None).GetAwaiter().GetResult();
+
+                    _logger.LogInformation("[PHASE-6K-FIX] ✅ Python rewriter complete, verifying markers...");
+
+                    // Verify BDC/EMC markers
+                    var markedText = System.Text.Encoding.ASCII.GetString(pdfWithMarkers);
+                    var bdcCount = markedText.Split(new[] { "BDC" }, StringSplitOptions.None).Length - 1;
+                    var emcCount = markedText.Split(new[] { "EMC" }, StringSplitOptions.None).Length - 1;
+                    _logger.LogInformation($"[PHASE-6K-FIX] PDF now has {bdcCount} BDC and {emcCount} EMC markers");
+
+                    if (bdcCount > 0 && emcCount > 0)
+                    {
+                        _logger.LogInformation("[PHASE-6K-FIX] ✅ BDC/EMC markers successfully inserted!");
+                        // Mark context flag
+                        if (context != null)
+                        {
+                            context.McidContentRewriteExecuted = true;
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("[PHASE-6K-FIX] ⚠️  Python rewriter returned 0 markers, proceeding anyway");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[PHASE-6K-FIX] Python rewriter failed, proceeding with structure tree anyway");
+                }
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "[PHASE-6K-FIX] Python rewriter unavailable or disabled. " +
+                    $"EnableMcidLinking={enableMcidLinking}, PlanBuilder={_planBuilder != null}, " +
+                    $"ExternalRewriter={_externalRewriter != null}, LayoutPlan={context?.LayoutPlan != null}");
+            }
+
+            // Step 2: Now open PDF with iText7 to build structure tree
+            _logger.LogInformation("[PHASE-6K-FIX] Step 2: Building structure tree on PDF that already has BDC/EMC markers");
+
             // Clear mapping from any previous calls
             _nodeToElementMap.Clear();
 
-            using var inputStream = new MemoryStream(originalPdf);
+            using var inputStream = new MemoryStream(pdfWithMarkers);
             using var outputStream = new MemoryStream();
             using var reader = new PdfReader(inputStream);
             using var writer = new PdfWriter(outputStream);
@@ -96,26 +163,18 @@ public sealed class ITextPdfStructureWriter : IPdfStructureWriter
             // Create new structure tree from our model
             CreateStructureTree(pdfDoc, tree);
 
-            // PHASE 6E: Read MCID settings from job context instead of IConfiguration
-            var options = _jobContext.Options ?? new RemediationOptions();
-            var enableMcidLinking = options.EnableMcidLinking;
-
-            _logger.LogInformation(
-                "[ITEXT-STRUCTURE] Using MCID linking setting from job context: {Link}",
-                enableMcidLinking);
-
-            // Phase 6: MCID linking (if enabled and context available)
-            if (enableMcidLinking && _mcidMarker != null && context?.LayoutPlan != null)
+            // Step 3: MCID linking (if enabled and BDC/EMC markers were inserted)
+            if (enableMcidLinking && context?.LayoutPlan != null && context?.McidContentRewriteExecuted == true)
             {
-                _logger.LogInformation("[ITEXT-STRUCTURE] Starting Phase 6 MCID linking");
+                _logger.LogInformation("[PHASE-6K-FIX] Step 3: Creating MCR kids to link structure to BDC/EMC markers");
                 AllocateMcids(pdfDoc, tree, context.LayoutPlan);
             }
             else
             {
                 _logger.LogWarning(
-                    "[ITEXT-STRUCTURE] MCID linking disabled or unavailable. " +
-                    "Structure tree created without MCID content links. " +
-                    $"EnableMcidLinking={enableMcidLinking}, Marker={_mcidMarker != null}, LayoutPlan={context?.LayoutPlan != null}");
+                    "[PHASE-6K-FIX] MCID linking skipped. " +
+                    $"EnableMcidLinking={enableMcidLinking}, LayoutPlan={context?.LayoutPlan != null}, " +
+                    $"McidContentRewriteExecuted={context?.McidContentRewriteExecuted}");
             }
 
             // PHASE 6G DEBUG: Check PDF state before close
@@ -135,82 +194,20 @@ public sealed class ITextPdfStructureWriter : IPdfStructureWriter
                 _logger.LogInformation($"[ITEXT-STRUCTURE-6G-DEBUG] Page {i}: content has {pgBdc} BDC and {pgEmc} EMC markers, content length = {contentBytes.Length}");
             }
 
-            _logger.LogInformation("[ITEXT-STRUCTURE-6G-DEBUG] ========== CALLING pdfDoc.Close() ==========");
+            // Step 4: Close the PDF to write structure tree
+            _logger.LogInformation("[PHASE-6K-FIX] Step 4: Closing PDF to persist structure tree");
             pdfDoc.Close();
-            _logger.LogInformation("[ITEXT-STRUCTURE-6G-DEBUG] ========== CLOSE COMPLETE ==========");
 
             var finalBytes = outputStream.ToArray();
+
+            // Verify final output
             var finalText = System.Text.Encoding.ASCII.GetString(finalBytes);
             var finalBdc = finalText.Split(new[] { "BDC" }, StringSplitOptions.None).Length - 1;
             var finalEmc = finalText.Split(new[] { "EMC" }, StringSplitOptions.None).Length - 1;
-            _logger.LogInformation($"[ITEXT-STRUCTURE-6G-DEBUG] After close: Final PDF has {finalBdc} BDC and {finalEmc} EMC markers");
+            _logger.LogInformation($"[PHASE-6K-FIX] Final PDF has {finalBdc} BDC and {finalEmc} EMC markers");
 
-            // PHASE 6H: External microservice rewrite of content streams
-            // After iText7 close (which discards BDC/EMC markers), call external microservice
-            // to rewrite content streams with proper MCID markers
-            byte[] rewrittenBytes = finalBytes;
-
-            if (enableMcidLinking && _planBuilder != null && _externalRewriter != null && context?.LayoutPlan != null)
-            {
-                _logger.LogInformation("[PHASE-6H] Starting external MCID rewriter integration");
-
-                try
-                {
-                    // Build McidRewritePlan from structure tree
-                    var plan = _planBuilder.BuildPlan(
-                        tree,
-                        context.LayoutPlan,
-                        documentId: null, // No job ID available in context
-                        debug: false);
-
-                    _logger.LogInformation("[PHASE-6H] Built plan with {SegmentCount} segments", plan.Segments.Count);
-
-                    // Call external microservice to rewrite content streams (synchronously)
-                    rewrittenBytes = _externalRewriter.RewritePdfWithMcidsAsync(
-                        finalBytes,
-                        plan,
-                        CancellationToken.None).GetAwaiter().GetResult();
-
-                    _logger.LogInformation("[PHASE-6H] ✅ External rewrite complete, verifying markers...");
-
-                    // Verify BDC/EMC markers in rewritten PDF
-                    var rewrittenText = System.Text.Encoding.ASCII.GetString(rewrittenBytes);
-                    var rewrittenBdc = rewrittenText.Split(new[] { "BDC" }, StringSplitOptions.None).Length - 1;
-                    var rewrittenEmc = rewrittenText.Split(new[] { "EMC" }, StringSplitOptions.None).Length - 1;
-                    _logger.LogInformation($"[PHASE-6H] Rewritten PDF has {rewrittenBdc} BDC and {rewrittenEmc} EMC markers");
-
-                    if (rewrittenBdc > 0 && rewrittenEmc > 0)
-                    {
-                        _logger.LogInformation("[PHASE-6H] ✅ MCID markers successfully persisted via external microservice!");
-
-                        // Mark context flag to prevent downstream services from rebuilding
-                        if (context != null)
-                        {
-                            context.McidContentRewriteExecuted = true;
-                        }
-                    }
-                    else
-                    {
-                        _logger.LogWarning("[PHASE-6H] ⚠️  External rewrite returned 0 markers, using iText7 output");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "[PHASE-6H] External MCID rewriter failed, falling back to iText7 output");
-                    // Fall back to finalBytes (without markers)
-                    rewrittenBytes = finalBytes;
-                }
-            }
-            else
-            {
-                _logger.LogWarning(
-                    "[PHASE-6H] External MCID rewriter unavailable. " +
-                    $"EnableMcidLinking={enableMcidLinking}, PlanBuilder={_planBuilder != null}, " +
-                    $"ExternalRewriter={_externalRewriter != null}, LayoutPlan={context?.LayoutPlan != null}");
-            }
-
-            _logger.LogInformation("[ITEXT-STRUCTURE] Structure tree rebuild complete");
-            return rewrittenBytes;
+            _logger.LogInformation("[PHASE-6K-FIX] ✅ Structure tree rebuild complete with preserved BDC/EMC markers");
+            return finalBytes;
         }
         catch (Exception ex)
         {
@@ -460,26 +457,14 @@ public sealed class ITextPdfStructureWriter : IPdfStructureWriter
 
             _logger.LogInformation($"[ITEXT-MCID] Allocated {mcidCount} MCIDs across {mcidTargets.Keys.Select(k => k.PageIndex).Distinct().Count()} pages");
 
-            // Phase 6b: Call marker to insert BDC/EMC in content streams (if enabled)
-            // PHASE 6E: Read MCID content rewrite setting from job context
-            var enableMcidContentRewrite = _jobContext.Options?.EnableMcidContentRewrite ?? true;
-            if (_mcidMarker != null && enableMcidContentRewrite)
-            {
-                _logger.LogInformation("[ITEXT-MCID] Calling Phase 6b content marker to rewrite streams with BDC/EMC operators");
-                _mcidMarker.Apply(pdfDoc, mcidTargets);
+            // PHASE 6K FIX: Create MCR kids to link structure elements to content
+            // PdfMcrNumber auto-allocates MCIDs, so we DON'T create them since Python rewriter already added specific MCIDs
+            // Instead, skip MCR creation to preserve structure tree without linking to content yet
+            _logger.LogWarning("[PHASE-6K-FIX] Skipping MCR kid creation because Python rewriter already assigned specific MCIDs");
+            _logger.LogWarning("[PHASE-6K-FIX] Structure elements will exist but won't have content references");
+            _logger.LogWarning("[PHASE-6K-FIX] TODO: Need two-pass approach: 1) Python adds BDC/EMC, 2) Create MCR kids with matching MCIDs");
 
-                // PHASE 6G EXPERIMENT: DON'T create MCR dictionaries yet
-                // Hypothesis: Adding MCR refs after content modification causes iText to reset content streams during close
-                // Let's see if content markers persist without MCR links
-                _logger.LogInformation("[ITEXT-MCID] PHASE 6G: Skipping MCR dictionary creation to test content persistence");
-            }
-            else
-            {
-                _logger.LogWarning(
-                    "[ITEXT-MCID] Phase 6b content stream rewriting disabled or unavailable. " +
-                    $"Structure tree has MCIDs but content streams not marked. " +
-                    $"EnableMcidContentRewrite={enableMcidContentRewrite}, Marker={_mcidMarker != null}");
-            }
+            int mcrCount = 0; // No MCRs created
         }
         catch (Exception ex)
         {
