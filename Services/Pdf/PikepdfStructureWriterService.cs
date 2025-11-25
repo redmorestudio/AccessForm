@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using WordToPdfConverter.Models.Remediation;
 using WordToPdfConverter.Services.Remediation.Structure;
 
 namespace WordToPdfConverter.Services.Pdf;
@@ -9,7 +10,7 @@ namespace WordToPdfConverter.Services.Pdf;
 /// C# wrapper for pikepdf Python orchestrator.
 /// Replaces ITextPdfStructureWriter with open-source pikepdf solution.
 /// </summary>
-public class PikepdfStructureWriterService
+public class PikepdfStructureWriterService : IPdfStructureWriter
 {
     private readonly ILogger<PikepdfStructureWriterService> _logger;
     private readonly string _pythonPath;
@@ -40,6 +41,21 @@ public class PikepdfStructureWriterService
             throw new FileNotFoundException($"Pikepdf orchestrator not found at: {_orchestratorPath}");
 
         _logger.LogInformation("[PIKEPDF-WRAPPER] Initialized with orchestrator: {Path}", _orchestratorPath);
+    }
+
+    /// <summary>
+    /// Implements IPdfStructureWriter.Rewrite.
+    /// Synchronous wrapper around RebuildStructureAsync.
+    /// </summary>
+    public byte[] Rewrite(byte[] originalPdf, StructureTree tree, StructureRebuildContext? context = null)
+    {
+        _logger.LogInformation("[PIKEPDF-WRAPPER] Rewrite called (sync wrapper)");
+
+        // Always enable MCID marking for pikepdf
+        bool enableMcid = true;
+
+        // Call async method synchronously
+        return RebuildStructureAsync(originalPdf, tree, enableMcid).GetAwaiter().GetResult();
     }
 
     /// <summary>

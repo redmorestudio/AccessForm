@@ -180,8 +180,22 @@ builder.Services.AddScoped<WordToPdfConverter.Services.Analysis.FormFieldEnrichm
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Structure.StructureTreeCleaner>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Pdf.ITaggedPdfFinalizer,
     WordToPdfConverter.Services.Pdf.TaggedPdfFinalizer>();
-builder.Services.AddScoped<WordToPdfConverter.Services.Pdf.IPdfStructureWriter,
-    WordToPdfConverter.Services.Pdf.ITextPdfStructureWriter>();
+
+// Configure PDF Structure Writer: iText7 (default) or pikepdf (experimental)
+var usePikepdf = builder.Configuration.GetValue<bool>("PdfStructureWriter:UsePikepdf", false);
+if (usePikepdf)
+{
+    builder.Services.AddScoped<WordToPdfConverter.Services.Pdf.IPdfStructureWriter,
+        WordToPdfConverter.Services.Pdf.PikepdfStructureWriterService>();
+    Console.WriteLine("✅ Using pikepdf for structure tree building (experimental)");
+}
+else
+{
+    builder.Services.AddScoped<WordToPdfConverter.Services.Pdf.IPdfStructureWriter,
+        WordToPdfConverter.Services.Pdf.ITextPdfStructureWriter>();
+    Console.WriteLine("✅ Using iText7 for structure tree building (default)");
+}
+
 // CRITICAL: Register MCID marker service to enable MCID content linking!
 builder.Services.AddScoped<WordToPdfConverter.Services.Pdf.IContentMcidMarker,
     WordToPdfConverter.Services.Pdf.ItextContentMcidMarker>();

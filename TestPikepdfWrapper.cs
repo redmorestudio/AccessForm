@@ -73,34 +73,35 @@ public class TestPikepdfWrapper
             Console.WriteLine($"Input size: {pdfBytes.Length:N0} bytes");
 
             // Create simple structure tree for testing
-            var structureTree = new StructureTree
-            {
-                Nodes = new List<StructureNode>
+            var structureTree = new StructureTree(
+                Nodes: new List<StructureNode>
                 {
-                    new StructureNode
-                    {
-                        Role = "Document",
-                        Attributes = new Dictionary<string, string?>
+                    new StructureNode(
+                        Role: "Document",
+                        TextContent: null,
+                        Attributes: new Dictionary<string, string?>
                         {
                             ["id"] = "/0",
                             ["lang"] = "en-US"
                         },
-                        Children = new List<StructureNode>
+                        Children: new List<StructureNode>
                         {
-                            new StructureNode
-                            {
-                                Role = "H1",
-                                Attributes = new Dictionary<string, string?> { ["id"] = "/0/0" }
-                            },
-                            new StructureNode
-                            {
-                                Role = "P",
-                                Attributes = new Dictionary<string, string?> { ["id"] = "/0/1" }
-                            }
+                            new StructureNode(
+                                Role: "H1",
+                                TextContent: null,
+                                Attributes: new Dictionary<string, string?> { ["id"] = "/0/0" },
+                                Children: null
+                            ),
+                            new StructureNode(
+                                Role: "P",
+                                TextContent: null,
+                                Attributes: new Dictionary<string, string?> { ["id"] = "/0/1" },
+                                Children: null
+                            )
                         }
-                    }
+                    )
                 }
-            };
+            );
 
             Console.WriteLine("Structure tree created: Document -> H1, P");
 
