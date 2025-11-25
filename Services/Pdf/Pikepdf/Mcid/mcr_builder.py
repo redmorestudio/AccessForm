@@ -83,20 +83,35 @@ class McrBuilder:
         current = pdf.Root.StructTreeRoot
 
         for part in path_parts:
-            if '/K' not in current:
+            # Get /K value safely
+            try:
+                kids_value = current.get('/K')
+            except:
+                kids_value = None
+
+            if kids_value is None:
+                logger.debug(f"[MCR-BUILDER] No /K at path element {part}")
                 return None
 
-            kids = current.K
             index = int(part)
 
-            if isinstance(kids, list):
-                if index >= len(kids):
+            # Handle array vs single kid
+            if isinstance(kids_value, pikepdf.Array):
+                if index >= len(kids_value):
+                    logger.debug(f"[MCR-BUILDER] Index {index} out of bounds (len={len(kids_value)})")
                     return None
-                current = kids[index]
+                current = kids_value[index]
             else:
+                # Single kid - only valid if index is 0
                 if index != 0:
+                    logger.debug(f"[MCR-BUILDER] Single kid but index={index} (expected 0)")
                     return None
-                current = kids
+                current = kids_value
+
+            # Verify we got a dictionary
+            if not isinstance(current, pikepdf.Dictionary):
+                logger.debug(f"[MCR-BUILDER] Navigation result is not Dictionary: {type(current)}")
+                return None
 
         return current
 
@@ -117,14 +132,22 @@ class McrBuilder:
         Returns:
             Number of MCRs created
         """
-        # Get or create /K array
-        if '/K' not in element:
-            element['/K'] = pikepdf.Array()
+        # Get or create /K array - use try/get to avoid pikepdf membership test issues
+        try:
+            k_value = element.get('/K')
+        except:
+            k_value = None
 
-        k_array = element.K
-        if not isinstance(k_array, pikepdf.Array):
-            # Convert single value to array
-            k_array = pikepdf.Array([k_array])
+        if k_value is None:
+            # No /K exists, create empty array
+            element['/K'] = pikepdf.Array()
+            k_array = element['/K']
+        elif isinstance(k_value, pikepdf.Array):
+            # Already an array, use it
+            k_array = k_value
+        else:
+            # Single value, convert to array
+            k_array = pikepdf.Array([k_value])
             element['/K'] = k_array
 
         # Add MCR for each MCID reference
