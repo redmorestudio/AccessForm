@@ -68,7 +68,11 @@ public class PikepdfStructureWriterService
 
             // Write structure tree JSON to temp file
             var structureJsonPath = Path.Combine(tempDir, "structure.json");
-            var structureJson = JsonSerializer.Serialize(structureTree, new JsonSerializerOptions
+
+            // Convert C# StructureTree to Python-expected format
+            var pythonFormat = ConvertToPythonFormat(structureTree);
+
+            var structureJson = JsonSerializer.Serialize(pythonFormat, new JsonSerializerOptions
             {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
                 WriteIndented = true
@@ -205,6 +209,46 @@ public class PikepdfStructureWriterService
                 Error = $"Failed to parse orchestrator output: {ex.Message}\nOutput: {stdoutOutput}"
             };
         }
+    }
+
+    /// <summary>
+    /// Convert C# StructureTree to Python orchestrator's expected format.
+    /// </summary>
+    private static object ConvertToPythonFormat(StructureTree tree)
+    {
+        var pythonNodes = tree.Nodes.Select(ConvertNodeToPythonFormat).ToList();
+
+        return new
+        {
+            nodes = pythonNodes
+        };
+    }
+
+    /// <summary>
+    /// Recursively convert a StructureNode to Python format.
+    /// </summary>
+    private static object ConvertNodeToPythonFormat(StructureNode node)
+    {
+        // Extract ID from attributes if present
+        var id = node.Attributes?.GetValueOrDefault("id");
+
+        // Extract alt and actualText from attributes if present
+        var alt = node.Attributes?.GetValueOrDefault("alt");
+        var actualText = node.Attributes?.GetValueOrDefault("actualText");
+        var lang = node.Attributes?.GetValueOrDefault("lang");
+
+        // Convert children recursively
+        var children = node.Children?.Select(ConvertNodeToPythonFormat).ToList() ?? new List<object>();
+
+        return new
+        {
+            id = id,
+            role = node.Role,
+            alt = alt,
+            actual_text = actualText,
+            lang = lang,
+            children = children
+        };
     }
 
     /// <summary>
