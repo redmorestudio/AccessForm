@@ -156,7 +156,7 @@ class PikepdfOrchestrator:
             segments = McidAllocator.allocate_mcids(segments, start_mcid=total_marker_count)
 
             # Insert BDC/EMC markers
-            MarkerInserter.insert_markers(page, operators, segments)
+            MarkerInserter.insert_markers(pdf, page, operators, segments)
 
             # Verify markers
             verification = MarkerInserter.verify_markers(page)

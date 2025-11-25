@@ -36,10 +36,6 @@ class ContentParser:
         logger.info(f"[CONTENT-PARSER] Parsing content stream")
 
         try:
-            # Get content stream bytes
-            content_stream = page.get_content_stream_for_modification(True)
-            content_bytes = content_stream.read_bytes()
-
             # Parse using pikepdf's content stream parser
             operators = []
             index = 0

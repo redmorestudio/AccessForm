@@ -16,6 +16,7 @@ class MarkerInserter:
 
     @staticmethod
     def insert_markers(
+        pdf: pikepdf.Pdf,
         page: pikepdf.Page,
         operators: List[Dict[str, Any]],
         segments: List[Dict[str, Any]]
@@ -24,6 +25,7 @@ class MarkerInserter:
         Insert BDC/EMC markers into page content stream.
 
         Args:
+            pdf: pikepdf.Pdf object (needed to create streams)
             page: pikepdf.Page to modify
             operators: List of operators from ContentParser
             segments: List of segments with MCIDs from McidAllocator
@@ -35,8 +37,10 @@ class MarkerInserter:
         # Build new content stream with markers
         new_content = MarkerInserter._build_marked_content(operators, segments)
 
-        # Write new content to page
-        page.contents_replace(new_content)
+        # Replace page contents with new stream
+        # Create a new stream object from the content bytes
+        new_stream = pdf.make_stream(new_content)
+        page.Contents = new_stream
 
         logger.info(f"[MARKER-INSERTER] Successfully inserted {len(segments)} BDC/EMC pairs")
 
@@ -124,8 +128,8 @@ class MarkerInserter:
                 'matched': bool
             }
         """
-        content_stream = page.get_content_stream_for_modification(True)
-        content_bytes = content_stream.read_bytes()
+        # Read page contents stream
+        content_bytes = page.Contents.read_bytes()
         content_str = content_bytes.decode('latin-1', errors='ignore')
 
         bdc_count = content_str.count('BDC')
