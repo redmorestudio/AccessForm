@@ -59,7 +59,8 @@ class PikepdfOrchestrator:
                 'elements_created': int,
                 'mcr_kids_created': int,
                 'bdc_emc_pairs': int,
-                'error': str (if failed)
+                'error': str (if failed),
+                'warnings': list (if any)
             }
         """
         logger.info("[ORCHESTRATOR] ========== STARTING STRUCTURE REBUILD ==========")
@@ -74,8 +75,25 @@ class PikepdfOrchestrator:
         }
 
         try:
+            # Validate inputs
+            if not input_pdf_path or not isinstance(input_pdf_path, str):
+                raise ValueError("input_pdf_path must be a non-empty string")
+
+            if not output_pdf_path or not isinstance(output_pdf_path, str):
+                raise ValueError("output_pdf_path must be a non-empty string")
+
+            if not structure_tree_json or not isinstance(structure_tree_json, str):
+                raise ValueError("structure_tree_json must be a non-empty string")
+
+            from pathlib import Path
+            if not Path(input_pdf_path).exists():
+                raise FileNotFoundError(f"Input PDF not found: {input_pdf_path}")
+
             # Parse structure tree model
-            structure_tree = json.loads(structure_tree_json)
+            try:
+                structure_tree = json.loads(structure_tree_json)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Invalid JSON in structure_tree_json: {e}")
             logger.info(f"[ORCHESTRATOR] Parsed structure tree: {len(structure_tree.get('nodes', []))} root nodes")
 
             # Open PDF
@@ -99,6 +117,11 @@ class PikepdfOrchestrator:
                 mcid_result = self._mark_content_with_mcids(pdf, structure_tree)
                 result['mcr_kids_created'] = mcid_result['mcr_count']
                 result['bdc_emc_pairs'] = mcid_result['marker_count']
+
+                # Propagate errors/warnings from MCID marking
+                if 'errors' in mcid_result:
+                    result['warnings'] = mcid_result['errors']
+                    logger.warning(f"[ORCHESTRATOR] MCID marking had {len(mcid_result['errors'])} errors")
 
             # Step 4: Validate
             logger.info("[ORCHESTRATOR] Step 4: Validating structure")
@@ -137,48 +160,94 @@ class PikepdfOrchestrator:
 
         total_mcr_count = 0
         total_marker_count = 0
+        errors = []
 
         # Process each page
         for page_index, page in enumerate(pdf.pages):
-            logger.info(f"[ORCHESTRATOR-MCID] Processing page {page_index + 1}")
+            try:
+                logger.info(f"[ORCHESTRATOR-MCID] Processing page {page_index + 1}")
 
-            # Parse content stream
-            operators = ContentParser.parse_page_content(page)
+                # Parse content stream
+                try:
+                    operators = ContentParser.parse_page_content(page)
+                except Exception as e:
+                    logger.error(f"[ORCHESTRATOR-MCID] Failed to parse page {page_index + 1}: {e}")
+                    errors.append(f"Page {page_index + 1} parse error: {e}")
+                    continue
 
-            # Detect segments
-            segments = SegmentDetector.detect_segments(operators)
+                # Detect segments
+                try:
+                    segments = SegmentDetector.detect_segments(operators)
+                except Exception as e:
+                    logger.error(f"[ORCHESTRATOR-MCID] Failed to detect segments on page {page_index + 1}: {e}")
+                    errors.append(f"Page {page_index + 1} segment detection error: {e}")
+                    continue
 
-            if len(segments) == 0:
-                logger.info(f"[ORCHESTRATOR-MCID] No segments on page {page_index}")
+                if len(segments) == 0:
+                    logger.info(f"[ORCHESTRATOR-MCID] No segments on page {page_index + 1}")
+                    continue
+
+                # Allocate MCIDs
+                try:
+                    segments = McidAllocator.allocate_mcids(segments, start_mcid=total_marker_count)
+                except Exception as e:
+                    logger.error(f"[ORCHESTRATOR-MCID] Failed to allocate MCIDs on page {page_index + 1}: {e}")
+                    errors.append(f"Page {page_index + 1} MCID allocation error: {e}")
+                    continue
+
+                # Insert BDC/EMC markers
+                try:
+                    MarkerInserter.insert_markers(pdf, page, operators, segments)
+                except Exception as e:
+                    logger.error(f"[ORCHESTRATOR-MCID] Failed to insert markers on page {page_index + 1}: {e}")
+                    errors.append(f"Page {page_index + 1} marker insertion error: {e}")
+                    continue
+
+                # Verify markers
+                try:
+                    verification = MarkerInserter.verify_markers(page)
+                    total_marker_count += verification['bdc_count']
+                except Exception as e:
+                    logger.warning(f"[ORCHESTRATOR-MCID] Failed to verify markers on page {page_index + 1}: {e}")
+                    # Non-fatal, continue
+
+                # Build element-to-MCID mapping
+                try:
+                    element_mcid_map = self._build_element_mcid_map(
+                        structure_tree, page_index, segments
+                    )
+                except Exception as e:
+                    logger.error(f"[ORCHESTRATOR-MCID] Failed to build MCID map on page {page_index + 1}: {e}")
+                    errors.append(f"Page {page_index + 1} MCID mapping error: {e}")
+                    continue
+
+                # Create MCR kids
+                try:
+                    mcr_count = McrBuilder.add_mcr_kids(pdf, element_mcid_map)
+                    total_mcr_count += mcr_count
+                except Exception as e:
+                    logger.error(f"[ORCHESTRATOR-MCID] Failed to add MCR kids on page {page_index + 1}: {e}")
+                    errors.append(f"Page {page_index + 1} MCR creation error: {e}")
+                    continue
+
+            except Exception as e:
+                logger.error(f"[ORCHESTRATOR-MCID] Unexpected error on page {page_index + 1}: {e}", exc_info=True)
+                errors.append(f"Page {page_index + 1} unexpected error: {e}")
                 continue
 
-            # Allocate MCIDs
-            segments = McidAllocator.allocate_mcids(segments, start_mcid=total_marker_count)
-
-            # Insert BDC/EMC markers
-            MarkerInserter.insert_markers(pdf, page, operators, segments)
-
-            # Verify markers
-            verification = MarkerInserter.verify_markers(page)
-            total_marker_count += verification['bdc_count']
-
-            # Build element-to-MCID mapping
-            # For now, simple sequential mapping to nodes
-            element_mcid_map = self._build_element_mcid_map(
-                structure_tree, page_index, segments
-            )
-
-            # Create MCR kids
-            mcr_count = McrBuilder.add_mcr_kids(pdf, element_mcid_map)
-            total_mcr_count += mcr_count
-
         logger.info(f"[ORCHESTRATOR-MCID] MCID marking complete: "
-                   f"{total_mcr_count} MCRs, {total_marker_count} markers")
+                   f"{total_mcr_count} MCRs, {total_marker_count} markers, {len(errors)} errors")
 
-        return {
+        result = {
             'mcr_count': total_mcr_count,
             'marker_count': total_marker_count
         }
+
+        if errors:
+            result['errors'] = errors
+            logger.warning(f"[ORCHESTRATOR-MCID] Encountered {len(errors)} errors during MCID marking")
+
+        return result
 
     def _build_element_mcid_map(
         self,
