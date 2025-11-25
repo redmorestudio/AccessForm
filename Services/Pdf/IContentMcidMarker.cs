@@ -13,10 +13,11 @@ public interface IContentMcidMarker
     /// <summary>
     /// Rewrites page content streams to insert BDC/EMC MCID markers.
     /// Must be called before pdfDoc.Close().
+    /// NOTE: This method modifies the targets dictionary to remove unsuccessful assignments.
     /// </summary>
     /// <param name="doc">The PDF document with structure tree already built</param>
-    /// <param name="targets">Dictionary mapping (pageIndex, mcid) to structure nodes with layout bounds</param>
+    /// <param name="targets">Mutable dictionary mapping (pageIndex, mcid) to structure nodes. Unassigned targets will be removed.</param>
     void Apply(
         PdfDocument doc,
-        IReadOnlyDictionary<(int pageIndex, int mcid), McidTarget> targets);
+        Dictionary<(int pageIndex, int mcid), McidTarget> targets);
 }

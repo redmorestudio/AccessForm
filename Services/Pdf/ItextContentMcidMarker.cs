@@ -36,7 +36,7 @@ public class ItextContentMcidMarker : IContentMcidMarker
 
     public void Apply(
         PdfDocument doc,
-        IReadOnlyDictionary<(int pageIndex, int mcid), McidTarget> targets)
+        Dictionary<(int pageIndex, int mcid), McidTarget> targets)
     {
         try
         {
@@ -51,7 +51,7 @@ public class ItextContentMcidMarker : IContentMcidMarker
 
             foreach (var (pageIndex, pageTargets) in targetsByPage)
             {
-                ProcessPage(doc, pageIndex, pageTargets);
+                ProcessPage(doc, pageIndex, pageTargets, targets);
             }
 
             _logger.LogInformation("[MCID-MARKER-6b] Content stream rewriting complete");
@@ -75,7 +75,8 @@ public class ItextContentMcidMarker : IContentMcidMarker
     private void ProcessPage(
         PdfDocument doc,
         int pageIndex,
-        List<KeyValuePair<(int pageIndex, int mcid), McidTarget>> pageTargets)
+        List<KeyValuePair<(int pageIndex, int mcid), McidTarget>> pageTargets,
+        Dictionary<(int pageIndex, int mcid), McidTarget> targets)
     {
         try
         {
@@ -137,6 +138,26 @@ public class ItextContentMcidMarker : IContentMcidMarker
             }
 
             _logger.LogInformation($"[MCID-MARKER-6b] Assigned MCIDs to {matchCount} segments on page {pageIndex}");
+
+            // Step 6.5: Remove unassigned targets from the targets dictionary
+            // This ensures we only create MCR kids for segments that actually got BDC/EMC markers
+            var markedMcids = sortedSegments
+                .Where(s => s.AssignedMcid.HasValue)
+                .Select(s => (pageIndex, s.AssignedMcid.Value))
+                .ToHashSet();
+
+            var targetsToRemove = pageTargets
+                .Where(kvp => !markedMcids.Contains((kvp.Key.pageIndex, kvp.Key.mcid)))
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var key in targetsToRemove)
+            {
+                _logger.LogWarning($"[MCID-MARKER-6b] Removing unassigned target: Page {key.pageIndex}, MCID {key.mcid}");
+                targets.Remove(key); // Remove from the original dictionary passed to Apply()
+            }
+
+            _logger.LogInformation($"[MCID-MARKER-6b] Filtered targets: {pageTargets.Count - targetsToRemove.Count} of {pageTargets.Count} will get BDC/EMC markers");
 
             // Step 7: Rebuild content stream with BDC/EMC markers
             RebuildPageContent(page, pageOps, sortedSegments);
@@ -547,8 +568,9 @@ public class ItextContentMcidMarker : IContentMcidMarker
 
             _logger.LogInformation($"[MCID-MARKER-6b-STREAM] SetData() called with {newContent.Length} bytes, marked as modified");
 
-            // PHASE 6G: Don't flush page here - let normal close process handle persistence
-            // Flushing early can interfere with structure tree finalization
+            // PHASE 6K FIX: DON'T flush content stream here
+            // Flushing before MCR kids are created can cause markers to disappear
+            // Instead, we'll flush the page AFTER MCR kids are created in ITextPdfStructureWriter
 
             _logger.LogInformation($"[MCID-MARKER-6b] Rewrote content stream with {markedSegments.Count} BDC/EMC pairs");
         }

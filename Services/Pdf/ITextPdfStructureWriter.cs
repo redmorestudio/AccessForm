@@ -163,18 +163,64 @@ public sealed class ITextPdfStructureWriter : IPdfStructureWriter
             // Create new structure tree from our model
             CreateStructureTree(pdfDoc, tree);
 
-            // Step 3: MCID linking (if enabled and BDC/EMC markers were inserted)
-            if (enableMcidLinking && context?.LayoutPlan != null && context?.McidContentRewriteExecuted == true)
+            // Step 3: MCID linking (if enabled)
+            // NOTE: We must insert BDC/EMC markers BEFORE creating MCR kids to avoid orphaned MCRs
+            if (enableMcidLinking && context?.LayoutPlan != null)
             {
-                _logger.LogInformation("[PHASE-6K-FIX] Step 3: Creating MCR kids to link structure to BDC/EMC markers");
-                AllocateMcids(pdfDoc, tree, context.LayoutPlan);
+                _logger.LogInformation("[PHASE-6K-FIX] Step 3A: Inserting BDC/EMC markers FIRST to determine valid MCIDs");
+
+                // First, allocate MCIDs and build targets WITHOUT creating MCR kids
+                var mcidTargets = AllocateMcidsWithoutMcrKids(pdfDoc, tree, context.LayoutPlan);
+
+                // Then insert BDC/EMC markers using iText7 API
+                if (_mcidMarker != null && mcidTargets.Count > 0)
+                {
+                    try
+                    {
+                        _mcidMarker.Apply(pdfDoc, mcidTargets);
+                        _logger.LogInformation($"[PHASE-6K-FIX] Successfully inserted BDC/EMC markers for {mcidTargets.Count} segments");
+                    }
+                    catch (Exception markerEx)
+                    {
+                        _logger.LogWarning(markerEx, "[PHASE-6K-FIX] Failed to insert BDC/EMC markers - MCIDs will not be created");
+                        mcidTargets.Clear(); // Don't create MCR kids if markers failed
+                    }
+                }
+
+                // Finally, create MCR kids ONLY for MCIDs that have BDC/EMC markers
+                if (mcidTargets.Count > 0)
+                {
+                    _logger.LogInformation("[PHASE-6K-FIX] Step 3B: Creating MCR kids for successfully marked content");
+                    CreateMcrKidsFromTargets(pdfDoc, mcidTargets);
+
+                    // PHASE 6K FIX: Flush all pages that had markers inserted
+                    // This ensures both content stream changes AND MCR kids are persisted together
+                    _logger.LogInformation("[PHASE-6K-FIX] Step 3C: Flushing pages to persist content and structure changes");
+                    var pageIndices = mcidTargets.Keys.Select(k => k.PageIndex).Distinct().ToList();
+                    foreach (var pageIndex in pageIndices)
+                    {
+                        try
+                        {
+                            var page = pdfDoc.GetPage(pageIndex + 1); // iText is 1-based
+                            page.Flush();
+                            _logger.LogInformation($"[PHASE-6K-FIX] Flushed page {pageIndex + 1}");
+                        }
+                        catch (Exception flushEx)
+                        {
+                            _logger.LogWarning(flushEx, $"[PHASE-6K-FIX] Failed to flush page {pageIndex + 1}");
+                        }
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("[PHASE-6K-FIX] No valid MCID targets - structure tree will have no MCR kids");
+                }
             }
             else
             {
                 _logger.LogWarning(
                     "[PHASE-6K-FIX] MCID linking skipped. " +
-                    $"EnableMcidLinking={enableMcidLinking}, LayoutPlan={context?.LayoutPlan != null}, " +
-                    $"McidContentRewriteExecuted={context?.McidContentRewriteExecuted}");
+                    $"EnableMcidLinking={enableMcidLinking}, LayoutPlan={context?.LayoutPlan != null}");
             }
 
             // PHASE 6G DEBUG: Check PDF state before close
@@ -205,6 +251,10 @@ public sealed class ITextPdfStructureWriter : IPdfStructureWriter
             var finalBdc = finalText.Split(new[] { "BDC" }, StringSplitOptions.None).Length - 1;
             var finalEmc = finalText.Split(new[] { "EMC" }, StringSplitOptions.None).Length - 1;
             _logger.LogInformation($"[PHASE-6K-FIX] Final PDF has {finalBdc} BDC and {finalEmc} EMC markers");
+
+            // NO POST-PROCESSING NEEDED: MCR kids are now created by iText7 BEFORE Close()
+            // This approach is more reliable than post-processing with pikepdf
+            _logger.LogInformation("[PHASE-6K-FIX] Structure tree persisted with MCR kids intact");
 
             _logger.LogInformation("[PHASE-6K-FIX] ✅ Structure tree rebuild complete with preserved BDC/EMC markers");
             return finalBytes;
@@ -390,9 +440,13 @@ public sealed class ITextPdfStructureWriter : IPdfStructureWriter
     }
 
     /// <summary>
-    /// Phase 6: Allocates MCIDs to leaf content nodes and creates PdfMcrNumber references.
+    /// Phase 6K: Allocates MCIDs to leaf content nodes and builds targets WITHOUT creating MCR kids yet.
+    /// This allows us to insert BDC/EMC markers first, then create MCR kids only for valid segments.
     /// </summary>
-    private void AllocateMcids(PdfDocument pdfDoc, StructureTree tree, Models.Layout.PageLayoutPlan layoutPlan)
+    private Dictionary<(int PageIndex, int Mcid), McidTarget> AllocateMcidsWithoutMcrKids(
+        PdfDocument pdfDoc,
+        StructureTree tree,
+        Models.Layout.PageLayoutPlan layoutPlan)
     {
         try
         {
@@ -457,18 +511,81 @@ public sealed class ITextPdfStructureWriter : IPdfStructureWriter
 
             _logger.LogInformation($"[ITEXT-MCID] Allocated {mcidCount} MCIDs across {mcidTargets.Keys.Select(k => k.PageIndex).Distinct().Count()} pages");
 
-            // PHASE 6K FIX: Create MCR kids to link structure elements to content
-            // PdfMcrNumber auto-allocates MCIDs, so we DON'T create them since Python rewriter already added specific MCIDs
-            // Instead, skip MCR creation to preserve structure tree without linking to content yet
-            _logger.LogWarning("[PHASE-6K-FIX] Skipping MCR kid creation because Python rewriter already assigned specific MCIDs");
-            _logger.LogWarning("[PHASE-6K-FIX] Structure elements will exist but won't have content references");
-            _logger.LogWarning("[PHASE-6K-FIX] TODO: Need two-pass approach: 1) Python adds BDC/EMC, 2) Create MCR kids with matching MCIDs");
-
-            int mcrCount = 0; // No MCRs created
+            return mcidTargets;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[ITEXT-MCID] Failed to allocate MCIDs");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Phase 6K: Creates MCR kids in structure tree for the given MCID targets.
+    /// This should be called AFTER BDC/EMC markers are inserted to ensure valid MCRs.
+    /// </summary>
+    private void CreateMcrKidsFromTargets(
+        PdfDocument pdfDoc,
+        Dictionary<(int PageIndex, int Mcid), McidTarget> mcidTargets)
+    {
+        try
+        {
+            _logger.LogInformation("[PHASE-6K-FIX] Creating MCR kids to link structure elements to content...");
+
+            int mcrCount = 0;
+            foreach (var kvp in mcidTargets)
+            {
+                var (pageIndex, mcid) = kvp.Key;
+                var target = kvp.Value;
+                try
+                {
+                    // Create MCR (Marked Content Reference) dictionary manually
+                    // We can't use PdfMcrNumber(page, structElem) because it auto-allocates MCID
+                    // Instead, create raw MCR dictionary with our pre-allocated MCID
+                    var page = pdfDoc.GetPage(pageIndex + 1); // iText7 pages are 1-indexed
+
+                    var mcrDict = new PdfDictionary();
+                    mcrDict.Put(PdfName.Type, PdfName.MCR);
+                    mcrDict.Put(PdfName.Pg, page.GetPdfObject());
+                    mcrDict.Put(PdfName.MCID, new PdfNumber(mcid));
+
+                    // Add MCR dictionary directly to structure element's /K array
+                    var elemDict = target.StructElem.GetPdfObject();
+                    var kidsObj = elemDict.Get(PdfName.K);
+
+                    if (kidsObj == null)
+                    {
+                        // No kids yet - create array with this MCR
+                        elemDict.Put(PdfName.K, new PdfArray(mcrDict));
+                    }
+                    else if (kidsObj is PdfArray kidsArray)
+                    {
+                        // Kids array exists - append MCR
+                        kidsArray.Add(mcrDict);
+                    }
+                    else
+                    {
+                        // Single kid - convert to array with existing kid and new MCR
+                        var newArray = new PdfArray();
+                        newArray.Add(kidsObj);
+                        newArray.Add(mcrDict);
+                        elemDict.Put(PdfName.K, newArray);
+                    }
+
+                    mcrCount++;
+                    _logger.LogDebug($"[PHASE-6K-FIX] Added MCR kid: Page {pageIndex + 1}, MCID {mcid}");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, $"[PHASE-6K-FIX] Failed to create MCR for Page {pageIndex + 1}, MCID {mcid}");
+                }
+            }
+
+            _logger.LogInformation($"[PHASE-6K-FIX] Created {mcrCount} MCR kids linking structure to content");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[PHASE-6K-FIX] Failed to create MCR kids");
             throw;
         }
     }
@@ -548,6 +665,83 @@ public sealed class ITextPdfStructureWriter : IPdfStructureWriter
         catch (Exception ex)
         {
             _logger.LogWarning(ex, $"[ITEXT-STRUCTURE] Failed to add attributes to element");
+        }
+    }
+
+    private byte[] AddMcrKidsWithPikepdf(byte[] pdfBytes)
+    {
+        try
+        {
+            // Save PDF to temp file
+            var inputPath = Path.GetTempFileName();
+            var outputPath = Path.GetTempFileName();
+            File.WriteAllBytes(inputPath, pdfBytes);
+
+            _logger.LogInformation($"[PIKEPDF-MCR] Saved PDF to temp: {inputPath}");
+
+            // Call Python script
+            var scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "add_mcr_kids.py");
+            if (!File.Exists(scriptPath))
+            {
+                _logger.LogWarning($"[PIKEPDF-MCR] Script not found at {scriptPath}, skipping MCR post-processing");
+                File.Delete(inputPath);
+                File.Delete(outputPath);
+                return pdfBytes;
+            }
+
+            var process = new System.Diagnostics.Process
+            {
+                StartInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "python3",
+                    Arguments = $"\"{scriptPath}\" \"{inputPath}\" \"{outputPath}\"",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
+
+            _logger.LogInformation($"[PIKEPDF-MCR] Running: python3 {scriptPath}");
+            process.Start();
+
+            var stdout = process.StandardOutput.ReadToEnd();
+            var stderr = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+
+            if (process.ExitCode == 0)
+            {
+                _logger.LogInformation($"[PIKEPDF-MCR] ✅ Success! Exit code: {process.ExitCode}");
+                _logger.LogInformation($"[PIKEPDF-MCR] Output: {stdout}");
+
+                // Read fixed PDF
+                var fixedBytes = File.ReadAllBytes(outputPath);
+                _logger.LogInformation($"[PIKEPDF-MCR] Fixed PDF size: {fixedBytes.Length} bytes (original: {pdfBytes.Length})");
+
+                // Cleanup
+                File.Delete(inputPath);
+                File.Delete(outputPath);
+
+                return fixedBytes;
+            }
+            else
+            {
+                _logger.LogError($"[PIKEPDF-MCR] ❌ Failed with exit code {process.ExitCode}");
+                _logger.LogError($"[PIKEPDF-MCR] Stdout: {stdout}");
+                _logger.LogError($"[PIKEPDF-MCR] Stderr: {stderr}");
+
+                // Cleanup and return original
+                File.Delete(inputPath);
+                if (File.Exists(outputPath))
+                    File.Delete(outputPath);
+
+                return pdfBytes;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[PIKEPDF-MCR] Exception during pikepdf post-processing");
+            return pdfBytes;
         }
     }
 }

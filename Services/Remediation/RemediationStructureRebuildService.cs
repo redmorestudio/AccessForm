@@ -63,6 +63,17 @@ public sealed class RemediationStructureRebuildService : IRemediationService
         {
             _logger.LogInformation("[AI-STRUCTURE-REBUILD] Starting AI-driven structure rebuild");
 
+            // GUARD: Prevent duplicate structure rebuilds
+            // If structure rebuild already executed, structure tree with MCR kids already exists
+            if (_jobContext.StructureContext.StructureRebuildExecuted)
+            {
+                _logger.LogInformation(
+                    "[AI-STRUCTURE-REBUILD] Structure rebuild already executed in this job - skipping to preserve MCR kids");
+                result.Success = true;
+                result.ChangesMade = false;
+                return result;
+            }
+
             // Step 1: Run AI layout analysis
             _logger.LogInformation("[AI-STRUCTURE-REBUILD] Analyzing PDF layout with AI...");
 
@@ -117,7 +128,9 @@ public sealed class RemediationStructureRebuildService : IRemediationService
             result.ChangesMade = true;
             result.IssuesFixed = 1; // Track that we rebuilt the structure
 
-            _logger.LogInformation("[AI-STRUCTURE-REBUILD] Structure rebuild completed successfully");
+            // Mark structure rebuild as executed to prevent duplicate runs
+            _jobContext.StructureContext.StructureRebuildExecuted = true;
+            _logger.LogInformation("[AI-STRUCTURE-REBUILD] Structure rebuild completed successfully - flag set to prevent duplicates");
 
             stopwatch.Stop();
             result.Duration = stopwatch.Elapsed;
