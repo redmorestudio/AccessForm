@@ -73,8 +73,9 @@ class MarkerInserter:
                 bdc_instruction = MarkerInserter._create_bdc_instruction(segment['mcid'])
                 instructions.append(bdc_instruction)
 
-            # Add original operator
-            instructions.append((op['operands'], pikepdf.Operator(op['operator'])))
+            # Add original operator (operands are original pikepdf objects, not converted)
+            operands = list(op['operands']) if op['operands'] else []
+            instructions.append((operands, pikepdf.Operator(op['operator'])))
 
             # Insert EMC after segment end
             if op['index'] in segments_by_end:

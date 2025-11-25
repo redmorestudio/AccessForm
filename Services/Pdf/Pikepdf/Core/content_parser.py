@@ -44,7 +44,8 @@ class ContentParser:
             for operands, operator in pikepdf.parse_content_stream(page):
                 operators.append({
                     'operator': str(operator),
-                    'operands': [ContentParser._convert_operand(op) for op in operands],
+                    'operands': operands,  # Keep original pikepdf objects for unparsing
+                    'operands_str': [ContentParser._convert_operand(op) for op in operands],  # For debugging
                     'index': index
                 })
                 index += 1
