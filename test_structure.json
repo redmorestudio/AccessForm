@@ -1,27 +1,33 @@
 {
   "nodes": [
     {
-      "id": "/0",
+      "id": "/0/0",
       "role": "Document",
-      "alt": null,
-      "actual_text": null,
-      "lang": "en-US",
       "children": [
         {
-          "id": "/0/0",
+          "id": "/0/0/0",
           "role": "H1",
-          "alt": null,
-          "actual_text": null,
-          "lang": null,
+          "actual_text": "Title",
           "children": []
         },
         {
-          "id": "/0/1",
+          "id": "/0/0/1",
           "role": "P",
-          "alt": null,
-          "actual_text": null,
-          "lang": null,
+          "actual_text": "Paragraph 1",
           "children": []
+        },
+        {
+          "id": "/0/0/2",
+          "role": "P",
+          "actual_text": "Paragraph 2",
+          "children": [
+            {
+              "id": "/0/0/2/0",
+              "role": "Span",
+              "actual_text": "Nested span",
+              "children": []
+            }
+          ]
         }
       ]
     }

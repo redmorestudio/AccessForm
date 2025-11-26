@@ -95,6 +95,10 @@ public class PikepdfStructureWriterService : IPdfStructureWriter
             });
             await File.WriteAllTextAsync(structureJsonPath, structureJson);
 
+            // DEBUG: Log first 2000 chars of generated JSON to inspect IDs
+            var jsonPreview = structureJson.Length > 2000 ? structureJson.Substring(0, 2000) : structureJson;
+            _logger.LogWarning("[PIKEPDF-WRAPPER] Generated structure JSON preview (first 2000 chars):\n{JsonPreview}", jsonPreview);
+
             // Set output path
             var outputPath = Path.Combine(tempDir, "output.pdf");
 
@@ -124,6 +128,9 @@ public class PikepdfStructureWriterService : IPdfStructureWriter
         finally
         {
             // Clean up temp directory
+            // TEMPORARILY DISABLED FOR DEBUGGING - PRESERVE TEMP FILES
+            _logger.LogWarning("[PIKEPDF-WRAPPER] DEBUG: Preserving temp directory for inspection: {TempDir}", tempDir);
+            /*
             try
             {
                 if (Directory.Exists(tempDir))
@@ -135,6 +142,7 @@ public class PikepdfStructureWriterService : IPdfStructureWriter
             {
                 _logger.LogWarning("[PIKEPDF-WRAPPER] Failed to clean up temp directory: {Error}", ex.Message);
             }
+            */
         }
     }
 
