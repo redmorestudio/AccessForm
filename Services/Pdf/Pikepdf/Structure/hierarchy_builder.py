@@ -91,6 +91,7 @@ class HierarchyBuilder:
         # Store in element map
         if 'id' in node:
             element_map[node['id']] = element
+            logger.info(f"[HIERARCHY-BUILDER] Created element: id={node['id']}, role={node.get('role')}")
 
         # Process children
         child_elements = []

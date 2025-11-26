@@ -1,0 +1,34 @@
+{
+  "nodes": [
+    {
+      "id": "/0",
+      "role": "Document",
+      "children": [
+        {
+          "id": "/0/0",
+          "role": "H1",
+          "actual_text": "Title",
+          "children": []
+        },
+        {
+          "id": "/0/1",
+          "role": "Sect",
+          "children": [
+            {
+              "id": "/0/1/0",
+              "role": "P",
+              "actual_text": "First paragraph",
+              "children": []
+            },
+            {
+              "id": "/0/1/1",
+              "role": "P",
+              "actual_text": "Second paragraph",
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

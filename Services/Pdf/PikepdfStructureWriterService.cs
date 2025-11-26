@@ -240,8 +240,9 @@ public class PikepdfStructureWriterService : IPdfStructureWriter
     private static object ConvertToPythonFormat(StructureTree tree)
     {
         // Convert root nodes with hierarchical ID generation
+        // Use empty string as initial parent so first root node gets ID "/0" (not "/0/0")
         var pythonNodes = tree.Nodes.Select((node, index) =>
-            ConvertNodeToPythonFormat(node, "/0", index)).ToList();
+            ConvertNodeToPythonFormat(node, "", index)).ToList();
 
         return new
         {

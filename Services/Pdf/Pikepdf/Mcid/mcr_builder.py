@@ -78,16 +78,20 @@ class McrBuilder:
         Returns:
             Structure element Dictionary or None if not found
         """
+        logger.info(f"[MCR-BUILDER] Looking up element: {element_id}")
+
         if '/StructTreeRoot' not in pdf.Root:
+            logger.warning(f"[MCR-BUILDER] No StructTreeRoot found")
             return None
 
         # Parse element ID into path
         path_parts = [p for p in element_id.split('/') if p]
+        logger.info(f"[MCR-BUILDER] Path parts: {path_parts}")
 
         # Navigate structure tree
         current = pdf.Root.StructTreeRoot
 
-        for part in path_parts:
+        for i, part in enumerate(path_parts):
             # Get /K value safely
             try:
                 kids_value = current.get('/K')
@@ -99,25 +103,31 @@ class McrBuilder:
                 return None
 
             index = int(part)
+            logger.info(f"[MCR-BUILDER] Step {i}: Navigating to index {index} in /K")
 
             # Handle array vs single kid
             if isinstance(kids_value, pikepdf.Array):
+                logger.info(f"[MCR-BUILDER] /K is Array with {len(kids_value)} kids")
                 if index >= len(kids_value):
-                    logger.debug(f"[MCR-BUILDER] Index {index} out of bounds (len={len(kids_value)})")
+                    logger.warning(f"[MCR-BUILDER] Index {index} out of bounds (len={len(kids_value)})")
                     return None
                 current = kids_value[index]
+                logger.info(f"[MCR-BUILDER] Got element at index {index}, role={current.get('/S')}")
             else:
+                logger.info(f"[MCR-BUILDER] /K is single kid")
                 # Single kid - only valid if index is 0
                 if index != 0:
-                    logger.debug(f"[MCR-BUILDER] Single kid but index={index} (expected 0)")
+                    logger.warning(f"[MCR-BUILDER] Single kid but index={index} (expected 0)")
                     return None
                 current = kids_value
+                logger.info(f"[MCR-BUILDER] Got single kid, role={current.get('/S')}")
 
             # Verify we got a dictionary
             if not isinstance(current, pikepdf.Dictionary):
-                logger.debug(f"[MCR-BUILDER] Navigation result is not Dictionary: {type(current)}")
+                logger.warning(f"[MCR-BUILDER] Navigation result is not Dictionary: {type(current)}")
                 return None
 
+        logger.info(f"[MCR-BUILDER] Successfully found element: {element_id}")
         return current
 
     @staticmethod
