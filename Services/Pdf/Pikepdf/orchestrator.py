@@ -282,19 +282,31 @@ class PikepdfOrchestrator:
         flatten(nodes)
 
         # Map segments to nodes sequentially
+        # If there are more segments than nodes, map extras to a fallback "/0" parent
+        logger.info(f"[ORCHESTRATOR] Mapping {len(segments)} segments to {len(all_nodes)} nodes")
+
         for i, segment in enumerate(segments):
             if i < len(all_nodes):
                 node = all_nodes[i]
                 # Get node ID, handling None explicitly (production nodes may have id: null)
                 node_id = node.get('id') or f'/0/{i}'
+            else:
+                # Fallback: Map excess segments to root structure element "/0"
+                # This handles graphics segments not covered by AI structure analysis
+                node_id = '/0'
+                logger.debug(f"[ORCHESTRATOR] Segment {i} ({segment.get('type')}) mapped to fallback '/0' (no corresponding node)")
 
-                if node_id not in element_mcid_map:
-                    element_mcid_map[node_id] = []
+            if node_id not in element_mcid_map:
+                element_mcid_map[node_id] = []
 
-                element_mcid_map[node_id].append({
-                    'page_index': page_index,
-                    'mcid': segment['mcid']
-                })
+            element_mcid_map[node_id].append({
+                'page_index': page_index,
+                'mcid': segment['mcid']
+            })
+
+        if len(segments) > len(all_nodes):
+            logger.warning(f"[ORCHESTRATOR] {len(segments) - len(all_nodes)} segments mapped to fallback '/0' "
+                          f"(structure tree has insufficient nodes)")
 
         return element_mcid_map
 
