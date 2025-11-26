@@ -45,11 +45,15 @@ class SegmentDetector:
         image_segments = SegmentDetector._detect_image_segments(operators)
         segments.extend(image_segments)
 
+        # Detect graphics segments (paths, fills, strokes)
+        graphics_segments = SegmentDetector._detect_graphics_segments(operators, segments)
+        segments.extend(graphics_segments)
+
         # Sort by start index
         segments.sort(key=lambda s: s['start_index'])
 
         logger.info(f"[SEGMENT-DETECTOR] Detected {len(segments)} segments: "
-                   f"{len(text_segments)} text, {len(image_segments)} images")
+                   f"{len(text_segments)} text, {len(image_segments)} images, {len(graphics_segments)} graphics")
 
         return segments
 
@@ -127,6 +131,86 @@ class SegmentDetector:
                     'end_index': op['index'],
                     'mcid': None
                 })
+
+        return segments
+
+    @staticmethod
+    def _detect_graphics_segments(operators: List[Dict[str, Any]], existing_segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Detect graphics segments (paths, fills, strokes) not already covered by text or images.
+
+        Args:
+            operators: List of operators
+            existing_segments: Already detected segments (text, images)
+
+        Returns:
+            List of graphics segment dicts
+        """
+        segments = []
+
+        # Graphics path construction operators
+        PATH_OPS = {'m', 'l', 'c', 'v', 'y', 'h', 're'}
+        # Graphics painting operators
+        PAINT_OPS = {'S', 's', 'f', 'F', 'f*', 'B', 'B*', 'b', 'b*', 'W', 'W*', 'n'}
+        # Graphics state operators
+        STATE_OPS = {'q', 'Q', 'cm', 'w', 'J', 'j', 'M', 'd', 'ri', 'i', 'gs', 'CS', 'cs', 'SC', 'SCN', 'sc', 'scn', 'G', 'g', 'RG', 'rg', 'K', 'k'}
+
+        # Create set of all indices covered by existing segments
+        covered_indices = set()
+        for seg in existing_segments:
+            for idx in range(seg['start_index'], seg['end_index'] + 1):
+                covered_indices.add(idx)
+
+        # Find graphics runs
+        in_graphics_run = False
+        run_start = None
+
+        for i, op in enumerate(operators):
+            op_idx = op['index']
+            op_name = op['operator']
+
+            # Skip if already covered by text/image segment
+            if op_idx in covered_indices:
+                if in_graphics_run and run_start is not None:
+                    # End graphics run
+                    segments.append({
+                        'type': 'graphics',
+                        'start_index': run_start,
+                        'end_index': operators[i-1]['index'],
+                        'mcid': None
+                    })
+                    in_graphics_run = False
+                    run_start = None
+                continue
+
+            # Check if this is a graphics operator
+            is_graphics = (op_name in PATH_OPS or op_name in PAINT_OPS or op_name in STATE_OPS)
+
+            if is_graphics:
+                if not in_graphics_run:
+                    # Start new graphics run
+                    in_graphics_run = True
+                    run_start = op_idx
+            else:
+                if in_graphics_run and run_start is not None:
+                    # End graphics run
+                    segments.append({
+                        'type': 'graphics',
+                        'start_index': run_start,
+                        'end_index': operators[i-1]['index'],
+                        'mcid': None
+                    })
+                    in_graphics_run = False
+                    run_start = None
+
+        # Close final graphics run if still open
+        if in_graphics_run and run_start is not None:
+            segments.append({
+                'type': 'graphics',
+                'start_index': run_start,
+                'end_index': operators[-1]['index'],
+                'mcid': None
+            })
 
         return segments
 
