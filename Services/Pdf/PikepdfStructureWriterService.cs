@@ -231,7 +231,9 @@ public class PikepdfStructureWriterService : IPdfStructureWriter
     /// </summary>
     private static object ConvertToPythonFormat(StructureTree tree)
     {
-        var pythonNodes = tree.Nodes.Select(ConvertNodeToPythonFormat).ToList();
+        // Convert root nodes with hierarchical ID generation
+        var pythonNodes = tree.Nodes.Select((node, index) =>
+            ConvertNodeToPythonFormat(node, "/0", index)).ToList();
 
         return new
         {
@@ -240,20 +242,28 @@ public class PikepdfStructureWriterService : IPdfStructureWriter
     }
 
     /// <summary>
-    /// Recursively convert a StructureNode to Python format.
+    /// Recursively convert a StructureNode to Python format with hierarchical path IDs.
     /// </summary>
-    private static object ConvertNodeToPythonFormat(StructureNode node)
+    /// <param name="node">Node to convert</param>
+    /// <param name="parentPath">Parent's hierarchical path (e.g., "/0" or "/0/1/2")</param>
+    /// <param name="childIndex">This node's index among its siblings</param>
+    private static object ConvertNodeToPythonFormat(StructureNode node, string parentPath, int childIndex)
     {
-        // Extract ID from attributes if present
+        // Use existing ID from attributes if present, otherwise generate hierarchical path
         var id = node.Attributes?.GetValueOrDefault("id");
+        if (string.IsNullOrEmpty(id))
+        {
+            id = $"{parentPath}/{childIndex}";
+        }
 
         // Extract alt and actualText from attributes if present
         var alt = node.Attributes?.GetValueOrDefault("alt");
         var actualText = node.Attributes?.GetValueOrDefault("actualText");
         var lang = node.Attributes?.GetValueOrDefault("lang");
 
-        // Convert children recursively
-        var children = node.Children?.Select(ConvertNodeToPythonFormat).ToList() ?? new List<object>();
+        // Convert children recursively, passing this node's ID as parent path
+        var children = node.Children?.Select((child, i) =>
+            ConvertNodeToPythonFormat(child, id, i)).ToList() ?? new List<object>();
 
         return new
         {
