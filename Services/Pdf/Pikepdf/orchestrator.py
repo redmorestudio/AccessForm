@@ -285,7 +285,8 @@ class PikepdfOrchestrator:
         for i, segment in enumerate(segments):
             if i < len(all_nodes):
                 node = all_nodes[i]
-                node_id = node.get('id', f'/0/{i}')
+                # Get node ID, handling None explicitly (production nodes may have id: null)
+                node_id = node.get('id') or f'/0/{i}'
 
                 if node_id not in element_mcid_map:
                     element_mcid_map[node_id] = []
@@ -302,7 +303,8 @@ def main():
     """CLI entry point."""
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        stream=sys.stderr  # Send all logs to stderr, keep stdout for JSON only
     )
 
     if len(sys.argv) < 4:

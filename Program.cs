@@ -1044,6 +1044,16 @@ app.MapPost("/api/remediate-pdf-full", async (
         {
             Console.WriteLine($"❌ FAILED: {result.ExitReason}");
 
+            // For testing: Return partial PDF if available, otherwise return JSON error
+            if (result.OutputPdf != null && result.OutputPdf.Length > 0)
+            {
+                Console.WriteLine($"   Returning partial PDF: {result.OutputPdf.Length / 1024:N0} KB");
+                Console.WriteLine($"   Iterations: {result.Summary?.TotalIterations ?? 0}");
+                Console.WriteLine($"   Initial Violations: {result.Summary?.InitialViolationCount ?? 0}");
+                Console.WriteLine($"   Final Violations: {result.Summary?.FinalViolationCount ?? 0}");
+                return Results.File(result.OutputPdf, "application/pdf", file.FileName.Replace(".pdf", "_remediated.pdf"));
+            }
+
             return Results.Ok(new
             {
                 success = false,

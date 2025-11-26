@@ -200,11 +200,10 @@ public class PikepdfStructureWriterService : IPdfStructureWriter
             };
         }
 
-        // Parse JSON result from stdout
+        // Parse JSON result from stdout (entire output is JSON now that logging goes to stderr)
         try
         {
-            var lastLine = stdoutOutput.Trim().Split('\n').Last();
-            var result = JsonSerializer.Deserialize<PikepdfResult>(lastLine, new JsonSerializerOptions
+            var result = JsonSerializer.Deserialize<PikepdfResult>(stdoutOutput.Trim(), new JsonSerializerOptions
             {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase
             });

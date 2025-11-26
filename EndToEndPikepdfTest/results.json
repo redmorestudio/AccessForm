@@ -1,0 +1,112 @@
+[
+  {
+    "input": "0076_Guidelines to students.pdf",
+    "output": "remediated_01_0076_Guidelines to students.pdf",
+    "success": true,
+    "elements_created": 4,
+    "mcr_kids_created": 16,
+    "bdc_emc_pairs": 461,
+    "error": null,
+    "input_size": 214309,
+    "output_size": 211345
+  },
+  {
+    "input": "0085_City of Alexandria Virginia Department of Plannin.pdf",
+    "output": "remediated_02_0085_City of Alexandria Virginia Department of Plannin.pdf",
+    "success": true,
+    "elements_created": 4,
+    "mcr_kids_created": 33,
+    "bdc_emc_pairs": 325,
+    "error": null,
+    "input_size": 401652,
+    "output_size": 376356
+  },
+  {
+    "input": "0165_Untitled.pdf",
+    "output": "remediated_03_0165_Untitled.pdf",
+    "success": true,
+    "elements_created": 4,
+    "mcr_kids_created": 2,
+    "bdc_emc_pairs": 2,
+    "error": null,
+    "input_size": 1135430,
+    "output_size": 1135640
+  },
+  {
+    "input": "0140_City of Alexandria Virginia FY 2026 Proposed Oper.pdf",
+    "output": "remediated_04_0140_City of Alexandria Virginia FY 2026 Proposed Oper.pdf",
+    "success": true,
+    "elements_created": 4,
+    "mcr_kids_created": 12,
+    "bdc_emc_pairs": 390,
+    "error": null,
+    "input_size": 170446,
+    "output_size": 167590
+  },
+  {
+    "input": "0021_LAT - Form Attachment distinction between Circuit .pdf",
+    "output": "remediated_05_0021_LAT - Form Attachment distinction between Circuit .pdf",
+    "success": true,
+    "elements_created": 4,
+    "mcr_kids_created": 4,
+    "bdc_emc_pairs": 20,
+    "error": null,
+    "input_size": 119292,
+    "output_size": 114599
+  },
+  {
+    "input": "ELECT 427B Report the Death of a Registered Voter_Final (1).pdf",
+    "output": "remediated_06_ELECT 427B Report the Death of a Registered Voter_Final (1).pdf",
+    "success": true,
+    "elements_created": 4,
+    "mcr_kids_created": 4,
+    "bdc_emc_pairs": 209,
+    "error": null,
+    "input_size": 247646,
+    "output_size": 241798
+  },
+  {
+    "input": "0127_Dental Benefit Summary Detail-Coinsurance.pdf",
+    "output": "remediated_07_0127_Dental Benefit Summary Detail-Coinsurance.pdf",
+    "success": true,
+    "elements_created": 4,
+    "mcr_kids_created": 44,
+    "bdc_emc_pairs": 682,
+    "error": null,
+    "input_size": 551814,
+    "output_size": 546179
+  },
+  {
+    "input": "0048_Untitled.pdf",
+    "output": "remediated_08_0048_Untitled.pdf",
+    "success": true,
+    "elements_created": 4,
+    "mcr_kids_created": 8,
+    "bdc_emc_pairs": 28,
+    "error": null,
+    "input_size": 115952,
+    "output_size": 114960
+  },
+  {
+    "input": "0094_ George Washington Middle School.pdf",
+    "output": "remediated_09_0094_ George Washington Middle School.pdf",
+    "success": true,
+    "elements_created": 4,
+    "mcr_kids_created": 30,
+    "bdc_emc_pairs": 670,
+    "error": null,
+    "input_size": 1415081,
+    "output_size": 1399390
+  },
+  {
+    "input": "0191_City of Alexandria Virginia.pdf",
+    "output": "remediated_10_0191_City of Alexandria Virginia.pdf",
+    "success": true,
+    "elements_created": 4,
+    "mcr_kids_created": 40,
+    "bdc_emc_pairs": 504,
+    "error": null,
+    "input_size": 539656,
+    "output_size": 536885
+  }
+]

@@ -959,6 +959,14 @@ namespace WordToPdfConverter.Services.Remediation.Fixes
         /// </summary>
         private async Task<int> WrapUntaggedImagesInFiguresSafe(PdfDocument pdfDoc)
         {
+            // CRITICAL: Skip when MCID is enabled - pikepdf will handle all BDC/EMC markers
+            // Adding BMC/EMC here would cause nested/duplicate MCIDs after pikepdf runs
+            if (_jobContext?.Options?.EnableMcidLinking == true)
+            {
+                _logger.LogInformation("[ARTIFACT-FIX] Skipping XObject wrapping - MCID enabled (pikepdf handles all markers)");
+                return await Task.FromResult(0);
+            }
+
             var fixedCount = 0;
 
             try
@@ -1047,6 +1055,14 @@ namespace WordToPdfConverter.Services.Remediation.Fixes
         /// </summary>
         private async Task<int> MarkUntaggedContentAsArtifactsSafe(PdfDocument pdfDoc)
         {
+            // CRITICAL: Skip when MCID is enabled - pikepdf will handle all BDC/EMC markers
+            // Adding BMC/EMC here would cause nested/duplicate MCIDs after pikepdf runs
+            if (_jobContext?.Options?.EnableMcidLinking == true)
+            {
+                _logger.LogInformation("[ARTIFACT-FIX] Skipping unmarked content marking - MCID enabled (pikepdf handles all markers)");
+                return await Task.FromResult(0);
+            }
+
             var fixedCount = 0;
 
             try

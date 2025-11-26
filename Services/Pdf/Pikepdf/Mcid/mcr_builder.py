@@ -44,6 +44,11 @@ class McrBuilder:
 
         for element_id, mcid_refs in element_mcid_map.items():
             try:
+                # Skip None element IDs (shouldn't happen, but handle defensively)
+                if element_id is None:
+                    logger.warning(f"[MCR-BUILDER] Skipping None element_id with {len(mcid_refs)} refs")
+                    continue
+
                 # Find element in structure tree by ID
                 element = McrBuilder._find_element_by_id(pdf, element_id)
 
