@@ -25,9 +25,9 @@ public sealed class SimpleTopDownLayoutEngine : IPageLayoutEngine
 
         var plan = new PageLayoutPlan();
 
-        // Gather all nodes with bounds
+        // Gather all nodes with bounds (using their actual PageIndex)
         var nodesWithBounds = new List<(StructureNode node, int pageIndex)>();
-        GatherNodesRecursive(tree.Nodes, 0, nodesWithBounds);
+        GatherNodesRecursive(tree.Nodes, nodesWithBounds);
 
         // Group by page
         var pageGroups = nodesWithBounds
@@ -74,7 +74,6 @@ public sealed class SimpleTopDownLayoutEngine : IPageLayoutEngine
 
     private void GatherNodesRecursive(
         IReadOnlyList<StructureNode> nodes,
-        int pageIndex,
         List<(StructureNode, int)> collector)
     {
         foreach (var node in nodes)
@@ -83,16 +82,16 @@ public sealed class SimpleTopDownLayoutEngine : IPageLayoutEngine
             if (node.IsArtifact)
                 continue;
 
-            // Collect nodes with bounds
+            // Collect nodes with bounds using their actual PageIndex
             if (node.Bounds.HasValue)
             {
-                collector.Add((node, pageIndex));
+                collector.Add((node, node.PageIndex));
             }
 
             // Recurse into children
             if (node.Children != null && node.Children.Count > 0)
             {
-                GatherNodesRecursive(node.Children, pageIndex, collector);
+                GatherNodesRecursive(node.Children, collector);
             }
         }
     }

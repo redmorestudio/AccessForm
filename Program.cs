@@ -178,6 +178,7 @@ builder.Services.AddScoped<WordToPdfConverter.Services.Analysis.ILogicalLayoutAn
     WordToPdfConverter.Services.Analysis.ClaudeLogicalLayoutAnalysisService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Analysis.FormFieldEnrichmentService>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Remediation.Structure.StructureTreeCleaner>();
+builder.Services.AddScoped<WordToPdfConverter.Services.Layout.SimpleTopDownLayoutEngine>();
 builder.Services.AddScoped<WordToPdfConverter.Services.Pdf.ITaggedPdfFinalizer,
     WordToPdfConverter.Services.Pdf.TaggedPdfFinalizer>();
 

@@ -394,14 +394,32 @@ public sealed class ClaudeLogicalLayoutAnalysisService : ILogicalLayoutAnalysisS
 
     private Rect ParseBounds(JsonElement blockElement)
     {
+        // DPI scaling: Claude sees image at 150 DPI, returns pixel coordinates
+        // We need to convert to PDF points (72 DPI)
+        const double SCALE_FACTOR = 72.0 / 150.0; // = 0.48
+
+        // Standard Letter page height in PDF points (72 DPI)
+        const double PAGE_HEIGHT_PDF = 792.0;
+
         if (blockElement.TryGetProperty("bounds", out var boundsElement))
         {
-            var x = boundsElement.TryGetProperty("x", out var xElem) ? xElem.GetDouble() : 0;
-            var y = boundsElement.TryGetProperty("y", out var yElem) ? yElem.GetDouble() : 0;
-            var width = boundsElement.TryGetProperty("width", out var wElem) ? wElem.GetDouble() : 100;
-            var height = boundsElement.TryGetProperty("height", out var hElem) ? hElem.GetDouble() : 20;
+            // Get coordinates (likely 150 DPI image pixels from Claude)
+            var xRaw = boundsElement.TryGetProperty("x", out var xElem) ? xElem.GetDouble() : 0;
+            var yRaw = boundsElement.TryGetProperty("y", out var yElem) ? yElem.GetDouble() : 0;
+            var widthRaw = boundsElement.TryGetProperty("width", out var wElem) ? wElem.GetDouble() : 100;
+            var heightRaw = boundsElement.TryGetProperty("height", out var hElem) ? hElem.GetDouble() : 20;
 
-            return new Rect(x, y, width, height);
+            // CRITICAL FIX #1: Scale from 150 DPI image pixels to 72 DPI PDF points
+            var x = xRaw * SCALE_FACTOR;
+            var yTopLeft = yRaw * SCALE_FACTOR;
+            var width = widthRaw * SCALE_FACTOR;
+            var height = heightRaw * SCALE_FACTOR;
+
+            // CRITICAL FIX #2: Convert from top-left origin to PDF bottom-left origin
+            // Formula: y_pdf = pageHeight - y_topLeft - height
+            var yPdf = PAGE_HEIGHT_PDF - yTopLeft - height;
+
+            return new Rect(x, yPdf, width, height);
         }
 
         return new Rect(0, 0, 100, 20); // Default bounds

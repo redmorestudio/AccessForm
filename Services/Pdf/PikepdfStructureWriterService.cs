@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using WordToPdfConverter.Models.Layout;
 using WordToPdfConverter.Models.Remediation;
 using WordToPdfConverter.Services.Remediation.Structure;
 
@@ -54,8 +55,8 @@ public class PikepdfStructureWriterService : IPdfStructureWriter
         // Always enable MCID marking for pikepdf
         bool enableMcid = true;
 
-        // Call async method synchronously
-        return RebuildStructureAsync(originalPdf, tree, enableMcid).GetAwaiter().GetResult();
+        // Call async method synchronously, passing context for layout plan
+        return RebuildStructureAsync(originalPdf, tree, enableMcid, context).GetAwaiter().GetResult();
     }
 
     /// <summary>
@@ -64,11 +65,13 @@ public class PikepdfStructureWriterService : IPdfStructureWriter
     /// <param name="pdfBytes">Input PDF bytes</param>
     /// <param name="structureTree">Structure tree model</param>
     /// <param name="enableMcid">Enable MCID marking (default true)</param>
+    /// <param name="context">Optional context containing layout plan for spatial mapping</param>
     /// <returns>Modified PDF bytes with structure tree and MCIDs</returns>
     public async Task<byte[]> RebuildStructureAsync(
         byte[] pdfBytes,
         StructureTree structureTree,
-        bool enableMcid = true)
+        bool enableMcid = true,
+        StructureRebuildContext? context = null)
     {
         _logger.LogInformation("[PIKEPDF-WRAPPER] Starting structure rebuild (MCID: {EnableMcid})", enableMcid);
 
@@ -85,8 +88,8 @@ public class PikepdfStructureWriterService : IPdfStructureWriter
             // Write structure tree JSON to temp file
             var structureJsonPath = Path.Combine(tempDir, "structure.json");
 
-            // Convert C# StructureTree to Python-expected format
-            var pythonFormat = ConvertToPythonFormat(structureTree);
+            // Convert C# StructureTree to Python-expected format, including layout plan if available
+            var pythonFormat = ConvertToPythonFormat(structureTree, context?.LayoutPlan);
 
             var structureJson = JsonSerializer.Serialize(pythonFormat, new JsonSerializerOptions
             {
@@ -237,12 +240,26 @@ public class PikepdfStructureWriterService : IPdfStructureWriter
     /// <summary>
     /// Convert C# StructureTree to Python orchestrator's expected format.
     /// </summary>
-    private static object ConvertToPythonFormat(StructureTree tree)
+    private static object ConvertToPythonFormat(StructureTree tree, PageLayoutPlan? layoutPlan = null)
     {
+        // Build instruction lookup map if layout plan is provided
+        Dictionary<StructureNode, DrawInstruction>? nodeToInstruction = null;
+        if (layoutPlan != null)
+        {
+            nodeToInstruction = new Dictionary<StructureNode, DrawInstruction>();
+            foreach (var page in layoutPlan.Pages)
+            {
+                foreach (var instruction in page.Instructions)
+                {
+                    nodeToInstruction[instruction.Node] = instruction;
+                }
+            }
+        }
+
         // Convert root nodes with hierarchical ID generation
         // Use empty string as initial parent so first root node gets ID "/0" (not "/0/0")
         var pythonNodes = tree.Nodes.Select((node, index) =>
-            ConvertNodeToPythonFormat(node, "", index)).ToList();
+            ConvertNodeToPythonFormat(node, "", index, nodeToInstruction)).ToList();
 
         return new
         {
@@ -256,7 +273,12 @@ public class PikepdfStructureWriterService : IPdfStructureWriter
     /// <param name="node">Node to convert</param>
     /// <param name="parentPath">Parent's hierarchical path (e.g., "/0" or "/0/1/2")</param>
     /// <param name="childIndex">This node's index among its siblings</param>
-    private static object ConvertNodeToPythonFormat(StructureNode node, string parentPath, int childIndex)
+    /// <param name="nodeToInstruction">Optional map of node to draw instruction for bounds</param>
+    private static object ConvertNodeToPythonFormat(
+        StructureNode node,
+        string parentPath,
+        int childIndex,
+        Dictionary<StructureNode, DrawInstruction>? nodeToInstruction = null)
     {
         // Use existing ID from attributes if present, otherwise generate hierarchical path
         var id = node.Attributes?.GetValueOrDefault("id");
@@ -270,9 +292,43 @@ public class PikepdfStructureWriterService : IPdfStructureWriter
         var actualText = node.Attributes?.GetValueOrDefault("actualText");
         var lang = node.Attributes?.GetValueOrDefault("lang");
 
+        // Extract spatial bounds for spatial MCID mapping
+        object? boundsObj = null;
+        object? targetBoundsObj = null;
+        int? pageIndex = null;
+
+        // Add node.Bounds if available (logical bounds from AI analysis)
+        if (node.Bounds.HasValue)
+        {
+            var bounds = node.Bounds.Value;
+            boundsObj = new
+            {
+                x = bounds.X,
+                y = bounds.Y,
+                width = bounds.Width,
+                height = bounds.Height
+            };
+        }
+
+        // Add page index
+        pageIndex = node.PageIndex;
+
+        // Add target bounds from layout plan if available (actual rendering bounds)
+        if (nodeToInstruction != null && nodeToInstruction.TryGetValue(node, out var instruction))
+        {
+            var tb = instruction.TargetBounds;
+            targetBoundsObj = new
+            {
+                x = tb.X,
+                y = tb.Y,
+                width = tb.Width,
+                height = tb.Height
+            };
+        }
+
         // Convert children recursively, passing this node's ID as parent path
         var children = node.Children?.Select((child, i) =>
-            ConvertNodeToPythonFormat(child, id, i)).ToList() ?? new List<object>();
+            ConvertNodeToPythonFormat(child, id, i, nodeToInstruction)).ToList() ?? new List<object>();
 
         return new
         {
@@ -281,6 +337,9 @@ public class PikepdfStructureWriterService : IPdfStructureWriter
             alt = alt,
             actual_text = actualText,
             lang = lang,
+            bounds = boundsObj,
+            target_bounds = targetBoundsObj,
+            page_index = pageIndex,
             children = children
         };
     }
